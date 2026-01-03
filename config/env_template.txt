@@ -1,0 +1,67 @@
+# Alfred the Butler Environment Configuration
+# Copy this file to .env and fill in your values
+
+# =============================================================================
+# COMMUNICATION CONFIGURATION
+# =============================================================================
+# Communication mode (SMS only via Twilio)
+# Uses TwiML for incoming responses, REST API for scheduled messages
+COMMUNICATION_MODE=sms
+
+# =============================================================================
+# NLP ENGINE CONFIGURATION
+# =============================================================================
+# NLP Engine (Gemini API)
+NLP_ENGINE=gemini
+
+# Google Gemini API Key
+# Get your API key from: https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optional: Gemini Model Selection
+# Default: gemini-2.5-flash
+# Gemma models (higher quotas): gemma-3-12b-it, gemma-3-4b-it, gemma-3-1b-it
+# Gemini models: gemini-2.5-flash, gemini-2.5-pro, gemini-2.5-flash-lite
+GEMINI_MODEL=gemini-2.5-flash
+
+# =============================================================================
+# TWILIO CONFIGURATION (for SMS)
+# =============================================================================
+# Get these from Twilio Console Dashboard
+TWILIO_ACCOUNT_SID=your_account_sid_here
+TWILIO_AUTH_TOKEN=your_auth_token_here
+TWILIO_PHONE_NUMBER=+1234567890
+# Note: Use a toll-free number (800, 888, 877, etc.) to avoid A2P 10DLC registration
+
+# Your phone number (for scheduled reminders)
+YOUR_PHONE_NUMBER=+1234567890
+
+# =============================================================================
+# APP SETTINGS
+# =============================================================================
+# Morning check-in time (24-hour format)
+MORNING_CHECKIN_HOUR=8
+
+# Water Bottle Size (in milliliters)
+# Default: 500ml (standard water bottle)
+# Adjust this to match your actual water bottle size
+WATER_BOTTLE_SIZE_ML=500
+
+
+# =============================================================================
+# TWILIO SETUP INSTRUCTIONS
+# =============================================================================
+# 1. Go to https://www.twilio.com and create an account (free trial with $15.50 credit)
+# 2. Get your Account SID and Auth Token from Console Dashboard
+# 3. Buy a TOLL-FREE number (~$2-3/month) - No A2P 10DLC registration required!
+#    - Recommended for personal projects/students
+#    - Avoids $8 registration fee + $1.50/month campaign fee
+# 4. Set up webhook: https://your-app.com/webhook/twilio or /sms
+# 5. Configure webhook in Phone Number settings: "A message comes in"
+#
+# Estimated monthly cost for 100 messages: ~$2.75-3.75
+# - Toll-free number: ~$2-3/month
+# - SMS: $0.0075 per message
+# - 100 messages = $0.75
+# - Total: ~$2.75-3.75/month
+# - Trial account: $15.50 free credit (~2,000 SMS messages)

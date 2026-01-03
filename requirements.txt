@@ -1,0 +1,17 @@
+# Core dependencies
+Flask>=3.0.0
+twilio>=3.3.6
+python-dotenv>=1.0.0
+APScheduler>=3.10.4
+python-dateutil>=2.8.2
+
+# HTTP requests
+requests>=2.31.0
+
+# NLP and ML dependencies (Google Gemini API)
+google-generativeai>=0.3.0
+
+# Optional: Simple bot dependencies (for basic features)
+wikipedia>=1.4.0
+pyowm>=2.6.1
+wolframalpha>=3.0

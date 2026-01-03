@@ -1,0 +1,99 @@
+# Database files - ALLOW for deployment
+# *.db
+# *.sqlite
+# *.sqlite3
+# databases/
+# personal_assistant.db
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+sms_venv/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Google API credentials - Not used (we use Gemini API key instead)
+# credentials.json
+# token.json
+# service_account.json
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Project specific - ALLOW data files for deployment
+# JSON database files are included in repo (wu_foods.json, gym_workouts.json, snacks.json)
+# CSV log files are excluded (generated at runtime)
+data/logs/*.csv
+data/*.csv
+
+# Large data files (PDFs, Excel files) - exclude from repo
+data/*.pdf
+data/*.xlsx
+data/*.xls
+*.pdf
+*.xlsx
+*.xls
+
+# Configuration files - ALLOW for deployment
+# config/client_secrets.json
+# config/.env
+
+# Test files
+tests/
+*.test.py
+test_*.py
+
+# Documentation (keep but ignore any generated docs)
+docs/*.html
+docs/*.pdf
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*~
+

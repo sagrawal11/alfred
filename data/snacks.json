@@ -1,0 +1,199 @@
+{
+  "protein_bars": {
+    "gatorade_bar": {
+      "calories": 360,
+      "fat_g": 13,
+      "sat_fat_g": 10,
+      "trans_fat_g": 0,
+      "chol_mg": 30,
+      "sodium_mg": 150,
+      "potassium_mg": 230,
+      "carbs_g": 41,
+      "dietary_fiber_g": 2,
+      "sugars_g": 29,
+      "protein_g": 20,
+      "serving_size": "1 bar",
+      "common_servings": [
+        "1 bar",
+        "1/2 bar"
+      ]
+    }
+  },
+  "nuts": {
+    "spicy_almonds": {
+      "calories": 170,
+      "fat_g": 15,
+      "sat_fat_g": 1,
+      "trans_fat_g": 0,
+      "chol_mg": 0,
+      "sodium_mg": 120,
+      "potassium_mg": 180,
+      "carbs_g": 5,
+      "dietary_fiber_g": 3,
+      "sugars_g": 2,
+      "protein_g": 6,
+      "serving_size": "1 oz (28 almonds)",
+      "common_servings": [
+        "1/4 cup",
+        "1/2 cup",
+        "1 cup",
+        "1 oz"
+      ]
+    },
+    "salted_cashews": {
+      "calories": 160,
+      "fat_g": 13,
+      "sat_fat_g": 2.5,
+      "trans_fat_g": 0,
+      "chol_mg": 0,
+      "sodium_mg": 100,
+      "potassium_mg": 200,
+      "carbs_g": 6,
+      "dietary_fiber_g": 2,
+      "sugars_g": 1,
+      "protein_g": 8,
+      "serving_size": "1 oz (28 cashews)",
+      "common_servings": [
+        "1/4 cup",
+        "1/2 cup",
+        "1 cup",
+        "1 oz"
+      ]
+    }
+  },
+  "drinks": {
+    "protein_shake": {
+      "calories": 120,
+      "fat_g": 1,
+      "sat_fat_g": 0.5,
+      "trans_fat_g": 0,
+      "chol_mg": 5,
+      "sodium_mg": 200,
+      "potassium_mg": 150,
+      "carbs_g": 3,
+      "dietary_fiber_g": 0,
+      "sugars_g": 1,
+      "protein_g": 25,
+      "serving_size": "1 scoop",
+      "common_servings": [
+        "1 scoop",
+        "2 scoops"
+      ]
+    },
+    "diet_coke": {
+      "calories": 0,
+      "fat_g": 0,
+      "sat_fat_g": 0,
+      "trans_fat_g": 0,
+      "chol_mg": 0,
+      "sodium_mg": 70,
+      "potassium_mg": 0,
+      "carbs_g": 0,
+      "dietary_fiber_g": 0,
+      "sugars_g": 0,
+      "protein_g": 0,
+      "serving_size": "1 bottle",
+      "common_servings": [
+        "1 bottle",
+        "half a bottle"
+      ]
+    },
+    "diet_pepsi": {
+      "calories": 0,
+      "fat_g": 0,
+      "sat_fat_g": 0,
+      "trans_fat_g": 0,
+      "chol_mg": 0,
+      "sodium_mg": 60,
+      "potassium_mg": 0,
+      "carbs_g": 0,
+      "dietary_fiber_g": 0,
+      "sugars_g": 0,
+      "protein_g": 0,
+      "serving_size": "1 bottle",
+      "common_servings": [
+        "1 bottle",
+        "half a bottle"
+      ]
+    }
+  },
+  "dairy_snacks": {
+    "greek_yogurt": {
+      "calories": 100,
+      "fat_g": 0,
+      "sat_fat_g": 0,
+      "trans_fat_g": 0,
+      "chol_mg": 5,
+      "sodium_mg": 50,
+      "potassium_mg": 240,
+      "carbs_g": 6,
+      "dietary_fiber_g": 0,
+      "sugars_g": 4,
+      "protein_g": 17,
+      "serving_size": "1 cup",
+      "common_servings": [
+        "1/2 cup",
+        "1 cup"
+      ]
+    }
+  },
+  "fruits": {
+    "apple": {
+      "calories": 95,
+      "fat_g": 0,
+      "sat_fat_g": 0,
+      "trans_fat_g": 0,
+      "chol_mg": 0,
+      "sodium_mg": 0,
+      "potassium_mg": 260,
+      "carbs_g": 34,
+      "dietary_fiber_g": 5,
+      "sugars_g": 25,
+      "protein_g": 1,
+      "serving_size": "1 large apple",
+      "common_servings": [
+        "1 small",
+        "1 medium",
+        "1 large"
+      ]
+    },
+    "banana": {
+      "calories": 105,
+      "fat_g": 0,
+      "sat_fat_g": 0,
+      "trans_fat_g": 0,
+      "chol_mg": 0,
+      "sodium_mg": 2,
+      "potassium_mg": 422,
+      "carbs_g": 27,
+      "dietary_fiber_g": 3,
+      "sugars_g": 14,
+      "protein_g": 1,
+      "serving_size": "1 medium banana",
+      "common_servings": [
+        "1 small",
+        "1 medium",
+        "1 large"
+      ]
+    },
+    "orange": {
+      "calories": 58,
+      "fat_g": 0,
+      "sat_fat_g": 0,
+      "trans_fat_g": 0,
+      "chol_mg": 0,
+      "sodium_mg": 0,
+      "potassium_mg": 174,
+      "carbs_g": 22,
+      "dietary_fiber_g": 4.4,
+      "sugars_g": 17,
+      "protein_g": 1.7,
+      "serving_size": "1 medium orange",
+      "common_servings": [
+        "1 small",
+        "1 medium",
+        "1 large"
+      ]
+    }
+  }
+}
