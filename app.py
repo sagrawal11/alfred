@@ -174,7 +174,7 @@ def check_reminders():
     try:
         current_time = datetime.now()
         
-        # Get all due reminders that haven't been sent
+        # Get all due reminders that haven't been sent yet
         due_reminders = db.get_reminders_todos(
             type='reminder',
             completed=False,
@@ -184,10 +184,349 @@ def check_reminders():
         for reminder in due_reminders:
             reminder_id = int(reminder.get('id', 0))
             content = reminder.get('content', '')
+            sent_at = reminder.get('sent_at', '')
             
+            # Only send if not already sent
+            if not sent_at:
             # Send reminder via communication service
+                user_phone = config.YOUR_PHONE_NUMBER
+                message = f"⏰ REMINDER: {content}"
+                
+                if user_phone:
+                    result = communication_service.send_response(message, user_phone)
+                else:
+                    result = communication_service.send_response(message)
+                
+                if result['success']:
+                    print(f"🔔 Reminder sent via {result['method']}: {content}")
+                    # Mark as sent (but not completed - wait for user response)
+                    db.update_reminder_todo(reminder_id, completed=False, sent_at=current_time.isoformat())
+                else:
+                    print(f"❌ Failed to send reminder: {result.get('error', 'Unknown error')}")
+        
+    except Exception as e:
+        print(f"❌ Error checking reminders: {e}")
+
+def check_reminder_followups():
+    """Check for reminders that were sent but not completed, and send follow-ups"""
+    try:
+        current_time = datetime.now()
+        followup_delay = timedelta(minutes=config.REMINDER_FOLLOWUP_DELAY_MINUTES)
+        
+        # Get all reminders that were sent but not completed
+        all_reminders = db.get_reminders_todos(type='reminder', completed=False)
+        
+        for reminder in all_reminders:
+            reminder_id = int(reminder.get('id', 0))
+            content = reminder.get('content', '')
+            sent_at_str = reminder.get('sent_at', '')
+            follow_up_sent = reminder.get('follow_up_sent', 'FALSE').upper() == 'TRUE'
+            
+            # Skip if no sent_at timestamp or follow-up already sent
+            if not sent_at_str or follow_up_sent:
+                continue
+            
+            try:
+                sent_at = datetime.fromisoformat(sent_at_str)
+                time_since_sent = current_time - sent_at
+                
+                # If enough time has passed, send follow-up
+                if time_since_sent >= followup_delay:
+                    user_phone = config.YOUR_PHONE_NUMBER
+                    
+                    # Check if we should suggest rescheduling (Feature 3)
+                    due_date_str = reminder.get('due_date', '')
+                    should_reschedule = False
+                    reschedule_options = []
+                    
+                    if due_date_str and config.REMINDER_AUTO_RESCHEDULE_ENABLED:
+                        try:
+                            due_date = datetime.fromisoformat(due_date_str)
+                            if due_date < current_time:
+                                should_reschedule = True
+                                # Generate reschedule options
+                                tomorrow_morning = (current_time + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+                                later_today = current_time + timedelta(hours=2)
+                                
+                                if later_today.hour < 20:  # Only suggest if before 8pm
+                                    reschedule_options.append({
+                                        'time': later_today,
+                                        'text': f"later today ({later_today.strftime('%I:%M %p')})"
+                                    })
+                                
+                                reschedule_options.append({
+                                    'time': tomorrow_morning,
+                                    'text': f"tomorrow morning ({tomorrow_morning.strftime('%I:%M %p')})"
+                                })
+                        except:
+                            pass
+                    
+                    # Build follow-up message
+                    if should_reschedule and reschedule_options:
+                        message = f"💬 Did you get a chance to {content}, or should I reschedule it?\n"
+                        message += "Reply:\n"
+                        message += "• 'yes' or 'done' if completed\n"
+                        for i, option in enumerate(reschedule_options[:3], 1):
+                            message += f"• '{i}' to reschedule to {option['text']}\n"
+                        message += "• 'no' to skip"
+                        
+                        # Store reschedule options for this reminder
+                        if not hasattr(check_reminder_followups, 'pending_reschedules'):
+                            check_reminder_followups.pending_reschedules = {}
+                        check_reminder_followups.pending_reschedules[reminder_id] = reschedule_options
+                    else:
+                        message = f"💬 Did you get a chance to {content}? Reply 'yes' if done, or 'no' to skip."
+                    
+                    if user_phone:
+                        result = communication_service.send_response(message, user_phone)
+                    else:
+                        result = communication_service.send_response(message)
+                    
+                    if result['success']:
+                        print(f"💬 Follow-up sent for reminder: {content}")
+                        db.mark_follow_up_sent(reminder_id)
+                    else:
+                        print(f"❌ Failed to send follow-up: {result.get('error', 'Unknown error')}")
+            except Exception as e:
+                print(f"⚠️  Error processing follow-up for reminder {reminder_id}: {e}")
+                continue
+        
+    except Exception as e:
+        print(f"❌ Error checking reminder follow-ups: {e}")
+
+def check_task_decay():
+    """Check for stale todos and ask if they're still relevant"""
+    try:
+        if not config.TASK_DECAY_ENABLED:
+            return
+        
+        current_time = datetime.now()
+        decay_threshold = timedelta(days=config.TASK_DECAY_DAYS)
+        
+        # Get all incomplete todos
+        all_todos = db.get_reminders_todos(type='todo', completed=False)
+        
+        for todo in all_todos:
+            todo_id = int(todo.get('id', 0))
+            content = todo.get('content', '')
+            timestamp_str = todo.get('timestamp', '')
+            decay_check_sent = todo.get('decay_check_sent', 'FALSE').upper() == 'TRUE'
+            
+            # Skip if decay check already sent
+            if decay_check_sent:
+                continue
+            
+            if not timestamp_str:
+                continue
+            
+            try:
+                created_at = datetime.fromisoformat(timestamp_str)
+                age = current_time - created_at
+                
+                # If task is older than threshold, send decay check
+                if age >= decay_threshold:
+                    user_phone = config.YOUR_PHONE_NUMBER
+                    message = f"🧹 Still want '{content}' on your list?\n"
+                    message += "Reply:\n"
+                    message += "• 'keep' to keep it\n"
+                    message += "• 'reschedule' to move it\n"
+                    message += "• 'delete' or 'remove' to remove it"
+                    
+                    if user_phone:
+                        result = communication_service.send_response(message, user_phone)
+                    else:
+                        result = communication_service.send_response(message)
+                    
+                    if result['success']:
+                        print(f"🧹 Task decay check sent for: {content}")
+                        # Mark decay check as sent
+                        rows = db._read_csv(db.reminders_todos_file)
+                        for row in rows:
+                            if int(row.get('id', 0)) == todo_id:
+                                row['decay_check_sent'] = 'TRUE'
+                                break
+                        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
+                        db._write_csv(db.reminders_todos_file, rows, fieldnames)
+                        
+                        # Store pending response
+                        if not hasattr(check_task_decay, 'pending_responses'):
+                            check_task_decay.pending_responses = {}
+                        if user_phone not in check_task_decay.pending_responses:
+                            check_task_decay.pending_responses[user_phone] = {}
+                        check_task_decay.pending_responses[user_phone][todo_id] = content
+                    else:
+                        print(f"❌ Failed to send task decay check: {result.get('error', 'Unknown error')}")
+            except Exception as e:
+                print(f"⚠️  Error processing task decay for todo {todo_id}: {e}")
+                continue
+        
+    except Exception as e:
+        print(f"❌ Error checking task decay: {e}")
+
+def send_weekly_digest():
+    """Send weekly summary of behavior and progress"""
+    try:
+        if not config.WEEKLY_DIGEST_ENABLED:
+            return
+        
+        today = datetime.now().date()
+        
+        # Calculate week boundaries (Monday to Sunday)
+        days_since_monday = today.weekday()
+        week_start = today - timedelta(days=days_since_monday)
+        week_end = week_start + timedelta(days=6)
+        
+        # Get all logs for the week
+        all_water_logs = db.get_water_logs()
+        all_food_logs = db.get_food_logs()
+        all_gym_logs = db.get_gym_logs()
+        all_todos = db.get_reminders_todos()
+        
+        # Filter to this week
+        week_water = []
+        week_food = []
+        week_gym = []
+        week_todos = []
+        
+        for log in all_water_logs:
+            try:
+                log_date = datetime.fromisoformat(log.get('timestamp', '')).date()
+                if week_start <= log_date <= week_end:
+                    week_water.append(log)
+            except:
+                pass
+        
+        for log in all_food_logs:
+            try:
+                log_date = datetime.fromisoformat(log.get('timestamp', '')).date()
+                if week_start <= log_date <= week_end:
+                    week_food.append(log)
+            except:
+                pass
+        
+        for log in all_gym_logs:
+            try:
+                log_date = datetime.fromisoformat(log.get('timestamp', '')).date()
+                if week_start <= log_date <= week_end:
+                    week_gym.append(log)
+            except:
+                pass
+        
+        for item in all_todos:
+            try:
+                item_date = datetime.fromisoformat(item.get('timestamp', '')).date()
+                if week_start <= item_date <= week_end:
+                    week_todos.append(item)
+            except:
+                pass
+        
+        # Calculate stats
+        total_water_ml = sum(float(log.get('amount_ml', 0)) for log in week_water)
+        avg_water_ml = total_water_ml / 7 if len(week_water) > 0 else 0
+        
+        total_calories = sum(float(log.get('calories', 0)) for log in week_food)
+        avg_calories = total_calories / 7 if len(week_food) > 0 else 0
+        
+        gym_days = len(set(datetime.fromisoformat(log.get('timestamp', '')).date() for log in week_gym if log.get('timestamp')))
+        
+        completed_todos = sum(1 for item in week_todos if item.get('completed', 'FALSE').upper() == 'TRUE')
+        total_todos = len(week_todos)
+        completion_rate = (completed_todos / total_todos * 100) if total_todos > 0 else 0
+        
+        # Build digest message
+        message = f"📊 Weekly Digest ({week_start.strftime('%b %d')} - {week_end.strftime('%b %d')})\n\n"
+        
+        # Water
+        if avg_water_ml > 0:
+            liters = avg_water_ml / 1000
+            message += f"💧 Water: {liters:.1f}L/day avg\n"
+        else:
+            message += f"💧 Water: No logs this week\n"
+        
+        # Food
+        if avg_calories > 0:
+            message += f"🍽️  Food: {avg_calories:.0f} cal/day avg\n"
+        else:
+            message += f"🍽️  Food: No logs this week\n"
+        
+        # Gym
+        message += f"💪 Gym: {gym_days} days\n"
+        
+        # Tasks
+        if total_todos > 0:
+            message += f"✅ Tasks: {completed_todos}/{total_todos} completed ({completion_rate:.0f}%)\n"
+        else:
+            message += f"✅ Tasks: No tasks this week\n"
+        
+        # Send digest
+        user_phone = config.YOUR_PHONE_NUMBER
+        if user_phone:
+            result = communication_service.send_response(message, user_phone)
+        else:
+            result = communication_service.send_response(message)
+        
+        if result['success']:
+            print(f"📊 Weekly digest sent")
+        else:
+            print(f"❌ Failed to send weekly digest: {result.get('error', 'Unknown error')}")
+        
+    except Exception as e:
+        print(f"❌ Error sending weekly digest: {e}")
+
+def check_gentle_nudges():
+    """Send gentle, context-aware nudges based on personal patterns"""
+    try:
+        if not config.GENTLE_NUDGES_ENABLED:
+            return
+        
+        current_time = datetime.now()
+        today = current_time.date().isoformat()
+        current_hour = current_time.hour
+        
+        # Only send nudges during waking hours (8 AM - 10 PM)
+        if current_hour < 8 or current_hour >= 22:
+            return
+        
+        # Get today's stats
+        water_total = db.get_todays_water_total(today)
+        food_totals = db.get_todays_food_totals(today)
+        
+        # Calculate average water intake for past 7 days (excluding today)
+        past_7_days_water = []
+        for i in range(1, 8):
+            date = (current_time.date() - timedelta(days=i)).isoformat()
+            day_total = db.get_todays_water_total(date)
+            if day_total > 0:
+                past_7_days_water.append(day_total)
+        
+        avg_water = sum(past_7_days_water) / len(past_7_days_water) if past_7_days_water else 0
+        
+        # Calculate expected water at this hour (assuming even distribution)
+        hours_elapsed = current_hour - 8  # Since 8 AM
+        if hours_elapsed < 0:
+            hours_elapsed = 0
+        expected_water_at_hour = (avg_water / 14) * hours_elapsed if avg_water > 0 else 0  # 14 hours from 8 AM to 10 PM
+        
+        # Check if behind on water
+        if avg_water > 0 and water_total < expected_water_at_hour * 0.8:  # 20% behind
+            bottles_behind = int((expected_water_at_hour - water_total) / config.WATER_BOTTLE_SIZE_ML)
+            if bottles_behind > 0:
+                user_phone = config.YOUR_PHONE_NUMBER
+                message = f"💧 You're about {bottles_behind} bottle{'s' if bottles_behind > 1 else ''} behind your usual pace today"
+                
+                if user_phone:
+                    result = communication_service.send_response(message, user_phone)
+                else:
+                    result = communication_service.send_response(message)
+                
+                if result['success']:
+                    print(f"💧 Gentle nudge sent: water reminder")
+                return  # Only send one nudge per check
+        
+        # Check for no food logged yet (after 10 AM)
+        if current_hour >= 10 and food_totals.get('calories', 0) == 0:
             user_phone = config.YOUR_PHONE_NUMBER
-            message = f"⏰ REMINDER: {content}"
+            message = "🍽️  Haven't logged any food yet today - just a friendly reminder"
             
             if user_phone:
                 result = communication_service.send_response(message, user_phone)
@@ -195,14 +534,45 @@ def check_reminders():
                 result = communication_service.send_response(message)
             
             if result['success']:
-                print(f"🔔 Reminder sent via {result['method']}: {content}")
-                # Mark as completed
-                db.update_reminder_todo(reminder_id, completed=True)
-            else:
-                print(f"❌ Failed to send reminder: {result.get('error', 'Unknown error')}")
+                print(f"🍽️  Gentle nudge sent: food reminder")
+            return
+        
+        # Check for no gym in a while (if it's afternoon and no gym today)
+        if current_hour >= 14:
+            gym_logs = db.get_gym_logs(today)
+            if not gym_logs:
+                # Check last gym date
+                all_gym = db.get_gym_logs()
+                if all_gym:
+                    all_gym.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+                    last_gym_date_str = all_gym[0].get('timestamp', '')[:10]
+                    try:
+                        last_gym_date = datetime.fromisoformat(last_gym_date_str).date()
+                        days_since = (current_time.date() - last_gym_date).days
+                        
+                        # Only nudge if it's been 2+ days
+                        if days_since >= 2:
+                            user_phone = config.YOUR_PHONE_NUMBER
+                            message = f"💪 It's been {days_since} days since your last workout - just a gentle reminder"
+                            
+                            if user_phone:
+                                result = communication_service.send_response(message, user_phone)
+                            else:
+                                result = communication_service.send_response(message)
+                            
+                            if result['success']:
+                                print(f"💪 Gentle nudge sent: gym reminder")
+                    except:
+                        pass
         
     except Exception as e:
-        print(f"❌ Error checking reminders: {e}")
+        print(f"❌ Error checking gentle nudges: {e}")
+
+# Initialize pending reschedules dict
+check_reminder_followups.pending_reschedules = {}
+
+# Initialize pending task decay responses dict
+check_task_decay.pending_responses = {}
 
 # Scheduler will be initialized after all functions are defined
 
@@ -314,9 +684,23 @@ class EnhancedMessageProcessor:
         self.nlp_processor = create_gemini_processor(custom_food_db)
         # Store pending confirmations: {phone_number: {intent, message, entities, reason}}
         self.pending_confirmations = {}
+        # Store pending "what just happened" options: {phone_number: {options: [...], timestamp: ...}}
+        self.pending_what_happened = {}
     
     def process_message(self, message_body, phone_number=None):
         """Main message processing pipeline using intelligent NLP"""
+        # Check if this is a reschedule response
+        if phone_number and hasattr(check_reminder_followups, 'pending_reschedules') and check_reminder_followups.pending_reschedules:
+            reschedule_response = self.handle_reschedule_response(message_body, phone_number)
+            if reschedule_response:
+                return reschedule_response
+        
+        # Check if this is a numbered response to "what just happened" options
+        if phone_number and phone_number in self.pending_what_happened:
+            what_happened_response = self.handle_what_happened_selection(message_body, phone_number)
+            if what_happened_response:
+                return what_happened_response
+        
         # Check if this is a confirmation response first
         if phone_number and phone_number in self.pending_confirmations:
             confirmation_response = self.handle_confirmation(message_body, phone_number)
@@ -332,13 +716,13 @@ class EnhancedMessageProcessor:
         print(f"   Entities: {entities}")
         
         # Process based on intent
-        response = self.handle_intent(intent, message_body, entities)
+        response = self.handle_intent(intent, message_body, entities, phone_number)
         if response:
             return response
         
         return self.fallback_response(message_body, phone_number)
     
-    def handle_intent(self, intent, message, entities):
+    def handle_intent(self, intent, message, entities, phone_number=None):
         """Handle specific intent using intelligent NLP"""
         if intent == 'water_logging':
             return self.handle_water(message, entities)
@@ -356,11 +740,17 @@ class EnhancedMessageProcessor:
             return self.handle_stats_query(message, entities)
         elif intent == 'task_complete':
             return self.handle_completion(message, entities)
+        elif intent == 'vague_completion':
+            return self.handle_vague_completion(message, entities, phone_number)
+        elif intent == 'what_should_i_do':
+            return self.handle_what_should_i_do(message, entities)
+        elif intent == 'undo_edit':
+            return self.handle_undo_edit(message, entities)
         elif intent == 'confirmation':
             # Handle explicit confirmations (yes, yep, correct, etc.)
-            return self.handle_confirmation(message, None)
+            return self.handle_confirmation(message, phone_number)
         elif intent == 'unknown':
-            return self.fallback_response(message, None)
+            return self.fallback_response(message, phone_number)
         
         return None
     
@@ -423,28 +813,28 @@ class EnhancedMessageProcessor:
             
             # Only log if we have at least a food name or some macros
             if food_name or calories > 0 or protein > 0 or carbs > 0 or fat > 0:
-                # Log to database
+            # Log to database
                 self.log_food(
-                    food_name=food_name if food_name else "unknown food",
+                        food_name=food_name if food_name else "unknown food",
                     calories=calories,
                     protein=protein,
                     carbs=carbs,
                     fat=fat,
-                    restaurant=food_data.get('restaurant'),
+                        restaurant=food_data.get('restaurant'),
                     portion_multiplier=portion_mult
                 )
                 
                 # Get today's date and totals
-                today = datetime.now().date().isoformat()
-                today_totals = db.get_todays_food_totals(today)
-                
-                # Format response
-                serving_info = f" ({food_info['serving_size']})" if 'serving_size' in food_info else ""
-                food_display = food_name.replace('_', ' ').title() if food_name else "food"
-                response = f"🍽️ Logged {food_display}{serving_info}\n"
-                response += f"📊 This meal: {calories} cal, {protein}g protein, {carbs}g carbs, {fat}g fat\n"
-                response += f"📈 Total today: {int(today_totals['calories'])} cal, {today_totals['protein']:.1f}g protein, {today_totals['carbs']:.1f}g carbs, {today_totals['fat']:.1f}g fat"
-                return response
+            today = datetime.now().date().isoformat()
+            today_totals = db.get_todays_food_totals(today)
+            
+            # Format response
+            serving_info = f" ({food_info['serving_size']})" if 'serving_size' in food_info else ""
+            food_display = food_name.replace('_', ' ').title() if food_name else "food"
+            response = f"🍽️ Logged {food_display}{serving_info}\n"
+            response += f"📊 This meal: {calories} cal, {protein}g protein, {carbs}g carbs, {fat}g fat\n"
+            response += f"📈 Total today: {int(today_totals['calories'])} cal, {today_totals['protein']:.1f}g protein, {today_totals['carbs']:.1f}g carbs, {today_totals['fat']:.1f}g fat"
+            return response
         
         return None
     
@@ -779,9 +1169,9 @@ class EnhancedMessageProcessor:
         
         all_items = []
         for todo in todos:
-            all_items.append({**todo, 'item_type': 'todo'})
+            all_items.append({**todo, 'item_type': 'todo', 'id': todo.get('id')})
         for reminder in reminders:
-            all_items.append({**reminder, 'item_type': 'reminder'})
+            all_items.append({**reminder, 'item_type': 'reminder', 'id': reminder.get('id')})
         
         # Try to find best match by content similarity
         best_match = None
@@ -830,9 +1220,16 @@ class EnhancedMessageProcessor:
         if best_match and best_score > 0.2:
             item_id = int(best_match.get('id', 0))
             db.update_reminder_todo(item_id, completed=True)
+            
+            # Clear any pending reschedule for this reminder
+            if hasattr(check_reminder_followups, 'pending_reschedules'):
+                if item_id in check_reminder_followups.pending_reschedules:
+                    del check_reminder_followups.pending_reschedules[item_id]
+            
             return {
                 'type': best_match.get('item_type', 'todo'),
-                'content': best_match.get('content', '')
+                'content': best_match.get('content', ''),
+                'id': item_id
             }
         
         # Fallback: if no good match, try to complete most recent todo
@@ -845,6 +1242,236 @@ class EnhancedMessageProcessor:
                 'type': 'todo',
                 'content': most_recent.get('content', '')
             }
+        
+        return None
+    
+    def handle_vague_completion(self, message, entities, phone_number=None):
+        """Handle vague completion messages with 'What just happened?' mode"""
+        # Generate likely interpretations
+        options = self._generate_completion_options(message)
+        
+        if not options:
+            # Fallback to regular completion handling
+            return self.handle_completion(message, entities)
+        
+        # Store options for confirmation
+        if phone_number:
+            self.pending_what_happened[phone_number] = {
+                'options': options,
+                'timestamp': datetime.now().isoformat(),
+                'original_message': message
+            }
+        
+        # Format response with numbered options
+        response = "🤔 What just happened? Pick a number:\n"
+        for i, option in enumerate(options, 1):
+            response += f"{i}. {option['description']}\n"
+        
+            return response
+        
+    def _generate_completion_options(self, message):
+        """Generate likely interpretations for vague completion messages"""
+        message_lower = message.lower()
+        options = []
+        
+        # Get recent activity context
+        today = datetime.now().date().isoformat()
+        recent_gym = db.get_gym_logs(today)
+        recent_food = db.get_food_logs(today)
+        recent_water = db.get_water_logs(today)
+        todos = db.get_reminders_todos(type='todo', completed=False)
+        reminders = db.get_reminders_todos(type='reminder', completed=False)
+        
+        # Check for workout context (recent gym activity)
+        if recent_gym:
+            options.append({
+                'type': 'gym',
+                'description': 'Workout/Gym session',
+                'action': 'gym_workout'
+            })
+        
+        # Check for task/reminder completion
+        if todos or reminders:
+            # Get most recent items
+            all_items = []
+            for todo in todos[:3]:
+                all_items.append({'type': 'todo', 'content': todo.get('content', ''), 'id': todo.get('id')})
+            for reminder in reminders[:3]:
+                all_items.append({'type': 'reminder', 'content': reminder.get('content', ''), 'id': reminder.get('id')})
+            
+            if all_items:
+                # Add top 2 most likely tasks
+                for item in all_items[:2]:
+                    item_type = item['type']
+                    content = item['content'][:30]  # Truncate long content
+                    options.append({
+                        'type': item_type,
+                        'description': f"Task: {content}",
+                        'action': 'task_complete',
+                        'item_id': item.get('id'),
+                        'item_content': item['content']
+                    })
+        
+        # Check for meal context (recent food activity)
+        if recent_food:
+            # Check if it's been a while since last meal (might be logging a meal)
+            if len(recent_food) > 0:
+                options.append({
+                    'type': 'food',
+                    'description': 'Meal/Food',
+                    'action': 'food_logging'
+                })
+        
+        # Always include generic options
+        if not any(opt['type'] == 'water' for opt in options):
+            options.append({
+                'type': 'water',
+                'description': 'Water/Drink',
+                'action': 'water_logging'
+            })
+        
+        # Limit to 5 options max
+        return options[:5]
+    
+    def handle_what_happened_selection(self, message, phone_number):
+        """Handle user's selection from 'what just happened' options"""
+        if phone_number not in self.pending_what_happened:
+            return None
+    
+        pending = self.pending_what_happened[phone_number]
+        options = pending['options']
+        
+        # Parse selection (could be "1", "one", "first", etc.)
+        message_lower = message.lower().strip()
+        
+        # Try to extract number
+        import re
+        numbers = re.findall(r'\d+', message_lower)
+        if numbers:
+            selection = int(numbers[0])
+            if 1 <= selection <= len(options):
+                selected_option = options[selection - 1]
+                
+                # Remove from pending
+                del self.pending_what_happened[phone_number]
+                
+                # Execute the selected action
+                return self._execute_completion_action(selected_option, pending['original_message'])
+        
+        # If not a number, try to match by description
+        for i, option in enumerate(options, 1):
+            if any(word in message_lower for word in option['description'].lower().split()):
+                selected_option = option
+                del self.pending_what_happened[phone_number]
+                return self._execute_completion_action(selected_option, pending['original_message'])
+        
+        return f"Please reply with a number (1-{len(options)})"
+    
+    def _execute_completion_action(self, option, original_message):
+        """Execute the action based on selected option"""
+        action_type = option.get('action')
+        
+        if action_type == 'task_complete':
+            # Mark the specific task as complete
+            item_content = option.get('item_content', '')
+            if item_content:
+                # Find and complete the matching task
+                todos = db.get_reminders_todos(type='todo', completed=False)
+                reminders = db.get_reminders_todos(type='reminder', completed=False)
+                
+                all_items = todos + reminders
+                for item in all_items:
+                    if item.get('content', '').lower() == item_content.lower():
+                        item_id = int(item.get('id', 0))
+                        db.update_reminder_todo(item_id, completed=True)
+                        item_type = item.get('type', 'task')
+                        return f"✅ {item_type.title()} completed: {item_content}"
+            
+            # Fallback to regular completion
+            return self.handle_completion(original_message, {})
+        
+        elif action_type == 'gym_workout':
+            # Try to parse as gym workout
+            return self.handle_gym(original_message, {}) or "✅ Logged as workout"
+        
+        elif action_type == 'food_logging':
+            # Try to parse as food
+            return self.handle_food(original_message, {}) or "✅ Logged as meal"
+        
+        elif action_type == 'water_logging':
+            # Try to parse as water
+            return self.handle_water(original_message, {}) or "✅ Logged as water"
+        
+        return "✅ Got it!"
+    
+    def handle_reschedule_response(self, message, phone_number):
+        """Handle user's response to reschedule options"""
+        if not hasattr(check_reminder_followups, 'pending_reschedules'):
+            return None
+    
+        message_lower = message.lower().strip()
+        
+        # Find which reminder this might be for (check recent follow-ups)
+        # For now, we'll check if message indicates completion or reschedule
+        if any(word in message_lower for word in ['yes', 'done', 'completed', 'finished', 'did it']):
+            # User completed the task - find the most recent reminder with follow-up
+            all_reminders = db.get_reminders_todos(type='reminder', completed=False)
+            for reminder in all_reminders:
+                reminder_id = int(reminder.get('id', 0))
+                if reminder_id in check_reminder_followups.pending_reschedules:
+                    follow_up_sent = reminder.get('follow_up_sent', 'FALSE').upper() == 'TRUE'
+                    if follow_up_sent:
+                        # Mark as completed
+                        db.update_reminder_todo(reminder_id, completed=True)
+                        if reminder_id in check_reminder_followups.pending_reschedules:
+                            del check_reminder_followups.pending_reschedules[reminder_id]
+                        return f"✅ Great! Marked '{reminder.get('content', '')}' as complete."
+        
+        # Check for reschedule selection (1, 2, etc.)
+        import re
+        numbers = re.findall(r'\d+', message_lower)
+        if numbers:
+            selection = int(numbers[0])
+            # Find reminder with pending reschedule
+            for reminder_id, options in check_reminder_followups.pending_reschedules.items():
+                if 1 <= selection <= len(options):
+                    selected_option = options[selection - 1]
+                    new_due_date = selected_option['time']
+                    
+                    # Update reminder due date
+                    reminder = None
+                    all_reminders = db.get_reminders_todos(type='reminder', completed=False)
+                    for r in all_reminders:
+                        if int(r.get('id', 0)) == reminder_id:
+                            reminder = r
+                            break
+                    
+                    if reminder:
+                        # We need to update the due_date - this requires reading and rewriting the CSV
+                        rows = db._read_csv(db.reminders_todos_file)
+                        for row in rows:
+                            if int(row.get('id', 0)) == reminder_id:
+                                row['due_date'] = new_due_date.isoformat()
+                                row['sent_at'] = ''  # Reset sent_at so it can be sent again
+                                row['follow_up_sent'] = 'FALSE'  # Reset follow-up
+                                break
+                        
+                        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent']
+                        db._write_csv(db.reminders_todos_file, rows, fieldnames)
+                        
+                        # Remove from pending reschedules
+                        del check_reminder_followups.pending_reschedules[reminder_id]
+                        
+                        content = reminder.get('content', '')
+                        return f"✅ Rescheduled '{content}' to {selected_option['text']}"
+        
+        # If message is "no" or "skip", just acknowledge
+        if any(word in message_lower for word in ['no', 'skip', 'cancel', 'nope']):
+            # Find and clear the pending reschedule
+            for reminder_id in list(check_reminder_followups.pending_reschedules.keys()):
+                if reminder_id in check_reminder_followups.pending_reschedules:
+                    del check_reminder_followups.pending_reschedules[reminder_id]
+                    return "Got it, I'll leave it as is."
         
         return None
     
@@ -1661,6 +2288,45 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
+    func=check_reminder_followups,
+    trigger=IntervalTrigger(minutes=5),
+    id='reminder_followup_checker',
+    name='Reminder Follow-up Checker (every 5m)',
+    replace_existing=True
+)
+
+# Add task decay checker (runs daily at 9 AM)
+scheduler.add_job(
+    func=check_task_decay,
+    trigger='cron',
+    hour=9,
+    minute=0,
+    id='task_decay_checker',
+    name='Task Decay Checker (daily at 9 AM)',
+    replace_existing=True
+)
+
+# Add weekly digest (runs on configured day and hour)
+scheduler.add_job(
+    func=send_weekly_digest,
+    trigger='cron',
+    day_of_week=config.WEEKLY_DIGEST_DAY,
+    hour=config.WEEKLY_DIGEST_HOUR,
+    id='weekly_digest',
+    name='Weekly SMS Digest',
+    replace_existing=True
+)
+
+# Add gentle nudges checker (runs every configured interval)
+scheduler.add_job(
+    func=check_gentle_nudges,
+    trigger=IntervalTrigger(hours=config.GENTLE_NUDGE_CHECK_INTERVAL_HOURS),
+    id='gentle_nudges_checker',
+    name='Gentle Nudges Checker',
+    replace_existing=True
+)
+
+scheduler.add_job(
     func=daily_database_dump,
     trigger='cron',
     hour=5,
@@ -1669,8 +2335,9 @@ scheduler.add_job(
     replace_existing=True
 )
 
-# Cleanup
-atexit.register(lambda: scheduler.shutdown())
+# Cleanup - only register if not running tests
+if os.getenv('RUNNING_TESTS') != '1':
+    atexit.register(lambda: scheduler.shutdown())
 
 if __name__ == '__main__':
     # Check if another instance is already running
@@ -1685,9 +2352,11 @@ if __name__ == '__main__':
     print(f"🌐 Health check: http://{host}:{port}/health")
     print(f"📱 Twilio webhook: http://{host}:{port}/webhook/twilio or /sms")
     
-    # Start the scheduler
-    scheduler.start()
-    print("⏰ Background scheduler started")
+    # Start the scheduler (only if not running tests)
+    if os.getenv('RUNNING_TESTS') != '1':
+        scheduler.start()
+        print("⏰ Background scheduler started")
     
-    # Start the Flask app
-    app.run(host=host, port=port, debug=False)
+    # Start the Flask app (only if not running tests)
+    if os.getenv('RUNNING_TESTS') != '1':
+        app.run(host=host, port=port, debug=False)

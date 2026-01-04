@@ -34,6 +34,23 @@ class Config:
     # Default: 4000ml (4L per day)
     DEFAULT_WATER_GOAL_ML = int(os.getenv('DEFAULT_WATER_GOAL_ML', 4000))
     
+    # Reminder Follow-up Settings
+    REMINDER_FOLLOWUP_DELAY_MINUTES = int(os.getenv('REMINDER_FOLLOWUP_DELAY_MINUTES', 30))  # Check back after 30 minutes
+    REMINDER_AUTO_RESCHEDULE_ENABLED = os.getenv('REMINDER_AUTO_RESCHEDULE_ENABLED', 'true').lower() == 'true'
+    
+    # Task Decay & Cleanup Settings
+    TASK_DECAY_DAYS = int(os.getenv('TASK_DECAY_DAYS', 7))  # Check tasks older than 7 days
+    TASK_DECAY_ENABLED = os.getenv('TASK_DECAY_ENABLED', 'true').lower() == 'true'
+    
+    # Weekly Digest Settings
+    WEEKLY_DIGEST_DAY = int(os.getenv('WEEKLY_DIGEST_DAY', 0))  # 0 = Monday, 6 = Sunday
+    WEEKLY_DIGEST_HOUR = int(os.getenv('WEEKLY_DIGEST_HOUR', 20))  # 8 PM
+    WEEKLY_DIGEST_ENABLED = os.getenv('WEEKLY_DIGEST_ENABLED', 'true').lower() == 'true'
+    
+    # Gentle Nudges Settings
+    GENTLE_NUDGES_ENABLED = os.getenv('GENTLE_NUDGES_ENABLED', 'true').lower() == 'true'
+    GENTLE_NUDGE_CHECK_INTERVAL_HOURS = int(os.getenv('GENTLE_NUDGE_CHECK_INTERVAL_HOURS', 2))  # Check every 2 hours
+    
     # Weather API Configuration (optional - for morning check-in)
     WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '')
     WEATHER_LOCATION = os.getenv('WEATHER_LOCATION', '')  # e.g., "Durham,NC,US" or "New York"

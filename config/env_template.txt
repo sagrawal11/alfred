@@ -67,6 +67,23 @@ WEATHER_LOCATION=Durham,NC,US
 GOOGLE_CLIENT_ID=your_google_client_id_here
 GOOGLE_CLIENT_SECRET=your_google_client_secret_here
 GOOGLE_REFRESH_TOKEN=your_google_refresh_token_here
+
+# Reminder Follow-up Settings
+REMINDER_FOLLOWUP_DELAY_MINUTES=30
+REMINDER_AUTO_RESCHEDULE_ENABLED=true
+
+# Task Decay & Cleanup Settings
+TASK_DECAY_DAYS=7
+TASK_DECAY_ENABLED=true
+
+# Weekly Digest Settings
+WEEKLY_DIGEST_DAY=0
+WEEKLY_DIGEST_HOUR=20
+WEEKLY_DIGEST_ENABLED=true
+
+# Gentle Nudges Settings
+GENTLE_NUDGES_ENABLED=true
+GENTLE_NUDGE_CHECK_INTERVAL_HOURS=2
 GOOGLE_REDIRECT_URI=http://localhost:5001/auth/google/callback
 
 

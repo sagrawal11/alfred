@@ -63,7 +63,7 @@ class CSVDatabase:
             with open(self.reminders_todos_file, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow([
-                    'id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at'
+                    'id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent'
                 ])
         
         # Used quotes (to track which quotes have been shown)
@@ -241,10 +241,13 @@ class CSVDatabase:
             'content': content,
             'due_date': due_date.isoformat() if due_date else '',
             'completed': 'TRUE' if completed else 'FALSE',
-            'completed_at': ''
+            'completed_at': '',
+            'sent_at': '',
+            'follow_up_sent': 'FALSE',
+            'decay_check_sent': 'FALSE'  # Track if decay check has been sent
         }
         
-        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at']
+        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
         self._append_csv(self.reminders_todos_file, row, fieldnames)
         return item_id
     
@@ -281,18 +284,38 @@ class CSVDatabase:
         
         return filtered
     
-    def update_reminder_todo(self, item_id: int, completed: bool = True):
-        """Update a reminder/todo to mark as completed"""
+    def update_reminder_todo(self, item_id: int, completed: bool = True, sent_at: Optional[str] = None):
+        """Update a reminder/todo to mark as completed or update sent status"""
         rows = self._read_csv(self.reminders_todos_file)
         
         for row in rows:
             if int(row.get('id', 0)) == item_id:
-                row['completed'] = 'TRUE' if completed else 'FALSE'
-                if completed:
-                    row['completed_at'] = datetime.now().isoformat()
+                if completed is not None:
+                    row['completed'] = 'TRUE' if completed else 'FALSE'
+                    if completed:
+                        row['completed_at'] = datetime.now().isoformat()
+                if sent_at is not None:
+                    row['sent_at'] = sent_at
                 break
         
-        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at']
+        # Ensure all rows have the new fields if they don't exist (for backward compatibility)
+        for row in rows:
+            if 'decay_check_sent' not in row:
+                row['decay_check_sent'] = 'FALSE'
+        
+        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
+        self._write_csv(self.reminders_todos_file, rows, fieldnames)
+    
+    def mark_follow_up_sent(self, item_id: int):
+        """Mark that a follow-up has been sent for a reminder"""
+        rows = self._read_csv(self.reminders_todos_file)
+        
+        for row in rows:
+            if int(row.get('id', 0)) == item_id:
+                row['follow_up_sent'] = 'TRUE'
+                break
+        
+        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent']
         self._write_csv(self.reminders_todos_file, rows, fieldnames)
     
     def delete_old_logs(self, before_date: str):
@@ -323,7 +346,14 @@ class CSVDatabase:
         reminder_rows = self._read_csv(self.reminders_todos_file)
         reminder_filtered = [r for r in reminder_rows if r.get('timestamp', '')[:10] >= before_date]
         if len(reminder_filtered) < len(reminder_rows):
-            fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at']
+            # Ensure all rows have the new fields if they don't exist (for backward compatibility)
+            for row in reminder_filtered:
+                if 'sent_at' not in row:
+                    row['sent_at'] = ''
+                if 'follow_up_sent' not in row:
+                    row['follow_up_sent'] = 'FALSE'
+            
+            fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent']
             self._write_csv(self.reminders_todos_file, reminder_filtered, fieldnames)
     
     def get_stats(self) -> Dict[str, int]:

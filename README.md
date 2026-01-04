@@ -4,13 +4,16 @@ A personal SMS assistant built with Flask, Twilio, and NLP that helps you track 
 
 ## 🎯 Features
 
-- **Water Logging**: "drank a bottle" → logs water intake
-- **Food Logging**: "ate chicken sandwich" → logs food with macros
+- **Water Logging**: "drank a bottle" → logs water intake with daily totals
+- **Food Logging**: "ate chicken sandwich" → logs food with macros and daily totals
 - **Gym Workouts**: "did bench press 135x5" → logs workout
 - **Reminders**: "remind me to call mom at 3pm" → sets reminder
 - **Todos**: "todo buy groceries" → adds to todo list
+- **Stats Queries**: "how much have I eaten" → shows daily totals
+- **Task Completion**: "called mom" → marks tasks/reminders as complete
+- **Google Calendar Integration**: Automatically shows calendar events in queries and morning check-ins
 - **Scheduled Reminders**: Automatic SMS reminders at set times
-- **Morning Check-ins**: Daily morning SMS with todos and stats
+- **Morning Check-ins**: Daily morning SMS with weather, streaks, quotes, schedule, and calendar events
 
 ## 🚀 Quick Start
 
@@ -77,6 +80,20 @@ WATER_BOTTLE_SIZE_ML=500
 # Google Gemini API (for NLP processing)
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
+
+# Google Calendar API (optional - for calendar integration)
+# Get these from Google Cloud Console after OAuth 2.0 setup
+GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+GOOGLE_REFRESH_TOKEN=your_google_refresh_token_here
+GOOGLE_REDIRECT_URI=http://localhost:5001/auth/google/callback
+
+# Weather API (optional - for morning check-in)
+WEATHER_API_KEY=your_openweathermap_api_key_here
+WEATHER_LOCATION=Durham,NC,US
+
+# Default Daily Water Goal (milliliters)
+DEFAULT_WATER_GOAL_ML=4000
 ```
 
 ## 💰 Cost
@@ -175,6 +192,12 @@ The bot uses **CSV files** to store all data (simple, portable, human-readable):
 - Same food from different restaurants can have different macros
 - See `data/FOOD_DATABASE_GUIDE.md` for detailed instructions
 
+**Google Calendar Integration (Optional):**
+- Connects to your Google Calendar to show events in queries and morning check-ins
+- Requires OAuth 2.0 setup in Google Cloud Console
+- Calendar events appear alongside reminders and todos
+- Read-only access - app can only view, not modify your calendar
+
 ## 🔧 Troubleshooting
 
 ### "Twilio client not initialized"
@@ -192,14 +215,34 @@ The bot uses **CSV files** to store all data (simple, portable, human-readable):
 - Verify phone number format
 - Check Twilio Console logs
 
+### "Google Calendar service not available"
+- Verify all Google Calendar credentials are set in `.env`
+- Check that refresh token is valid (may need to re-authenticate)
+- Ensure OAuth consent screen is configured correctly
+- Verify scope matches: `calendar.events.owned.readonly`
+
 ## 📝 Example Commands
 
-- `"drank 16oz water"` → Logs water
+### Logging
+- `"drank a bottle"` → Logs water with daily total and goal progress
 - `"ate sazon quesedilla"` → Logs food with macros from sazon restaurant
 - `"ate krafthouse quesedilla"` → Logs same food but different macros from krafthouse
 - `"did bench press 135x5"` → Logs workout
+
+### Tasks & Reminders
 - `"remind me to call mom at 5pm tomorrow"` → Sets reminder
 - `"todo buy groceries"` → Adds todo
+- `"called mom"` → Marks task/reminder as complete
+
+### Queries
+- `"how much have I eaten"` → Shows daily food totals
+- `"how much water have I drank"` → Shows daily water total and goal progress
+- `"what do I have to do today"` → Shows todos, reminders, and calendar events
+- `"what's on my to do list"` → Shows todos
+- `"do I have any reminders"` → Shows reminders
+
+### Settings
+- `"my water goal for tomorrow is 5L"` → Sets custom daily water goal
 
 ## 🎉 Success Indicators
 
@@ -208,6 +251,8 @@ The bot uses **CSV files** to store all data (simple, portable, human-readable):
 ✅ Twilio webhook receives messages  
 ✅ SMS responses sent automatically  
 ✅ Scheduled reminders work  
+✅ Google Calendar service initialized (if configured)  
+✅ Morning check-ins include weather, streaks, and calendar events  
 
 ---
 

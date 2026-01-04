@@ -276,6 +276,9 @@ Extract structured information from user messages. Be accurate and handle variat
 - water_goal_set: User wants to set a custom water goal for a specific day (e.g., "my water goal for tomorrow is 5L", "set water goal to 3L today")
 - stats_query: User is asking about their stats/totals (e.g., "how much have I eaten", "how much water have I drank", "what's my total for today", "show me my stats")
 - task_complete: User is marking a task/reminder as complete (e.g., "called mom", "did groceries", "finished homework", "done with that", "completed the task")
+- vague_completion: User is indicating completion but message is vague/ambiguous (e.g., "just finished", "done", "finished", "all done", "complete" without specific details)
+- what_should_i_do: User is asking what they should do now (e.g., "what should I do now", "what's next", "what do I do", "suggest something")
+- undo_edit: User wants to undo or edit a previous action (e.g., "undo last", "delete last food", "edit last water", "remove last reminder", "undo that")
 - confirmation: User is confirming or denying something (e.g., "yes", "yep", "correct", "no", "nope", "that's right")
 - unknown: Doesn't match any category
 
@@ -289,7 +292,7 @@ Respond with ONLY the intent name, nothing else."""
             intent = self._generate_content(prompt).lower()
             
             # Validate intent
-            valid_intents = ['water_logging', 'food_logging', 'gym_workout', 'reminder_set', 'todo_add', 'water_goal_set', 'stats_query', 'task_complete', 'confirmation', 'unknown']
+            valid_intents = ['water_logging', 'food_logging', 'gym_workout', 'reminder_set', 'todo_add', 'water_goal_set', 'stats_query', 'task_complete', 'vague_completion', 'what_should_i_do', 'undo_edit', 'confirmation', 'unknown']
             if intent in valid_intents:
                 return intent
             else:
