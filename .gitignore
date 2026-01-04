@@ -79,6 +79,9 @@ tests/
 *.test.py
 test_*.py
 
+# Instructions folder (local documentation)
+INSTRUCTIONS/
+
 # Documentation (keep but ignore any generated docs)
 docs/*.html
 docs/*.pdf

@@ -9,6 +9,8 @@ from twilio.twiml.messaging_response import MessagingResponse
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
+import random
+import requests
 
 # Add src directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -689,6 +691,56 @@ def health_check():
 
 
 
+def get_weather_summary():
+    """Get current weather summary for morning check-in"""
+    try:
+        weather_api_key = os.getenv('WEATHER_API_KEY', '')
+        weather_location = os.getenv('WEATHER_LOCATION', '')
+        
+        if not weather_api_key or not weather_location:
+            return None
+        
+        # OpenWeatherMap API
+        base_url = "http://api.openweathermap.org/data/2.5/weather"
+        params = {
+            'q': weather_location,  # City name, e.g., "Durham,NC,US" or "New York"
+            'appid': weather_api_key,
+            'units': 'imperial'  # Use 'metric' for Celsius
+        }
+        
+        response = requests.get(base_url, params=params, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            temp = int(data['main']['temp'])
+            description = data['weather'][0]['description'].capitalize()
+            feels_like = int(data['main']['feels_like'])
+            
+            # Get weather emoji
+            weather_code = data['weather'][0]['main']
+            emoji_map = {
+                'Clear': '☀️',
+                'Clouds': '☁️',
+                'Rain': '🌧️',
+                'Drizzle': '🌦️',
+                'Thunderstorm': '⛈️',
+                'Snow': '❄️',
+                'Mist': '🌫️',
+                'Fog': '🌫️'
+            }
+            weather_emoji = emoji_map.get(weather_code, '🌤️')
+            
+            # Format weather summary
+            if abs(temp - feels_like) > 3:
+                return f"{weather_emoji} {temp}°F ({description}, feels like {feels_like}°F)"
+            else:
+                return f"{weather_emoji} {temp}°F, {description}"
+        else:
+            return None
+    except Exception as e:
+        print(f"⚠️  Error fetching weather: {e}")
+        return None
+
 def morning_checkin():
     """Daily 8am check-in"""
     try:
@@ -711,8 +763,37 @@ def morning_checkin():
             gym_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
             last_gym = gym_logs[0]
         
+        # Varied morning greetings - use day of year to ensure consistency per day
+        greetings = [
+            "Good morning! ☀️",
+            "Rise and shine! 🌅",
+            "Morning! Let's make today great! 💪",
+            "Hey there! Ready to tackle the day? 🚀",
+            "Good morning! Hope you slept well! 😊",
+            "Rise and grind! ☕",
+            "Morning! Time to shine! ✨",
+            "Good morning! Another day, another opportunity! 🌟",
+            "Hey! Let's make today count! 📅",
+            "Morning! You've got this! 💯",
+            "Good morning! What's on the agenda today? 📋",
+            "Rise and shine! Let's do this! 🔥",
+            "Morning! Ready to crush your goals? 🎯",
+            "Good morning! Make it a great one! 🌈",
+            "Hey! Time to wake up and win! 🏆"
+        ]
+        
+        # Use day of year as seed for consistent daily selection
+        day_of_year = datetime.now().timetuple().tm_yday
+        random.seed(day_of_year)
+        greeting = random.choice(greetings)
+        
         # Build message
-        message_parts = ["Good morning! ☀️"]
+        message_parts = [greeting]
+        
+        # Add weather if available
+        weather_summary = get_weather_summary()
+        if weather_summary:
+            message_parts.append(f"🌤️ Weather: {weather_summary}")
         
         # Add incomplete items
         incomplete_items = []
@@ -734,12 +815,12 @@ def morning_checkin():
                     days_since = (datetime.now().date() - last_date).days
                     exercise = last_gym.get('exercise', 'workout')
                     if days_since >= 2:
-                        message_parts.append(f"💪 Last workout: {days_since} days ago ({exercise}) - time for next session?")
+                        message_parts.append(f"Your last workout was {days_since} days ago ({exercise}) - time for next session?")
                 except:
                     pass
         
         # Always add water/outside reminder
-        message_parts.append("💧 Don't forget: drink water & get outside!")
+        message_parts.append("Don't forget to drink water & keep smiling!")
         
         # Send morning check-in via communication service
         user_phone = config.YOUR_PHONE_NUMBER

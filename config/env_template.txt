@@ -47,6 +47,18 @@ MORNING_CHECKIN_HOUR=8
 # Adjust this to match your actual water bottle size
 WATER_BOTTLE_SIZE_ML=500
 
+# =============================================================================
+# WEATHER API CONFIGURATION (Optional - for morning check-in)
+# =============================================================================
+# OpenWeatherMap API Key (free tier available)
+# Get your API key from: https://openweathermap.org/api
+# Free tier: 60 calls/minute, 1,000,000 calls/month
+WEATHER_API_KEY=your_openweathermap_api_key_here
+
+# Weather Location (city name or "City,State,Country")
+# Examples: "Durham,NC,US", "New York", "London,GB"
+WEATHER_LOCATION=Durham,NC,US
+
 
 # =============================================================================
 # TWILIO SETUP INSTRUCTIONS

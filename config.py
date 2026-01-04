@@ -27,8 +27,12 @@ class Config:
     EVENING_REMINDER_HOUR = int(os.getenv('EVENING_REMINDER_HOUR', 20))
     
     # Water Bottle Size (in milliliters)
-    # Default: 500ml (standard water bottle)
-    WATER_BOTTLE_SIZE_ML = int(os.getenv('WATER_BOTTLE_SIZE_ML', 500))
+    # Default: 710ml (standard water bottle)
+    WATER_BOTTLE_SIZE_ML = int(os.getenv('WATER_BOTTLE_SIZE_ML', 710))
+    
+    # Weather API Configuration (optional - for morning check-in)
+    WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '')
+    WEATHER_LOCATION = os.getenv('WEATHER_LOCATION', '')  # e.g., "Durham,NC,US" or "New York"
     
     # Database (CSV files)
     # config.py is in project root, so just use dirname once
