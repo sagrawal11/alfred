@@ -27,6 +27,7 @@ class CSVDatabase:
         self.water_logs_file = os.path.join(data_dir, 'water_logs.csv')
         self.gym_logs_file = os.path.join(data_dir, 'gym_logs.csv')
         self.reminders_todos_file = os.path.join(data_dir, 'reminders_todos.csv')
+        self.used_quotes_file = os.path.join(data_dir, 'used_quotes.csv')
         
         # Initialize CSV files with headers if they don't exist
         self._init_csv_files()
@@ -63,6 +64,12 @@ class CSVDatabase:
                 writer.writerow([
                     'id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at'
                 ])
+        
+        # Used quotes (to track which quotes have been shown)
+        if not os.path.exists(self.used_quotes_file):
+            with open(self.used_quotes_file, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['date', 'quote', 'author'])
     
     def _get_next_id(self, csv_file: str) -> int:
         """Get the next ID for a CSV file"""
@@ -320,4 +327,33 @@ class CSVDatabase:
             'gym_logs': len(self._read_csv(self.gym_logs_file)),
             'reminders_todos': len(self._read_csv(self.reminders_todos_file))
         }
+    
+    # Quote tracking methods
+    def get_used_quotes(self) -> List[str]:
+        """Get list of all quotes that have been used"""
+        rows = self._read_csv(self.used_quotes_file)
+        return [row.get('quote', '') for row in rows if row.get('quote', '')]
+    
+    def add_used_quote(self, quote: str, author: str = ''):
+        """Record a quote as used"""
+        today = datetime.now().date().isoformat()
+        row = {
+            'date': today,
+            'quote': quote,
+            'author': author
+        }
+        fieldnames = ['date', 'quote', 'author']
+        self._append_csv(self.used_quotes_file, row, fieldnames)
+    
+    def get_todays_quote(self) -> Optional[Dict]:
+        """Get today's quote if one was already fetched"""
+        today = datetime.now().date().isoformat()
+        rows = self._read_csv(self.used_quotes_file)
+        for row in rows:
+            if row.get('date') == today:
+                return {
+                    'quote': row.get('quote', ''),
+                    'author': row.get('author', '')
+                }
+        return None
 

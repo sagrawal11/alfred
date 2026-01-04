@@ -3,6 +3,7 @@ import sys
 import json
 import atexit
 import csv
+import time
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from twilio.twiml.messaging_response import MessagingResponse
@@ -375,24 +376,24 @@ class EnhancedMessageProcessor:
             
             # Only log if we have at least a food name or some macros
             if food_name or calories > 0 or protein > 0 or carbs > 0 or fat > 0:
-                # Log to database
+            # Log to database
                 self.log_food(
                     food_name=food_name if food_name else "unknown food",
-                    calories=calories,
-                    protein=protein,
-                    carbs=carbs,
-                    fat=fat,
+                calories=calories,
+                protein=protein,
+                carbs=carbs,
+                fat=fat,
                     restaurant=food_data.get('restaurant'),
-                    portion_multiplier=portion_mult
+                portion_multiplier=portion_mult
                 )
-                
-                # Format response
+            
+            # Format response
                 serving_info = f" ({food_info['serving_size']})" if 'serving_size' in food_info else ""
                 food_display = food_name.replace('_', ' ').title() if food_name else "food"
                 response = f"🍽️ Logged {food_display}{serving_info}\n"
                 response += f"📊 Nutrition: {calories} cal, {protein}g protein, {carbs}g carbs, {fat}g fat"
-                
                 return response
+            return response
         
         return None
     
@@ -583,7 +584,6 @@ def twilio_webhook():
         else:
             response.message("I didn't understand that. Try sending 'help' for available commands.")
             print(f"⚠️  No response generated, sending fallback")
-        
         print(f"📱 === WEBHOOK PROCESSING COMPLETE ===\n")
         
         return str(response), 200
@@ -741,6 +741,240 @@ def get_weather_summary():
         print(f"⚠️  Error fetching weather: {e}")
         return None
 
+def get_streaks():
+    """Calculate streaks for gym, water, and food logging"""
+    streaks = {'gym': 0, 'water': 0, 'food': 0}
+    today = datetime.now().date()
+    
+    try:
+        # Gym streak
+        gym_logs = db.get_gym_logs()
+        if gym_logs:
+            # Get unique dates with gym logs
+            gym_dates = set()
+            for log in gym_logs:
+                try:
+                    log_date = datetime.fromisoformat(log.get('timestamp', '')).date()
+                    gym_dates.add(log_date)
+                except:
+                    pass
+            
+            # Calculate consecutive days from today backwards
+            current_date = today
+            while current_date in gym_dates:
+                streaks['gym'] += 1
+                current_date -= timedelta(days=1)
+        
+        # Water streak
+        water_logs = db.get_water_logs()
+        if water_logs:
+            water_dates = set()
+            for log in water_logs:
+                try:
+                    log_date = datetime.fromisoformat(log.get('timestamp', '')).date()
+                    water_dates.add(log_date)
+                except:
+                    pass
+            
+            current_date = today
+            while current_date in water_dates:
+                streaks['water'] += 1
+                current_date -= timedelta(days=1)
+        
+        # Food streak
+        food_logs = db.get_food_logs()
+        if food_logs:
+            food_dates = set()
+            for log in food_logs:
+                try:
+                    log_date = datetime.fromisoformat(log.get('timestamp', '')).date()
+                    food_dates.add(log_date)
+                except:
+                    pass
+            
+            current_date = today
+            while current_date in food_dates:
+                streaks['food'] += 1
+                current_date -= timedelta(days=1)
+        
+    except Exception as e:
+        print(f"⚠️  Error calculating streaks: {e}")
+    
+    return streaks
+
+def get_daily_quote():
+    """Get a daily motivational quote from API, ensuring no duplicates"""
+    try:
+        # Check if we already have a quote for today
+        todays_quote = db.get_todays_quote()
+        if todays_quote:
+            quote_text = todays_quote['quote']
+            author = todays_quote.get('author', '')
+            if author:
+                return f"{quote_text} - {author}"
+            return quote_text
+        
+        # Get list of used quotes to avoid duplicates
+        used_quotes = db.get_used_quotes()
+        
+        # Try to fetch a new quote from ZenQuotes API
+        max_attempts = 10  # Try up to 10 times to find a new quote
+        for attempt in range(max_attempts):
+            try:
+                # ZenQuotes API - free, no API key needed
+                response = requests.get('https://zenquotes.io/api/today', timeout=5)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data and len(data) > 0:
+                        quote_text = data[0].get('q', '').strip()
+                        author = data[0].get('a', '').strip()
+                        
+                        # Check if we've seen this quote before
+                        if quote_text and quote_text not in used_quotes:
+                            # Store this quote as used
+                            db.add_used_quote(quote_text, author)
+                            
+                            # Format with author if available
+                            if author:
+                                return f"{quote_text} - {author}"
+                            return quote_text
+                
+                # If API returned a duplicate or failed, try random quote endpoint
+                response = requests.get('https://zenquotes.io/api/random', timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data and len(data) > 0:
+                        quote_text = data[0].get('q', '').strip()
+                        author = data[0].get('a', '').strip()
+                        
+                        if quote_text and quote_text not in used_quotes:
+                            db.add_used_quote(quote_text, author)
+                            if author:
+                                return f"{quote_text} - {author}"
+                            return quote_text
+                
+            except Exception as e:
+                print(f"⚠️  Error fetching quote (attempt {attempt + 1}): {e}")
+                if attempt < max_attempts - 1:
+                    time.sleep(0.5)  # Brief delay before retry
+                continue
+        
+        # Fallback: If API fails or all quotes are duplicates, use local fallback
+        print("⚠️  Could not fetch new quote from API, using fallback")
+        fallback_quotes = [
+            "The only bad workout is the one that didn't happen. 💪",
+            "Progress, not perfection. 🌱",
+            "You don't have to be great to start, but you have to start to be great. 🚀",
+            "Your body can do it. It's your mind you need to convince. 🧠",
+            "Success is the sum of small efforts repeated day in and day out. 📈"
+        ]
+        # Use day of year for consistent daily selection if API fails
+        day_of_year = datetime.now().timetuple().tm_yday
+        random.seed(day_of_year + 1000)
+        return random.choice(fallback_quotes)
+        
+    except Exception as e:
+        print(f"⚠️  Error in get_daily_quote: {e}")
+        # Ultimate fallback
+        return "Progress, not perfection. 🌱"
+
+def get_todays_schedule():
+    """Get reminders scheduled for today"""
+    try:
+        today = datetime.now().date()
+        today_start = datetime.combine(today, datetime.min.time())
+        today_end = datetime.combine(today, datetime.max.time())
+        
+        # Get all reminders
+        all_reminders = db.get_reminders_todos(type='reminder', completed=False)
+        
+        todays_reminders = []
+        for reminder in all_reminders:
+            due_date_str = reminder.get('due_date', '')
+            if due_date_str:
+                try:
+                    due_date = datetime.fromisoformat(due_date_str).date()
+                    if due_date == today:
+                        # Format time
+                        due_datetime = datetime.fromisoformat(due_date_str)
+                        time_str = due_datetime.strftime("%I:%M %p")
+                        todays_reminders.append({
+                            'time': time_str,
+                            'content': reminder.get('content', '')
+                        })
+                except:
+                    pass
+        
+        return todays_reminders
+    except Exception as e:
+        print(f"⚠️  Error getting today's schedule: {e}")
+        return []
+
+def get_weekly_comparison():
+    """Compare this week's stats vs last week's stats"""
+    try:
+        today = datetime.now().date()
+        
+        # Calculate week boundaries (Monday to Sunday)
+        days_since_monday = today.weekday()
+        this_week_start = today - timedelta(days=days_since_monday)
+        this_week_end = this_week_start + timedelta(days=6)
+        last_week_start = this_week_start - timedelta(days=7)
+        last_week_end = this_week_start - timedelta(days=1)
+        
+        # Get gym logs for both weeks
+        all_gym_logs = db.get_gym_logs()
+        this_week_gym = 0
+        last_week_gym = 0
+        
+        for log in all_gym_logs:
+            try:
+                log_date = datetime.fromisoformat(log.get('timestamp', '')).date()
+                if last_week_start <= log_date <= last_week_end:
+                    last_week_gym += 1
+                elif this_week_start <= log_date <= this_week_end:
+                    this_week_gym += 1
+            except:
+                pass
+        
+        # Get water logs for both weeks
+        all_water_logs = db.get_water_logs()
+        this_week_water_ml = 0
+        last_week_water_ml = 0
+        
+        for log in all_water_logs:
+            try:
+                log_date = datetime.fromisoformat(log.get('timestamp', '')).date()
+                amount_ml = float(log.get('amount_ml', 0))
+                if last_week_start <= log_date <= last_week_end:
+                    last_week_water_ml += amount_ml
+                elif this_week_start <= log_date <= this_week_end:
+                    this_week_water_ml += amount_ml
+            except:
+                pass
+        
+        return {
+            'gym': {'this_week': this_week_gym, 'last_week': last_week_gym},
+            'water_ml': {'this_week': this_week_water_ml, 'last_week': last_week_water_ml}
+        }
+    except Exception as e:
+        print(f"⚠️  Error calculating weekly comparison: {e}")
+        return None
+
+def get_day_context():
+    """Get day of week context message"""
+    weekday = datetime.now().weekday()  # 0 = Monday, 6 = Sunday
+    
+    if weekday == 0:
+        return "Happy Monday! 🎯"
+    elif weekday == 4:
+        return "TGIF! 🎉"
+    elif weekday >= 5:
+        return "Happy Weekend! 🌈"
+    else:
+        return None  # No special message for Tue-Thu
+
 def morning_checkin():
     """Daily 8am check-in"""
     try:
@@ -763,24 +997,42 @@ def morning_checkin():
             gym_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
             last_gym = gym_logs[0]
         
-        # Varied morning greetings - use day of year to ensure consistency per day
-        greetings = [
-            "Good morning! ☀️",
-            "Rise and shine! 🌅",
-            "Morning! Let's make today great! 💪",
-            "Hey there! Ready to tackle the day? 🚀",
-            "Good morning! Hope you slept well! 😊",
-            "Rise and grind! ☕",
-            "Morning! Time to shine! ✨",
-            "Good morning! Another day, another opportunity! 🌟",
-            "Hey! Let's make today count! 📅",
-            "Morning! You've got this! 💯",
-            "Good morning! What's on the agenda today? 📋",
-            "Rise and shine! Let's do this! 🔥",
-            "Morning! Ready to crush your goals? 🎯",
-            "Good morning! Make it a great one! 🌈",
-            "Hey! Time to wake up and win! 🏆"
-        ]
+        # Get day of week for context
+        weekday = datetime.now().weekday()  # 0 = Monday, 6 = Sunday
+        
+        # Varied morning greetings with day context - use day of year to ensure consistency per day
+        if weekday == 0:  # Monday
+            greetings = [
+                "Good morning! Happy Monday! ☀️",
+                "Rise and shine! It's Monday - let's start the week strong! 💪",
+                "Morning! New week, new opportunities! 🚀",
+                "Hey there! Monday motivation - you've got this! 🎯"
+            ]
+        elif weekday == 4:  # Friday
+            greetings = [
+                "Good morning! TGIF! 🎉",
+                "Rise and shine! It's Friday - almost there! 🌟",
+                "Morning! Friday vibes - finish the week strong! 💪",
+                "Hey! TGIF - let's make it a great day! 🎊"
+            ]
+        elif weekday >= 5:  # Weekend
+            greetings = [
+                "Good morning! It's the weekend! 🌈",
+                "Rise and shine! Weekend vibes! ☀️",
+                "Morning! Weekend time - enjoy it! 😊",
+                "Hey! Weekend mode activated! 🎉"
+            ]
+        else:  # Tuesday-Thursday
+            greetings = [
+                "Good morning! ☀️",
+                "Rise and shine! 🌅",
+                "Morning! Let's make today great! 💪",
+                "Hey there! Ready to tackle the day? 🚀",
+                "Good morning! Hope you slept well! 😊",
+                "Rise and grind! ☕",
+                "Morning! Time to shine! ✨",
+                "Good morning! Another day, another opportunity! 🌟"
+            ]
         
         # Use day of year as seed for consistent daily selection
         day_of_year = datetime.now().timetuple().tm_yday
@@ -795,6 +1047,63 @@ def morning_checkin():
         if weather_summary:
             message_parts.append(f"🌤️ Weather: {weather_summary}")
         
+        # Add streaks in natural language
+        streaks = get_streaks()
+        streak_messages = []
+        
+        if streaks['gym'] > 0:
+            if streaks['gym'] == 1:
+                streak_messages.append("You hit the gym yesterday!")
+            elif streaks['gym'] < 7:
+                streak_messages.append(f"You've been to the gym {streaks['gym']} days in a row now!")
+            else:
+                streak_messages.append(f"You're on a {streaks['gym']}-day gym streak - that's amazing! 🔥")
+        
+        if streaks['water'] > 0:
+            if streaks['water'] == 1:
+                streak_messages.append("You hit your water goal yesterday!")
+            elif streaks['water'] < 7:
+                streak_messages.append(f"You've hit your water goal for the past {streaks['water']} days!")
+            else:
+                streak_messages.append(f"You've hit your water goal for {streaks['water']} days straight - keep it up! 💧")
+        
+        if streaks['food'] > 0:
+            if streaks['food'] == 1:
+                streak_messages.append("You logged food yesterday!")
+            elif streaks['food'] < 7:
+                streak_messages.append(f"You've logged food for {streaks['food']} days in a row!")
+            else:
+                streak_messages.append(f"You're on a {streaks['food']}-day food logging streak! 📊")
+        
+        if streak_messages:
+            # Combine related streaks naturally
+            if len(streak_messages) >= 2 and streaks['gym'] > 0 and streaks['water'] > 0:
+                # Combine gym and water streaks in one natural sentence
+                gym_msg = streak_messages[0] if "gym" in streak_messages[0].lower() else [m for m in streak_messages if "gym" in m.lower()][0]
+                water_msg = streak_messages[1] if "water" in streak_messages[1].lower() else [m for m in streak_messages if "water" in m.lower()][0]
+                combined = f"💪 {gym_msg} And {water_msg.lower()}"
+                message_parts.append(combined)
+                if len(streak_messages) > 2:
+                    food_msg = [m for m in streak_messages if "food" in m.lower() or "logged" in m.lower()]
+                    if food_msg:
+                        message_parts.append(f"📊 {food_msg[0]}")
+            else:
+                for msg in streak_messages:
+                    emoji = "💪" if "gym" in msg.lower() else "💧" if "water" in msg.lower() else "📊"
+                    message_parts.append(f"{emoji} {msg}")
+        
+        # Add today's schedule
+        todays_reminders = get_todays_schedule()
+        if todays_reminders:
+            if len(todays_reminders) == 1:
+                reminder = todays_reminders[0]
+                message_parts.append(f"📅 Today: {reminder['time']} - {reminder['content']}")
+            else:
+                message_parts.append(f"📅 Today: {len(todays_reminders)} reminders scheduled")
+                # Show first 2 reminders
+                for reminder in todays_reminders[:2]:
+                    message_parts.append(f"   • {reminder['time']}: {reminder['content']}")
+        
         # Add incomplete items
         incomplete_items = []
         for todo in incomplete_todos:
@@ -806,21 +1115,60 @@ def morning_checkin():
             items_text = ', '.join([f"{i+1}) {item}" for i, item in enumerate(incomplete_items)])
             message_parts.append(f"📋 Unfinished: {items_text}")
         
-        # Add gym accountability
-        if last_gym:
+        # Add gym accountability in natural language
+        if last_gym and streaks['gym'] == 0:  # Only show if not on a current streak
             last_timestamp = last_gym.get('timestamp', '')
             if last_timestamp:
                 try:
                     last_date = datetime.fromisoformat(last_timestamp).date()
                     days_since = (datetime.now().date() - last_date).days
                     exercise = last_gym.get('exercise', 'workout')
-                    if days_since >= 2:
-                        message_parts.append(f"Your last workout was {days_since} days ago ({exercise}) - time for next session?")
+                    
+                    # Extract muscle group or exercise name for natural language
+                    exercise_name = exercise
+                    if ' - ' in exercise:
+                        parts = exercise.split(' - ')
+                        muscle_group = parts[0].lower()
+                        exercise_name = parts[1] if len(parts) > 1 else exercise
+                    elif 'chest' in exercise.lower():
+                        muscle_group = "chest"
+                    elif 'back' in exercise.lower():
+                        muscle_group = "back"
+                    elif 'legs' in exercise.lower() or 'leg' in exercise.lower():
+                        muscle_group = "legs"
+                    elif 'arms' in exercise.lower() or 'arm' in exercise.lower():
+                        muscle_group = "arms"
+                    elif 'shoulders' in exercise.lower() or 'shoulder' in exercise.lower():
+                        muscle_group = "shoulders"
+                    else:
+                        muscle_group = None
+                    
+                    if days_since == 1:
+                        message_parts.append(f"💪 You hit {muscle_group if muscle_group else 'the gym'} yesterday - great job!")
+                    elif days_since == 2:
+                        if muscle_group:
+                            message_parts.append(f"💪 You hit {muscle_group} {days_since} days ago - how about hitting a lift today?")
+                        else:
+                            message_parts.append(f"💪 You worked out {days_since} days ago - time for another session?")
+                    elif days_since == 3:
+                        if muscle_group:
+                            message_parts.append(f"💪 It's been {days_since} days since you hit {muscle_group} - ready to get back at it?")
+                        else:
+                            message_parts.append(f"💪 It's been {days_since} days since your last workout - let's get moving!")
+                    elif days_since >= 4:
+                        if muscle_group:
+                            message_parts.append(f"💪 It's been {days_since} days since you hit {muscle_group} - time to get back in the gym!")
+                        else:
+                            message_parts.append(f"💪 It's been {days_since} days since your last workout - let's get back on track!")
                 except:
                     pass
         
+        # Add daily quote
+        quote = get_daily_quote()
+        message_parts.append(f"\n💭 {quote}")
+        
         # Always add water/outside reminder
-        message_parts.append("Don't forget to drink water & keep smiling!")
+        message_parts.append("💧 Don't forget to drink water & keep smiling! 😁")
         
         # Send morning check-in via communication service
         user_phone = config.YOUR_PHONE_NUMBER
