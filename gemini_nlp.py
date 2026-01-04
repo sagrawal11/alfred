@@ -24,7 +24,7 @@ class GeminiNLPProcessor:
         
         Args:
             food_db: Food database dictionary
-            model_name: Model to use (defaults to GEMINI_MODEL env var or 'gemini-2.5-flash')
+            model_name: Model to use (defaults to GEMINI_MODEL env var or 'gemma-3-12b-it')
                        Gemini models: 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'
                        Gemma models: 'gemma-3-1b-it', 'gemma-3-4b-it', 'gemma-3-12b-it', 'gemma-3-27b-it'
                        Note: Different models have separate quota limits!
@@ -37,7 +37,7 @@ class GeminiNLPProcessor:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         
         # Get model name from parameter, env var, or default
-        self.model_name = model_name or os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+        self.model_name = model_name or os.getenv('GEMINI_MODEL', 'gemma-3-12b-it')
         
         # Configure Gemini - use new SDK if available
         if NEW_SDK:
@@ -783,7 +783,7 @@ def create_gemini_processor(food_database: Optional[Dict] = None, model_name: Op
     
     Args:
         food_database: Food database dictionary
-        model_name: Model to use (defaults to GEMINI_MODEL env var or 'gemini-2.5-flash')
+        model_name: Model to use (defaults to GEMINI_MODEL env var or 'gemma-3-12b-it')
                    Available models:
                    - Gemini: 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'
                    - Gemma: 'gemma-3-1b-it', 'gemma-3-4b-it', 'gemma-3-12b-it', 'gemma-3-27b-it'

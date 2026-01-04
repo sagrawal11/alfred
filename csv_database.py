@@ -105,10 +105,19 @@ class CSVDatabase:
     
     def _write_csv(self, csv_file: str, rows: List[Dict], fieldnames: List[str]):
         """Write rows to a CSV file"""
+        # Filter rows to only include expected fieldnames and ensure all fields exist
+        filtered_rows = []
+        for row in rows:
+            filtered_row = {}
+            for field in fieldnames:
+                # Get value from row, defaulting to empty string if missing
+                filtered_row[field] = row.get(field, '')
+            filtered_rows.append(filtered_row)
+        
         with open(csv_file, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerows(rows)
+            writer.writerows(filtered_rows)
     
     def _append_csv(self, csv_file: str, row: Dict, fieldnames: List[str]):
         """Append a row to a CSV file"""
@@ -288,6 +297,24 @@ class CSVDatabase:
         """Update a reminder/todo to mark as completed or update sent status"""
         rows = self._read_csv(self.reminders_todos_file)
         
+        # Define expected fieldnames
+        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
+        
+        # Ensure all rows have all required fields (for backward compatibility)
+        for row in rows:
+            # Ensure all fields exist with defaults
+            for field in fieldnames:
+                if field not in row:
+                    if field == 'completed':
+                        row[field] = 'FALSE'
+                    elif field in ['completed_at', 'sent_at', 'due_date']:
+                        row[field] = ''
+                    elif field in ['follow_up_sent', 'decay_check_sent']:
+                        row[field] = 'FALSE'
+                    else:
+                        row[field] = ''
+        
+        # Update the specific row
         for row in rows:
             if int(row.get('id', 0)) == item_id:
                 if completed is not None:
@@ -298,24 +325,34 @@ class CSVDatabase:
                     row['sent_at'] = sent_at
                 break
         
-        # Ensure all rows have the new fields if they don't exist (for backward compatibility)
-        for row in rows:
-            if 'decay_check_sent' not in row:
-                row['decay_check_sent'] = 'FALSE'
-        
-        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
         self._write_csv(self.reminders_todos_file, rows, fieldnames)
     
     def mark_follow_up_sent(self, item_id: int):
         """Mark that a follow-up has been sent for a reminder"""
         rows = self._read_csv(self.reminders_todos_file)
         
+        # Define expected fieldnames (must match initialization)
+        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
+        
+        # Ensure all rows have all required fields (for backward compatibility)
+        for row in rows:
+            for field in fieldnames:
+                if field not in row:
+                    if field == 'completed':
+                        row[field] = 'FALSE'
+                    elif field in ['completed_at', 'sent_at', 'due_date']:
+                        row[field] = ''
+                    elif field in ['follow_up_sent', 'decay_check_sent']:
+                        row[field] = 'FALSE'
+                    else:
+                        row[field] = ''
+        
+        # Update the specific row
         for row in rows:
             if int(row.get('id', 0)) == item_id:
                 row['follow_up_sent'] = 'TRUE'
                 break
         
-        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent']
         self._write_csv(self.reminders_todos_file, rows, fieldnames)
     
     def delete_old_logs(self, before_date: str):
@@ -346,14 +383,22 @@ class CSVDatabase:
         reminder_rows = self._read_csv(self.reminders_todos_file)
         reminder_filtered = [r for r in reminder_rows if r.get('timestamp', '')[:10] >= before_date]
         if len(reminder_filtered) < len(reminder_rows):
-            # Ensure all rows have the new fields if they don't exist (for backward compatibility)
-            for row in reminder_filtered:
-                if 'sent_at' not in row:
-                    row['sent_at'] = ''
-                if 'follow_up_sent' not in row:
-                    row['follow_up_sent'] = 'FALSE'
+            # Define expected fieldnames
+            fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
             
-            fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent']
+            # Ensure all rows have all required fields (for backward compatibility)
+            for row in reminder_filtered:
+                for field in fieldnames:
+                    if field not in row:
+                        if field == 'completed':
+                            row[field] = 'FALSE'
+                        elif field in ['completed_at', 'sent_at', 'due_date']:
+                            row[field] = ''
+                        elif field in ['follow_up_sent', 'decay_check_sent']:
+                            row[field] = 'FALSE'
+                        else:
+                            row[field] = ''
+            
             self._write_csv(self.reminders_todos_file, reminder_filtered, fieldnames)
     
     def get_stats(self) -> Dict[str, int]:

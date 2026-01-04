@@ -1404,6 +1404,237 @@ class EnhancedMessageProcessor:
         
         return "✅ Got it!"
     
+    def handle_what_should_i_do(self, message, entities):
+        """Handle 'What should I do now?' queries - synthesize context and suggest actions"""
+        current_time = datetime.now()
+        today = current_time.date().isoformat()
+        current_hour = current_time.hour
+        
+        suggestions = []
+        
+        # Check water intake
+        water_total = db.get_todays_water_total(today)
+        water_goal = db.get_water_goal(today, default_ml=config.DEFAULT_WATER_GOAL_ML)
+        if water_total < water_goal * 0.7:  # Less than 70% of goal
+            remaining = water_goal - water_total
+            bottles_needed = int(round(remaining / config.WATER_BOTTLE_SIZE_ML))
+            if bottles_needed > 0:
+                suggestions.append(f"💧 Drink water ({bottles_needed} bottle{'s' if bottles_needed > 1 else ''} to reach goal)")
+        
+        # Check for incomplete todos/reminders
+        todos = db.get_reminders_todos(type='todo', completed=False)
+        reminders = db.get_reminders_todos(type='reminder', completed=False)
+        
+        # Filter for today's items
+        today_date = current_time.date()
+        today_todos = []
+        for todo in todos:
+            due_date_str = todo.get('due_date', '')
+            if not due_date_str:
+                today_todos.append(todo)
+            else:
+                try:
+                    due_date = datetime.fromisoformat(due_date_str).date()
+                    if due_date <= today_date:
+                        today_todos.append(todo)
+                except:
+                    today_todos.append(todo)
+        
+        today_reminders = []
+        for reminder in reminders:
+            due_date_str = reminder.get('due_date', '')
+            if due_date_str:
+                try:
+                    due_date = datetime.fromisoformat(due_date_str).date()
+                    if due_date <= today_date:
+                        today_reminders.append(reminder)
+                except:
+                    pass
+        
+        # Add top 2-3 most urgent todos
+        if today_todos:
+            for todo in today_todos[:2]:
+                content = todo.get('content', '')[:40]
+                suggestions.append(f"📋 {content}")
+        
+        # Add upcoming reminders (if within next 2 hours)
+        if today_reminders:
+            for reminder in today_reminders[:2]:
+                due_date_str = reminder.get('due_date', '')
+                if due_date_str:
+                    try:
+                        due_date = datetime.fromisoformat(due_date_str)
+                        hours_until = (due_date - current_time).total_seconds() / 3600
+                        if 0 <= hours_until <= 2:
+                            content = reminder.get('content', '')[:40]
+                            time_str = due_date.strftime("%I:%M %p")
+                            suggestions.append(f"⏰ {content} (at {time_str})")
+                    except:
+                        pass
+        
+        # Check food intake (if it's meal time and no food logged)
+        food_totals = db.get_todays_food_totals(today)
+        if food_totals['calories'] == 0:
+            if 7 <= current_hour <= 9:  # Breakfast time
+                suggestions.append("🍽️ Log breakfast")
+            elif 12 <= current_hour <= 14:  # Lunch time
+                suggestions.append("🍽️ Log lunch")
+            elif 18 <= current_hour <= 20:  # Dinner time
+                suggestions.append("🍽️ Log dinner")
+        
+        # Check gym (if afternoon and no workout today)
+        if current_hour >= 14:
+            gym_logs = db.get_gym_logs(today)
+            if not gym_logs:
+                suggestions.append("💪 Consider a workout")
+        
+        # Format response
+        if suggestions:
+            response = "💡 Here's what you could do:\n\n"
+            for i, suggestion in enumerate(suggestions[:5], 1):  # Limit to 5
+                response += f"{i}. {suggestion}\n"
+            return response
+        else:
+            return "✨ You're all caught up! Nothing urgent right now. Great job! 🎉"
+    
+    def handle_undo_edit(self, message, entities):
+        """Handle undo/delete commands for last entries"""
+        message_lower = message.lower()
+        
+        # Determine what type to undo based on entities or message content
+        food_items = entities.get('food_items', [])
+        
+        # Check message for type indicators
+        if 'water' in message_lower or any('water' in item.lower() for item in food_items):
+            # Undo last water entry
+            water_logs = db.get_water_logs()
+            if water_logs:
+                water_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+                last_water = water_logs[0]
+                water_id = int(last_water.get('id', 0))
+                amount_ml = last_water.get('amount_ml', '0')
+                
+                # Delete by rewriting CSV without this entry
+                rows = db._read_csv(db.water_logs_file)
+                rows = [r for r in rows if int(r.get('id', 0)) != water_id]
+                fieldnames = ['id', 'timestamp', 'amount_ml', 'amount_oz']
+                db._write_csv(db.water_logs_file, rows, fieldnames)
+                
+                return f"✅ Removed last water entry ({amount_ml}ml)"
+            return "❌ No water entries to remove"
+        
+        elif 'food' in message_lower or 'meal' in message_lower or any(item.lower() != 'water' for item in food_items):
+            # Undo last food entry
+            food_logs = db.get_food_logs()
+            if food_logs:
+                food_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+                last_food = food_logs[0]
+                food_id = int(last_food.get('id', 0))
+                food_name = last_food.get('food_name', 'item')
+                
+                # Delete by rewriting CSV without this entry
+                rows = db._read_csv(db.food_logs_file)
+                rows = [r for r in rows if int(r.get('id', 0)) != food_id]
+                fieldnames = ['id', 'timestamp', 'food_name', 'calories', 'protein', 
+                             'carbs', 'fat', 'restaurant', 'portion_multiplier']
+                db._write_csv(db.food_logs_file, rows, fieldnames)
+                
+                return f"✅ Removed last food entry: {food_name}"
+            return "❌ No food entries to remove"
+        
+        elif 'gym' in message_lower or 'workout' in message_lower or 'exercise' in message_lower:
+            # Undo last gym entry
+            gym_logs = db.get_gym_logs()
+            if gym_logs:
+                gym_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+                last_gym = gym_logs[0]
+                gym_id = int(last_gym.get('id', 0))
+                exercise = last_gym.get('exercise', 'workout')
+                
+                # Delete by rewriting CSV without this entry
+                rows = db._read_csv(db.gym_logs_file)
+                rows = [r for r in rows if int(r.get('id', 0)) != gym_id]
+                fieldnames = ['id', 'timestamp', 'exercise', 'sets', 'reps', 'weight', 'notes']
+                db._write_csv(db.gym_logs_file, rows, fieldnames)
+                
+                return f"✅ Removed last gym entry: {exercise}"
+            return "❌ No gym entries to remove"
+        
+        elif 'todo' in message_lower or 'task' in message_lower:
+            # Undo last todo
+            todos = db.get_reminders_todos(type='todo', completed=False)
+            if todos:
+                todos.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+                last_todo = todos[0]
+                todo_id = int(last_todo.get('id', 0))
+                content = last_todo.get('content', 'item')
+                
+                # Delete by rewriting CSV without this entry
+                rows = db._read_csv(db.reminders_todos_file)
+                rows = [r for r in rows if int(r.get('id', 0)) != todo_id]
+                fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
+                db._write_csv(db.reminders_todos_file, rows, fieldnames)
+                
+                return f"✅ Removed last todo: {content}"
+            return "❌ No todos to remove"
+        
+        elif 'reminder' in message_lower:
+            # Undo last reminder
+            reminders = db.get_reminders_todos(type='reminder', completed=False)
+            if reminders:
+                reminders.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+                last_reminder = reminders[0]
+                reminder_id = int(last_reminder.get('id', 0))
+                content = last_reminder.get('content', 'item')
+                
+                # Delete by rewriting CSV without this entry
+                rows = db._read_csv(db.reminders_todos_file)
+                rows = [r for r in rows if int(r.get('id', 0)) != reminder_id]
+                fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
+                db._write_csv(db.reminders_todos_file, rows, fieldnames)
+                
+                return f"✅ Removed last reminder: {content}"
+            return "❌ No reminders to remove"
+        
+        # Default: try to undo most recent entry of any type
+        # Check water first (most common)
+        water_logs = db.get_water_logs()
+        food_logs = db.get_food_logs()
+        gym_logs = db.get_gym_logs()
+        todos = db.get_reminders_todos(type='todo', completed=False)
+        
+        # Find most recent entry
+        all_entries = []
+        if water_logs:
+            last_water = max(water_logs, key=lambda x: x.get('timestamp', ''))
+            all_entries.append(('water', last_water.get('timestamp', ''), last_water))
+        if food_logs:
+            last_food = max(food_logs, key=lambda x: x.get('timestamp', ''))
+            all_entries.append(('food', last_food.get('timestamp', ''), last_food))
+        if gym_logs:
+            last_gym = max(gym_logs, key=lambda x: x.get('timestamp', ''))
+            all_entries.append(('gym', last_gym.get('timestamp', ''), last_gym))
+        if todos:
+            last_todo = max(todos, key=lambda x: x.get('timestamp', ''))
+            all_entries.append(('todo', last_todo.get('timestamp', ''), last_todo))
+        
+        if all_entries:
+            # Sort by timestamp and get most recent
+            all_entries.sort(key=lambda x: x[1], reverse=True)
+            entry_type, _, entry = all_entries[0]
+            
+            # Recursively call with the determined type
+            if entry_type == 'water':
+                return self.handle_undo_edit("undo last water", entities)
+            elif entry_type == 'food':
+                return self.handle_undo_edit("undo last food", entities)
+            elif entry_type == 'gym':
+                return self.handle_undo_edit("undo last gym", entities)
+            elif entry_type == 'todo':
+                return self.handle_undo_edit("undo last todo", entities)
+        
+        return "❌ No recent entries found to remove"
+    
     def handle_reschedule_response(self, message, phone_number):
         """Handle user's response to reschedule options"""
         if not hasattr(check_reminder_followups, 'pending_reschedules'):
