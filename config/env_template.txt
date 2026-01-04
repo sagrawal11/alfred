@@ -59,6 +59,16 @@ WEATHER_API_KEY=your_openweathermap_api_key_here
 # Examples: "Durham,NC,US", "New York", "London,GB"
 WEATHER_LOCATION=Durham,NC,US
 
+# =============================================================================
+# GOOGLE CALENDAR API CONFIGURATION (Optional - for calendar integration)
+# =============================================================================
+# Get these from Google Cloud Console after setting up OAuth 2.0
+# See INSTRUCTIONS/google_calendar.md for detailed setup instructions
+GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+GOOGLE_REFRESH_TOKEN=your_google_refresh_token_here
+GOOGLE_REDIRECT_URI=http://localhost:5001/auth/google/callback
+
 
 # =============================================================================
 # TWILIO SETUP INSTRUCTIONS

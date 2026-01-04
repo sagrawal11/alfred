@@ -38,6 +38,12 @@ class Config:
     WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '')
     WEATHER_LOCATION = os.getenv('WEATHER_LOCATION', '')  # e.g., "Durham,NC,US" or "New York"
     
+    # Google Calendar API Configuration (optional - for calendar integration)
+    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+    GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
+    GOOGLE_REFRESH_TOKEN = os.getenv('GOOGLE_REFRESH_TOKEN', '')
+    GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5001/auth/google/callback')
+    
     # Database (CSV files)
     # config.py is in project root, so just use dirname once
     DATABASE_DIR = os.path.join(

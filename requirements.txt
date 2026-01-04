@@ -11,6 +11,12 @@ requests>=2.31.0
 # NLP and ML dependencies (Google Gemini API)
 google-generativeai>=0.3.0
 
+# Google Calendar API dependencies
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+google-api-python-client>=2.100.0
+
 # Optional: Simple bot dependencies (for basic features)
 wikipedia>=1.4.0
 pyowm>=2.6.1

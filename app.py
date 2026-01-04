@@ -20,6 +20,7 @@ from config import Config
 from gemini_nlp import create_gemini_processor
 from communication_service import CommunicationService
 from csv_database import CSVDatabase
+from google_calendar import create_calendar_service
 
 # Check if another instance is already running
 def check_single_instance():
@@ -722,6 +723,28 @@ class EnhancedMessageProcessor:
             else:
                 response_parts.append(f"⏰ Reminders: No reminders for today")
         
+        # Get calendar events if requested (and calendar service is available)
+        # Import calendar_service from global scope
+        from __main__ import calendar_service
+        if calendar_service and (query_data.get('reminders') or query_data.get('todos') or query_data.get('all')):
+            try:
+                calendar_events = calendar_service.get_todays_events()
+                if calendar_events:
+                    event_list = []
+                    for i, event in enumerate(calendar_events[:10], 1):  # Limit to 10
+                        formatted = calendar_service.format_event_for_display(event)
+                        event_list.append(f"   {i}. {formatted}")
+                    
+                    response_parts.append(f"📅 Calendar Events ({len(calendar_events)}):")
+                    response_parts.extend(event_list)
+                    if len(calendar_events) > 10:
+                        response_parts.append(f"   ... and {len(calendar_events) - 10} more")
+                else:
+                    response_parts.append(f"📅 Calendar: No events scheduled for today")
+            except Exception as e:
+                print(f"⚠️  Error fetching calendar events: {e}")
+                # Don't add calendar section if there's an error
+        
         if response_parts:
             # Determine header based on what's being shown
             if query_data.get('todos') and not query_data.get('all') and not query_data.get('food') and not query_data.get('water') and not query_data.get('gym'):
@@ -1260,16 +1283,17 @@ def get_daily_quote():
         return "Progress, not perfection. 🌱"
 
 def get_todays_schedule():
-    """Get reminders scheduled for today"""
+    """Get today's reminders and calendar events for morning check-in"""
     try:
         today = datetime.now().date()
         today_start = datetime.combine(today, datetime.min.time())
         today_end = datetime.combine(today, datetime.max.time())
         
+        schedule_items = []
+        
         # Get all reminders
         all_reminders = db.get_reminders_todos(type='reminder', completed=False)
         
-        todays_reminders = []
         for reminder in all_reminders:
             due_date_str = reminder.get('due_date', '')
             if due_date_str:
@@ -1279,14 +1303,54 @@ def get_todays_schedule():
                         # Format time
                         due_datetime = datetime.fromisoformat(due_date_str)
                         time_str = due_datetime.strftime("%I:%M %p")
-                        todays_reminders.append({
+                        schedule_items.append({
                             'time': time_str,
-                            'content': reminder.get('content', '')
+                            'content': reminder.get('content', ''),
+                            'type': 'reminder'
                         })
                 except:
                     pass
         
-        return todays_reminders
+        # Get calendar events if calendar service is available
+        # calendar_service is defined at module level
+        try:
+            from __main__ import calendar_service
+        except ImportError:
+            calendar_service = None
+        
+        if calendar_service:
+            try:
+                calendar_events = calendar_service.get_todays_events()
+                for event in calendar_events:
+                    summary = event.get('summary', 'No title')
+                    start = event.get('start', {})
+                    
+                    if 'dateTime' in start:
+                        # Has specific time
+                        start_time = datetime.fromisoformat(start['dateTime'].replace('Z', '+00:00'))
+                        time_str = start_time.strftime("%I:%M %p")
+                        schedule_items.append({
+                            'time': time_str,
+                            'content': summary,
+                            'type': 'calendar'
+                        })
+                    elif 'date' in start:
+                        # All-day event
+                        schedule_items.append({
+                            'time': 'All day',
+                            'content': summary,
+                            'type': 'calendar'
+                        })
+            except Exception as e:
+                print(f"⚠️  Error fetching calendar events for schedule: {e}")
+        
+        # Sort by time (all-day events first, then by time)
+        schedule_items.sort(key=lambda x: (
+            1 if x['time'] == 'All day' else 0,
+            x['time'] if x['time'] != 'All day' else '23:59'
+        ))
+        
+        return schedule_items
     except Exception as e:
         print(f"⚠️  Error getting today's schedule: {e}")
         return []
@@ -1473,16 +1537,17 @@ def morning_checkin():
                     message_parts.append(f"{emoji} {msg}")
         
         # Add today's schedule
-        todays_reminders = get_todays_schedule()
-        if todays_reminders:
-            if len(todays_reminders) == 1:
-                reminder = todays_reminders[0]
-                message_parts.append(f"📅 Today: {reminder['time']} - {reminder['content']}")
+        todays_schedule = get_todays_schedule()
+        if todays_schedule:
+            if len(todays_schedule) == 1:
+                item = todays_schedule[0]
+                message_parts.append(f"📅 Today: {item['time']} - {item['content']}")
             else:
-                message_parts.append(f"📅 Today: {len(todays_reminders)} reminders scheduled")
-                # Show first 2 reminders
-                for reminder in todays_reminders[:2]:
-                    message_parts.append(f"   • {reminder['time']}: {reminder['content']}")
+                has_calendar = any(i.get('type') == 'calendar' for i in todays_schedule)
+                message_parts.append(f"📅 Today: {len(todays_schedule)} {'items' if has_calendar else 'reminders'} scheduled")
+                # Show first 2 items
+                for item in todays_schedule[:2]:
+                    message_parts.append(f"   • {item['time']}: {item['content']}")
         
         # Add incomplete items
         incomplete_items = []
