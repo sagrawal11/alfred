@@ -57,7 +57,7 @@ class GoogleCalendarService:
         try:
             self._credentials.refresh(Request())
         except Exception as e:
-            print(f"❌ Error refreshing Google Calendar credentials: {e}")
+            print(f" Error refreshing Google Calendar credentials: {e}")
             raise
         
         return self._credentials
@@ -69,7 +69,7 @@ class GoogleCalendarService:
                 credentials = self._get_credentials()
                 self.service = build('calendar', 'v3', credentials=credentials)
             except Exception as e:
-                print(f"❌ Error building Google Calendar service: {e}")
+                print(f" Error building Google Calendar service: {e}")
                 raise
         return self.service
     
@@ -97,10 +97,10 @@ class GoogleCalendarService:
             events = events_result.get('items', [])
             return events
         except HttpError as error:
-            print(f"❌ Error fetching today's calendar events: {error}")
+            print(f" Error fetching today's calendar events: {error}")
             return []
         except Exception as e:
-            print(f"❌ Unexpected error fetching calendar events: {e}")
+            print(f" Unexpected error fetching calendar events: {e}")
             return []
     
     def get_events_for_date(self, target_date: datetime.date) -> List[Dict]:
@@ -129,10 +129,10 @@ class GoogleCalendarService:
             events = events_result.get('items', [])
             return events
         except HttpError as error:
-            print(f"❌ Error fetching calendar events for {target_date}: {error}")
+            print(f" Error fetching calendar events for {target_date}: {error}")
             return []
         except Exception as e:
-            print(f"❌ Unexpected error fetching calendar events: {e}")
+            print(f" Unexpected error fetching calendar events: {e}")
             return []
     
     def format_event_for_display(self, event: Dict) -> str:
@@ -189,7 +189,7 @@ def create_calendar_service(config) -> Optional[GoogleCalendarService]:
         config.GOOGLE_REFRESH_TOKEN,
         config.GOOGLE_REDIRECT_URI
     ]):
-        print("⚠️  Google Calendar credentials not configured, skipping calendar integration")
+        print("  Google Calendar credentials not configured, skipping calendar integration")
         return None
     
     try:
@@ -200,6 +200,6 @@ def create_calendar_service(config) -> Optional[GoogleCalendarService]:
             redirect_uri=config.GOOGLE_REDIRECT_URI
         )
     except Exception as e:
-        print(f"❌ Error creating Google Calendar service: {e}")
+        print(f" Error creating Google Calendar service: {e}")
         return None
 

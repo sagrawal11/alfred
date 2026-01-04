@@ -32,25 +32,18 @@ def check_single_instance():
         sock.close()
         return True
     except OSError:
-        print("❌ Another instance is already running on port 5001")
-        print("   Please stop the other instance first")
+        print("Error: Another instance is already running on port 5001")
+        print("Please stop the other instance first")
         return False
 
 def daily_database_dump():
-    """Archive old logs (CSV files are already the archive, so just clean old entries)"""
+    """Archive old logs"""
     try:
-        print("🔄 Starting daily database cleanup at 5 AM...")
-        
-        # Get today's date
         today = datetime.now().strftime('%Y-%m-%d')
-        
-        # Delete logs older than today (keep only today's logs)
         db.delete_old_logs(today)
-        
-        print(f"✅ Daily database cleanup completed! Kept logs from {today} onwards")
-        
+        print(f"Database cleanup completed: kept logs from {today} onwards")
     except Exception as e:
-        print(f"❌ Error during daily database cleanup: {e}")
+        print(f"Error during database cleanup: {e}")
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -68,9 +61,9 @@ db = CSVDatabase(config.DATABASE_DIR)
 # Validate configuration
 try:
     config.validate()
-    print("✅ Configuration validated successfully")
+    print("Configuration validated successfully")
 except ValueError as e:
-    print(f"❌ Configuration error: {e}")
+    print(f"Configuration error: {e}")
     print("Please check your .env file and ensure all required variables are set")
     exit(1)
 
@@ -78,88 +71,11 @@ except ValueError as e:
 def ensure_directories():
     """Create required directories if they don't exist"""
     try:
-        # Debug: Show current working directory
-        print(f"🔍 Current working directory: {os.getcwd()}")
-        print(f"🔍 __file__ location: {__file__}")
-        print(f"🔍 Absolute file path: {os.path.abspath(__file__)}")
-        
-        # Create database directory (for CSV files)
-        print(f"🔍 Database directory path: {config.DATABASE_DIR}")
         os.makedirs(config.DATABASE_DIR, exist_ok=True)
-        print(f"✅ Database directory ensured: {config.DATABASE_DIR}")
-        
-        # Create data directory
         data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-        print(f"🔍 Data directory path: {data_dir}")
         os.makedirs(data_dir, exist_ok=True)
-        print(f"✅ Data directory ensured: {data_dir}")
-        
-        # Check if CSV files exist
-        csv_files = ['food_logs.csv', 'water_logs.csv', 'gym_logs.csv', 'reminders_todos.csv']
-        for csv_file in csv_files:
-            csv_path = os.path.join(config.DATABASE_DIR, csv_file)
-            if os.path.exists(csv_path):
-                size = os.path.getsize(csv_path)
-                print(f"✅ {csv_file} exists: {size} bytes")
-        else:
-                print(f"📝 {csv_file} will be created on first use")
-            
-        if os.path.exists(config.FOOD_DATABASE_PATH):
-            print(f"✅ Food database exists: {config.FOOD_DATABASE_PATH}")
-            size = os.path.getsize(config.FOOD_DATABASE_PATH)
-            print(f"📊 Food database size: {size} bytes")
-        else:
-            print(f"❌ Food database missing: {config.FOOD_DATABASE_PATH}")
-        
-        # List contents of key directories
-        print(f"\n📁 Contents of project root:")
-        try:
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            if os.path.exists(project_root):
-                for item in os.listdir(project_root):
-                    item_path = os.path.join(project_root, item)
-                    if os.path.isdir(item_path):
-                        print(f"   📁 {item}/")
-                    else:
-                        size = os.path.getsize(item_path)
-                        print(f"   📄 {item} ({size} bytes)")
-            else:
-                print(f"   ❌ Project root not found: {project_root}")
-        except Exception as e:
-            print(f"   ⚠️  Error listing project root: {e}")
-        
-        print(f"\n📁 Contents of database directory (CSV files):")
-        try:
-            if os.path.exists(config.DATABASE_DIR):
-                for item in os.listdir(config.DATABASE_DIR):
-                    item_path = os.path.join(config.DATABASE_DIR, item)
-                    if os.path.isdir(item_path):
-                        print(f"   📁 {item}/")
-                    else:
-                        size = os.path.getsize(item_path)
-                        print(f"   📄 {item} ({size} bytes)")
-            else:
-                print(f"   ❌ Database directory not found: {config.DATABASE_DIR}")
-        except Exception as e:
-            print(f"   ⚠️  Error listing database directory: {e}")
-        
-        print(f"\n📁 Contents of data directory:")
-        try:
-            if os.path.exists(data_dir):
-                for item in os.listdir(data_dir):
-                    item_path = os.path.join(data_dir, item)
-                    if os.path.isdir(item_path):
-                        print(f"   📁 {item}/")
-                    else:
-                        size = os.path.getsize(item_path)
-                        print(f"   📄 {item} ({size} bytes)")
-            else:
-                print(f"   ❌ Data directory not found: {data_dir}")
-        except Exception as e:
-            print(f"   ⚠️  Error listing data directory: {e}")
-        
     except Exception as e:
-        print(f"⚠️  Error creating directories: {e}")
+        print(f"Error creating directories: {e}")
         import traceback
         traceback.print_exc()
 
@@ -190,7 +106,7 @@ def check_reminders():
             if not sent_at:
             # Send reminder via communication service
                 user_phone = config.YOUR_PHONE_NUMBER
-                message = f"⏰ REMINDER: {content}"
+                message = f"REMINDER: {content}"
                 
                 if user_phone:
                     result = communication_service.send_response(message, user_phone)
@@ -198,14 +114,13 @@ def check_reminders():
                     result = communication_service.send_response(message)
                 
                 if result['success']:
-                    print(f"🔔 Reminder sent via {result['method']}: {content}")
-                    # Mark as sent (but not completed - wait for user response)
+                    print(f"Reminder sent via {result['method']}: {content}")
                     db.update_reminder_todo(reminder_id, completed=False, sent_at=current_time.isoformat())
                 else:
-                    print(f"❌ Failed to send reminder: {result.get('error', 'Unknown error')}")
+                    print(f"Failed to send reminder: {result.get('error', 'Unknown error')}")
         
     except Exception as e:
-        print(f"❌ Error checking reminders: {e}")
+        print(f"Error checking reminders: {e}")
 
 def check_reminder_followups():
     """Check for reminders that were sent but not completed, and send follow-ups"""
@@ -263,7 +178,7 @@ def check_reminder_followups():
                     
                     # Build follow-up message
                     if should_reschedule and reschedule_options:
-                        message = f"💬 Did you get a chance to {content}, or should I reschedule it?\n"
+                        message = f"Did you get a chance to {content}, or should I reschedule it?\n"
                         message += "Reply:\n"
                         message += "• 'yes' or 'done' if completed\n"
                         for i, option in enumerate(reschedule_options[:3], 1):
@@ -275,7 +190,7 @@ def check_reminder_followups():
                             check_reminder_followups.pending_reschedules = {}
                         check_reminder_followups.pending_reschedules[reminder_id] = reschedule_options
                     else:
-                        message = f"💬 Did you get a chance to {content}? Reply 'yes' if done, or 'no' to skip."
+                        message = f"Did you get a chance to {content}? Reply 'yes' if done, or 'no' to skip."
                     
                     if user_phone:
                         result = communication_service.send_response(message, user_phone)
@@ -283,16 +198,16 @@ def check_reminder_followups():
                         result = communication_service.send_response(message)
                     
                     if result['success']:
-                        print(f"💬 Follow-up sent for reminder: {content}")
+                        print(f"Follow-up sent for reminder: {content}")
                         db.mark_follow_up_sent(reminder_id)
                     else:
-                        print(f"❌ Failed to send follow-up: {result.get('error', 'Unknown error')}")
+                        print(f"Failed to send follow-up: {result.get('error', 'Unknown error')}")
             except Exception as e:
-                print(f"⚠️  Error processing follow-up for reminder {reminder_id}: {e}")
+                print(f"Error processing follow-up for reminder {reminder_id}: {e}")
                 continue
         
     except Exception as e:
-        print(f"❌ Error checking reminder follow-ups: {e}")
+        print(f"Error checking reminder follow-ups: {e}")
 
 def check_task_decay():
     """Check for stale todos and ask if they're still relevant"""
@@ -326,7 +241,7 @@ def check_task_decay():
                 # If task is older than threshold, send decay check
                 if age >= decay_threshold:
                     user_phone = config.YOUR_PHONE_NUMBER
-                    message = f"🧹 Still want '{content}' on your list?\n"
+                    message = f"Still want '{content}' on your list?\n"
                     message += "Reply:\n"
                     message += "• 'keep' to keep it\n"
                     message += "• 'reschedule' to move it\n"
@@ -338,7 +253,7 @@ def check_task_decay():
                         result = communication_service.send_response(message)
                     
                     if result['success']:
-                        print(f"🧹 Task decay check sent for: {content}")
+                        print(f"Task decay check sent for: {content}")
                         # Mark decay check as sent
                         rows = db._read_csv(db.reminders_todos_file)
                         for row in rows:
@@ -355,13 +270,13 @@ def check_task_decay():
                             check_task_decay.pending_responses[user_phone] = {}
                         check_task_decay.pending_responses[user_phone][todo_id] = content
                     else:
-                        print(f"❌ Failed to send task decay check: {result.get('error', 'Unknown error')}")
+                        print(f"Failed to send task decay check: {result.get('error', 'Unknown error')}")
             except Exception as e:
-                print(f"⚠️  Error processing task decay for todo {todo_id}: {e}")
+                print(f" Error processing task decay for todo {todo_id}: {e}")
                 continue
         
     except Exception as e:
-        print(f"❌ Error checking task decay: {e}")
+        print(f"Error checking task decay: {e}")
 
 def send_weekly_digest():
     """Send weekly summary of behavior and progress"""
@@ -434,29 +349,29 @@ def send_weekly_digest():
         completion_rate = (completed_todos / total_todos * 100) if total_todos > 0 else 0
         
         # Build digest message
-        message = f"📊 Weekly Digest ({week_start.strftime('%b %d')} - {week_end.strftime('%b %d')})\n\n"
+        message = f"Weekly Digest ({week_start.strftime('%b %d')} - {week_end.strftime('%b %d')})\n\n"
         
         # Water
         if avg_water_ml > 0:
             liters = avg_water_ml / 1000
-            message += f"💧 Water: {liters:.1f}L/day avg\n"
+            message += f"Water: {liters:.1f}L/day avg\n"
         else:
-            message += f"💧 Water: No logs this week\n"
+            message += f"Water: No logs this week\n"
         
         # Food
         if avg_calories > 0:
-            message += f"🍽️  Food: {avg_calories:.0f} cal/day avg\n"
+            message += f"Food: {avg_calories:.0f} cal/day avg\n"
         else:
-            message += f"🍽️  Food: No logs this week\n"
+            message += f"Food: No logs this week\n"
         
         # Gym
-        message += f"💪 Gym: {gym_days} days\n"
+        message += f"Gym: {gym_days} days\n"
         
         # Tasks
         if total_todos > 0:
-            message += f"✅ Tasks: {completed_todos}/{total_todos} completed ({completion_rate:.0f}%)\n"
+            message += f"Tasks: {completed_todos}/{total_todos} completed ({completion_rate:.0f}%)\n"
         else:
-            message += f"✅ Tasks: No tasks this week\n"
+            message += f"Tasks: No tasks this week\n"
         
         # Send digest
         user_phone = config.YOUR_PHONE_NUMBER
@@ -466,12 +381,12 @@ def send_weekly_digest():
             result = communication_service.send_response(message)
         
         if result['success']:
-            print(f"📊 Weekly digest sent")
+            print(f"Weekly digest sent")
         else:
-            print(f"❌ Failed to send weekly digest: {result.get('error', 'Unknown error')}")
+            print(f"Failed to send weekly digest: {result.get('error', 'Unknown error')}")
         
     except Exception as e:
-        print(f"❌ Error sending weekly digest: {e}")
+        print(f"Error sending weekly digest: {e}")
 
 def check_gentle_nudges():
     """Send gentle, context-aware nudges based on personal patterns"""
@@ -512,7 +427,7 @@ def check_gentle_nudges():
             bottles_behind = int((expected_water_at_hour - water_total) / config.WATER_BOTTLE_SIZE_ML)
             if bottles_behind > 0:
                 user_phone = config.YOUR_PHONE_NUMBER
-                message = f"💧 You're about {bottles_behind} bottle{'s' if bottles_behind > 1 else ''} behind your usual pace today"
+                message = f"You're about {bottles_behind} bottle{'s' if bottles_behind > 1 else ''} behind your usual pace today"
                 
                 if user_phone:
                     result = communication_service.send_response(message, user_phone)
@@ -520,13 +435,13 @@ def check_gentle_nudges():
                     result = communication_service.send_response(message)
                 
                 if result['success']:
-                    print(f"💧 Gentle nudge sent: water reminder")
+                    print(f"Gentle nudge sent: water reminder")
                 return  # Only send one nudge per check
         
         # Check for no food logged yet (after 10 AM)
         if current_hour >= 10 and food_totals.get('calories', 0) == 0:
             user_phone = config.YOUR_PHONE_NUMBER
-            message = "🍽️  Haven't logged any food yet today - just a friendly reminder"
+            message = "Haven't logged any food yet today - just a friendly reminder"
             
             if user_phone:
                 result = communication_service.send_response(message, user_phone)
@@ -534,7 +449,7 @@ def check_gentle_nudges():
                 result = communication_service.send_response(message)
             
             if result['success']:
-                print(f"🍽️  Gentle nudge sent: food reminder")
+                print(f"Gentle nudge sent: food reminder")
             return
         
         # Check for no gym in a while (if it's afternoon and no gym today)
@@ -553,7 +468,7 @@ def check_gentle_nudges():
                         # Only nudge if it's been 2+ days
                         if days_since >= 2:
                             user_phone = config.YOUR_PHONE_NUMBER
-                            message = f"💪 It's been {days_since} days since your last workout - just a gentle reminder"
+                            message = f"It's been {days_since} days since your last workout - just a gentle reminder"
                             
                             if user_phone:
                                 result = communication_service.send_response(message, user_phone)
@@ -561,12 +476,12 @@ def check_gentle_nudges():
                                 result = communication_service.send_response(message)
                             
                             if result['success']:
-                                print(f"💪 Gentle nudge sent: gym reminder")
+                                print(f"Gentle nudge sent: gym reminder")
                     except:
                         pass
         
     except Exception as e:
-        print(f"❌ Error checking gentle nudges: {e}")
+        print(f"Error checking gentle nudges: {e}")
 
 # Initialize pending reschedules dict
 check_reminder_followups.pending_reschedules = {}
@@ -656,7 +571,7 @@ def init_db():
     """Initialize the CSV database (creates CSV files with headers if they don't exist)"""
     # CSV database initializes itself when created
     db._init_csv_files()
-    print("✅ CSV database initialized (all CSV files ready)")
+    print("CSV database initialized (all CSV files ready)")
 
 # Load hardcoded food database
 def load_food_database():
@@ -676,9 +591,9 @@ class EnhancedMessageProcessor:
         try:
             with open(config.FOOD_DATABASE_PATH, 'r') as f:
                 custom_food_db = json.load(f)
-                print("✅ Custom food database loaded")
+                print("Custom food database loaded")
         except FileNotFoundError:
-            print("⚠️  Custom food database not found, using default")
+            print("Custom food database not found, using default")
             custom_food_db = FOOD_DATABASE
         
         self.nlp_processor = create_gemini_processor(custom_food_db)
@@ -711,9 +626,9 @@ class EnhancedMessageProcessor:
         intent = self.nlp_processor.classify_intent(message_body)
         entities = self.nlp_processor.extract_entities(message_body)
         
-        print(f"🧠 Intelligent NLP Results:")
-        print(f"   Intent: {intent}")
-        print(f"   Entities: {entities}")
+        print(f"Intelligent NLP Results:")
+        print(f"Intent: {intent}")
+        print(f"Entities: {entities}")
         
         # Process based on intent
         response = self.handle_intent(intent, message_body, entities, phone_number)
@@ -781,13 +696,13 @@ class EnhancedMessageProcessor:
             else:
                 bottle_text = f"{bottles_logged:.1f} bottles"
             
-            response = f"✅ Logged {bottle_text} of water ({amount_ml}ml)\n"
-            response += f"💧 Total for today: {int(today_total_ml)}mL"
+            response = f"Logged {bottle_text} of water ({amount_ml}ml)\n"
+            response += f"Total for today: {int(today_total_ml)}mL"
             
             if remaining_ml > 0:
-                response += f"\n📊 Need about {bottles_needed} more {'bottle' if bottles_needed == 1 else 'bottles'} to hit your goal of {int(today_goal_ml)}mL today"
+                response += f"\n Need about {bottles_needed} more {'bottle' if bottles_needed == 1 else 'bottles'} to hit your goal of {int(today_goal_ml)}mL today"
             else:
-                response += f"\n🎉 You've hit your goal of {int(today_goal_ml)}mL today!"
+                response += f"\n You've hit your goal of {int(today_goal_ml)}mL today!"
             
             return response
         return None
@@ -829,10 +744,10 @@ class EnhancedMessageProcessor:
             today_totals = db.get_todays_food_totals(today)
             
             # Format response
-            serving_info = f" ({food_info['serving_size']})" if 'serving_size' in food_info else ""
+            serving_info = f"({food_info['serving_size']})" if 'serving_size' in food_info else ""
             food_display = food_name.replace('_', ' ').title() if food_name else "food"
-            response = f"🍽️ Logged {food_display}{serving_info}\n"
-            response += f"📊 This meal: {calories} cal, {protein}g protein, {carbs}g carbs, {fat}g fat\n"
+            response = f"Logged {food_display}{serving_info}\n"
+            response += f"This meal: {calories} cal, {protein}g protein, {carbs}g carbs, {fat}g fat\n"
             response += f"📈 Total today: {int(today_totals['calories'])} cal, {today_totals['protein']:.1f}g protein, {today_totals['carbs']:.1f}g carbs, {today_totals['fat']:.1f}g fat"
             return response
         
@@ -892,7 +807,7 @@ class EnhancedMessageProcessor:
                     detail = f"{ex['name']} {ex['weight']}"
                 exercise_details.append(detail)
             
-            response = f"💪 Logged {workout_data['muscle_group']} workout: {', '.join(exercise_details)}"
+            response = f"Logged {workout_data['muscle_group']} workout: {', '.join(exercise_details)}"
             return response
         
         return None
@@ -918,7 +833,7 @@ class EnhancedMessageProcessor:
         if tasks:
             task = tasks[0]
             self.add_todo(task)
-            return f"✅ Added to todo list: {task}"
+            return f"Added to todo list: {task}"
         return None
     
     def add_todo(self, task):
@@ -936,9 +851,9 @@ class EnhancedMessageProcessor:
             time_str = reminder_data['due_date'].strftime("%I:%M %p")
             date_str = reminder_data['due_date'].strftime("%B %d")
             
-            response = f"⏰ Reminder set: {reminder_data['content']} on {date_str} at {time_str}"
+            response = f"Reminder set: {reminder_data['content']} on {date_str} at {time_str}"
             if reminder_data.get('priority') == 'high':
-                response += " (URGENT)"
+                response += "(URGENT)"
             return response
         
         return None
@@ -974,7 +889,7 @@ class EnhancedMessageProcessor:
                 date_display = date_obj.strftime("%B %d")
             
             goal_liters = goal_ml / 1000
-            response = f"💧 Water goal set for {date_display}: {goal_liters}L ({int(goal_ml)}mL)"
+            response = f"Water goal set for {date_display}: {goal_liters}L ({int(goal_ml)}mL)"
             return response
         
         return None
@@ -995,33 +910,33 @@ class EnhancedMessageProcessor:
             
             if water_total_ml > 0:
                 bottles = round(water_total_ml / config.WATER_BOTTLE_SIZE_ML, 1)
-                response_parts.append(f"💧 Water: {water_liters:.1f}L ({int(water_total_ml)}mL, ~{bottles} bottles)")
+                response_parts.append(f"Water: {water_liters:.1f}L ({int(water_total_ml)}mL, ~{bottles} bottles)")
                 if water_total_ml >= water_goal_ml:
-                    response_parts.append(f"   ✅ Goal reached! ({goal_liters:.1f}L)")
+                    response_parts.append(f"    Goal reached! ({goal_liters:.1f}L)")
                 else:
                     remaining = water_goal_ml - water_total_ml
                     remaining_liters = remaining / 1000
                     bottles_needed = int(round(remaining / config.WATER_BOTTLE_SIZE_ML))
-                    response_parts.append(f"   📊 {remaining_liters:.1f}L remaining ({bottles_needed} bottles) to reach {goal_liters:.1f}L goal")
+                    response_parts.append(f"    {remaining_liters:.1f}L remaining ({bottles_needed} bottles) to reach {goal_liters:.1f}L goal")
             else:
-                response_parts.append(f"💧 Water: 0L (goal: {goal_liters:.1f}L)")
+                response_parts.append(f"Water: 0L (goal: {goal_liters:.1f}L)")
         
         # Get food stats if requested
         if query_data.get('food') or query_data.get('all'):
             food_totals = db.get_todays_food_totals(today)
             if food_totals['calories'] > 0:
-                response_parts.append(f"🍽️ Food: {int(food_totals['calories'])} cal")
-                response_parts.append(f"   📊 {food_totals['protein']:.1f}g protein, {food_totals['carbs']:.1f}g carbs, {food_totals['fat']:.1f}g fat")
+                response_parts.append(f"Food: {int(food_totals['calories'])} cal")
+                response_parts.append(f"{food_totals['protein']:.1f}g protein, {food_totals['carbs']:.1f}g carbs, {food_totals['fat']:.1f}g fat")
             else:
-                response_parts.append(f"🍽️ Food: No meals logged today")
+                response_parts.append(f"Food: No meals logged today")
         
         # Get gym stats if requested
         if query_data.get('gym') or query_data.get('all'):
             gym_logs = db.get_gym_logs(today)
             if gym_logs:
-                response_parts.append(f"💪 Gym: {len(gym_logs)} workout{'s' if len(gym_logs) != 1 else ''} logged today")
+                response_parts.append(f"Gym: {len(gym_logs)} workout{'s' if len(gym_logs) != 1 else ''} logged today")
             else:
-                response_parts.append(f"💪 Gym: No workouts logged today")
+                response_parts.append(f"Gym: No workouts logged today")
         
         # Get todos if requested
         if query_data.get('todos') or query_data.get('all'):
@@ -1051,20 +966,20 @@ class EnhancedMessageProcessor:
                         try:
                             due_date = datetime.fromisoformat(due_date_str).date()
                             if due_date == today_date:
-                                todo_list.append(f"   {i}. {content} (today)")
+                                todo_list.append(f"  {i}. {content} (today)")
                             else:
-                                todo_list.append(f"   {i}. {content}")
+                                todo_list.append(f"  {i}. {content}")
                         except:
-                            todo_list.append(f"   {i}. {content}")
+                            todo_list.append(f"  {i}. {content}")
                     else:
-                        todo_list.append(f"   {i}. {content}")
+                        todo_list.append(f"  {i}. {content}")
                 
-                response_parts.append(f"📋 Todos ({len(today_todos)}):")
+                response_parts.append(f"Todos ({len(today_todos)}):")
                 response_parts.extend(todo_list)
                 if len(today_todos) > 10:
                     response_parts.append(f"   ... and {len(today_todos) - 10} more")
             else:
-                response_parts.append(f"📋 Todos: No todos for today")
+                response_parts.append(f"Todos: No todos for today")
         
         # Get reminders if requested
         if query_data.get('reminders') or query_data.get('all'):
@@ -1098,20 +1013,20 @@ class EnhancedMessageProcessor:
                             date_str = due_date.strftime("%B %d")
                             
                             if due_date.date() == today_date:
-                                reminder_list.append(f"   {i}. {content} at {time_str}")
+                                reminder_list.append(f"  {i}. {content} at {time_str}")
                             else:
-                                reminder_list.append(f"   {i}. {content} on {date_str} at {time_str}")
+                                reminder_list.append(f"  {i}. {content} on {date_str} at {time_str}")
                         except:
-                            reminder_list.append(f"   {i}. {content}")
+                            reminder_list.append(f"  {i}. {content}")
                     else:
-                        reminder_list.append(f"   {i}. {content}")
+                        reminder_list.append(f"  {i}. {content}")
                 
-                response_parts.append(f"⏰ Reminders ({len(today_reminders)}):")
+                response_parts.append(f"Reminders ({len(today_reminders)}):")
                 response_parts.extend(reminder_list)
                 if len(today_reminders) > 10:
-                    response_parts.append(f"   ... and {len(today_reminders) - 10} more")
+                    response_parts.append(f"  ... and {len(today_reminders) - 10} more")
             else:
-                response_parts.append(f"⏰ Reminders: No reminders for today")
+                response_parts.append(f"Reminders: No reminders for today")
         
         # Get calendar events if requested (and calendar service is available)
         # Import calendar_service from global scope
@@ -1123,28 +1038,28 @@ class EnhancedMessageProcessor:
                     event_list = []
                     for i, event in enumerate(calendar_events[:10], 1):  # Limit to 10
                         formatted = calendar_service.format_event_for_display(event)
-                        event_list.append(f"   {i}. {formatted}")
+                        event_list.append(f"  {i}. {formatted}")
                     
-                    response_parts.append(f"📅 Calendar Events ({len(calendar_events)}):")
+                    response_parts.append(f"Calendar Events ({len(calendar_events)}):")
                     response_parts.extend(event_list)
                     if len(calendar_events) > 10:
-                        response_parts.append(f"   ... and {len(calendar_events) - 10} more")
+                        response_parts.append(f"  ... and {len(calendar_events) - 10} more")
                 else:
-                    response_parts.append(f"📅 Calendar: No events scheduled for today")
+                    response_parts.append(f"Calendar: No events scheduled for today")
             except Exception as e:
-                print(f"⚠️  Error fetching calendar events: {e}")
+                print(f" Error fetching calendar events: {e}")
                 # Don't add calendar section if there's an error
         
         if response_parts:
             # Determine header based on what's being shown
             if query_data.get('todos') and not query_data.get('all') and not query_data.get('food') and not query_data.get('water') and not query_data.get('gym'):
-                return "📋 Your Todos:\n" + "\n".join(response_parts)
+                return "Your Todos:\n" + "\n".join(response_parts)
             elif query_data.get('reminders') and not query_data.get('all') and not query_data.get('food') and not query_data.get('water') and not query_data.get('gym') and not query_data.get('todos'):
-                return "⏰ Your Reminders:\n" + "\n".join(response_parts)
+                return "Your Reminders:\n" + "\n".join(response_parts)
             else:
-                return "📊 Today's Stats:\n" + "\n".join(response_parts)
+                return "Today's Stats:\n" + "\n".join(response_parts)
         
-        return "📊 No stats available for today"
+        return "No stats available for today"
     
     def handle_completion(self, message, entities):
         """Handle task/reminder completions"""
@@ -1154,10 +1069,10 @@ class EnhancedMessageProcessor:
             item_type = completed_item.get('type', 'task')
             content = completed_item.get('content', 'item')
             if item_type == 'reminder':
-                return f"✅ Reminder completed: {content}"
+                return f"Reminder completed: {content}"
             else:
-                return f"✅ Todo completed: {content}"
-        return "✅ I couldn't find a matching task or reminder to mark as complete."
+                return f"Todo completed: {content}"
+        return "I couldn't find a matching task or reminder to mark as complete."
     
     def mark_task_complete(self, message):
         """Mark task/reminder as complete by matching message content"""
@@ -1385,24 +1300,24 @@ class EnhancedMessageProcessor:
                         item_id = int(item.get('id', 0))
                         db.update_reminder_todo(item_id, completed=True)
                         item_type = item.get('type', 'task')
-                        return f"✅ {item_type.title()} completed: {item_content}"
+                        return f"{item_type.title()} completed: {item_content}"
             
             # Fallback to regular completion
             return self.handle_completion(original_message, {})
         
         elif action_type == 'gym_workout':
             # Try to parse as gym workout
-            return self.handle_gym(original_message, {}) or "✅ Logged as workout"
+            return self.handle_gym(original_message, {}) or "Logged as workout"
         
         elif action_type == 'food_logging':
             # Try to parse as food
-            return self.handle_food(original_message, {}) or "✅ Logged as meal"
+            return self.handle_food(original_message, {}) or "Logged as meal"
         
         elif action_type == 'water_logging':
             # Try to parse as water
-            return self.handle_water(original_message, {}) or "✅ Logged as water"
+            return self.handle_water(original_message, {}) or "Logged as water"
         
-        return "✅ Got it!"
+        return "Got it!"
     
     def handle_what_should_i_do(self, message, entities):
         """Handle 'What should I do now?' queries - synthesize context and suggest actions"""
@@ -1419,7 +1334,7 @@ class EnhancedMessageProcessor:
             remaining = water_goal - water_total
             bottles_needed = int(round(remaining / config.WATER_BOTTLE_SIZE_ML))
             if bottles_needed > 0:
-                suggestions.append(f"💧 Drink water ({bottles_needed} bottle{'s' if bottles_needed > 1 else ''} to reach goal)")
+                suggestions.append(f"Drink water ({bottles_needed} bottle{'s' if bottles_needed > 1 else ''} to reach goal)")
         
         # Check for incomplete todos/reminders
         todos = db.get_reminders_todos(type='todo', completed=False)
@@ -1455,7 +1370,7 @@ class EnhancedMessageProcessor:
         if today_todos:
             for todo in today_todos[:2]:
                 content = todo.get('content', '')[:40]
-                suggestions.append(f"📋 {content}")
+                suggestions.append(f"{content}")
         
         # Add upcoming reminders (if within next 2 hours)
         if today_reminders:
@@ -1468,34 +1383,32 @@ class EnhancedMessageProcessor:
                         if 0 <= hours_until <= 2:
                             content = reminder.get('content', '')[:40]
                             time_str = due_date.strftime("%I:%M %p")
-                            suggestions.append(f"⏰ {content} (at {time_str})")
+                            suggestions.append(f"{content} (at {time_str})")
                     except:
                         pass
         
         # Check food intake (if it's meal time and no food logged)
         food_totals = db.get_todays_food_totals(today)
         if food_totals['calories'] == 0:
-            if 7 <= current_hour <= 9:  # Breakfast time
-                suggestions.append("🍽️ Log breakfast")
-            elif 12 <= current_hour <= 14:  # Lunch time
-                suggestions.append("🍽️ Log lunch")
+            if 12 <= current_hour <= 14:  # Lunch time
+                suggestions.append("Log lunch")
             elif 18 <= current_hour <= 20:  # Dinner time
-                suggestions.append("🍽️ Log dinner")
+                suggestions.append("Log dinner")
         
         # Check gym (if afternoon and no workout today)
-        if current_hour >= 14:
+        if current_hour >= 17:
             gym_logs = db.get_gym_logs(today)
             if not gym_logs:
-                suggestions.append("💪 Consider a workout")
+                suggestions.append("Consider a workout")
         
         # Format response
         if suggestions:
-            response = "💡 Here's what you could do:\n\n"
+            response = "Here's what you could do:\n\n"
             for i, suggestion in enumerate(suggestions[:5], 1):  # Limit to 5
                 response += f"{i}. {suggestion}\n"
             return response
         else:
-            return "✨ You're all caught up! Nothing urgent right now. Great job! 🎉"
+            return "You're all caught up! Nothing urgent right now. Great job!"
     
     def handle_undo_edit(self, message, entities):
         """Handle undo/delete commands for last entries"""
@@ -1520,8 +1433,8 @@ class EnhancedMessageProcessor:
                 fieldnames = ['id', 'timestamp', 'amount_ml', 'amount_oz']
                 db._write_csv(db.water_logs_file, rows, fieldnames)
                 
-                return f"✅ Removed last water entry ({amount_ml}ml)"
-            return "❌ No water entries to remove"
+                return f"Removed last water entry ({amount_ml}ml)"
+            return "No water entries to remove"
         
         elif 'food' in message_lower or 'meal' in message_lower or any(item.lower() != 'water' for item in food_items):
             # Undo last food entry
@@ -1539,8 +1452,8 @@ class EnhancedMessageProcessor:
                              'carbs', 'fat', 'restaurant', 'portion_multiplier']
                 db._write_csv(db.food_logs_file, rows, fieldnames)
                 
-                return f"✅ Removed last food entry: {food_name}"
-            return "❌ No food entries to remove"
+                return f"Removed last food entry: {food_name}"
+            return "No food entries to remove"
         
         elif 'gym' in message_lower or 'workout' in message_lower or 'exercise' in message_lower:
             # Undo last gym entry
@@ -1557,8 +1470,8 @@ class EnhancedMessageProcessor:
                 fieldnames = ['id', 'timestamp', 'exercise', 'sets', 'reps', 'weight', 'notes']
                 db._write_csv(db.gym_logs_file, rows, fieldnames)
                 
-                return f"✅ Removed last gym entry: {exercise}"
-            return "❌ No gym entries to remove"
+                return f"Removed last gym entry: {exercise}"
+            return "No gym entries to remove"
         
         elif 'todo' in message_lower or 'task' in message_lower:
             # Undo last todo
@@ -1575,8 +1488,8 @@ class EnhancedMessageProcessor:
                 fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
                 db._write_csv(db.reminders_todos_file, rows, fieldnames)
                 
-                return f"✅ Removed last todo: {content}"
-            return "❌ No todos to remove"
+                return f"Removed last todo: {content}"
+            return "No todos to remove"
         
         elif 'reminder' in message_lower:
             # Undo last reminder
@@ -1593,8 +1506,8 @@ class EnhancedMessageProcessor:
                 fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
                 db._write_csv(db.reminders_todos_file, rows, fieldnames)
                 
-                return f"✅ Removed last reminder: {content}"
-            return "❌ No reminders to remove"
+                return f"Removed last reminder: {content}"
+            return "No reminders to remove"
         
         # Default: try to undo most recent entry of any type
         # Check water first (most common)
@@ -1633,7 +1546,7 @@ class EnhancedMessageProcessor:
             elif entry_type == 'todo':
                 return self.handle_undo_edit("undo last todo", entities)
         
-        return "❌ No recent entries found to remove"
+        return "No recent entries found to remove"
     
     def handle_reschedule_response(self, message, phone_number):
         """Handle user's response to reschedule options"""
@@ -1656,7 +1569,7 @@ class EnhancedMessageProcessor:
                         db.update_reminder_todo(reminder_id, completed=True)
                         if reminder_id in check_reminder_followups.pending_reschedules:
                             del check_reminder_followups.pending_reschedules[reminder_id]
-                        return f"✅ Great! Marked '{reminder.get('content', '')}' as complete."
+                        return f"Great! Marked '{reminder.get('content', '')}' as complete."
         
         # Check for reschedule selection (1, 2, etc.)
         import re
@@ -1694,7 +1607,7 @@ class EnhancedMessageProcessor:
                         del check_reminder_followups.pending_reschedules[reminder_id]
                         
                         content = reminder.get('content', '')
-                        return f"✅ Rescheduled '{content}' to {selected_option['text']}"
+                        return f"Rescheduled '{content}' to {selected_option['text']}"
         
         # If message is "no" or "skip", just acknowledge
         if any(word in message_lower for word in ['no', 'skip', 'cancel', 'nope']):
@@ -1767,7 +1680,7 @@ class EnhancedMessageProcessor:
             if response:
                 return response
             else:
-                return "✅ Action completed, but I couldn't generate a response."
+                return "Action completed, but I couldn't generate a response."
         
         elif any(confirm in message_lower for confirm in negative_confirmations):
             # User declined, clear pending and ask what they meant
@@ -1819,18 +1732,18 @@ def twilio_webhook():
         print(f"📱 MessageSid: {message_sid}")
             
         if not message_body:
-            print(f"⚠️  Empty message body received")
+            print(f" Empty message body received")
             response = MessagingResponse()
             response.message("I didn't receive a message. Please try again.")
             return str(response), 200
         
         # Process the message
-        print(f"✅ Processing message...")
+        print(f"Processing message...")
         processor = EnhancedMessageProcessor()
         response_text = processor.process_message(message_body, phone_number=from_number)
         
-        print(f"🧠 NLP processing complete:")
-        print(f"   Response: {response_text}")
+        print(f"NLP processing complete:")
+        print(f"  Response: {response_text}")
         
         # Create TwiML response - Twilio will automatically send this back
         response = MessagingResponse()
@@ -1841,16 +1754,16 @@ def twilio_webhook():
                 response_text = response_text[:1500] + "..."
             
             response.message(response_text)
-            print(f"✅ TwiML response created, Twilio will send automatically")
+            print(f"TwiML response created, Twilio will send automatically")
         else:
             response.message("I didn't understand that. Try sending 'help' for available commands.")
-            print(f"⚠️  No response generated, sending fallback")
+            print(f" No response generated, sending fallback")
         print(f"📱 === WEBHOOK PROCESSING COMPLETE ===\n")
         
         return str(response), 200
         
     except Exception as e:
-        print(f"❌ Error processing Twilio webhook: {e}")
+        print(f"Error processing Twilio webhook: {e}")
         import traceback
         traceback.print_exc()
         # Return a TwiML error response
@@ -1886,23 +1799,23 @@ def health_check():
         print(f"\n🏥 === HEALTH CHECK REQUESTED ===")
         
         # Test database connection
-        print(f"🔍 Testing CSV database...")
-        print(f"🔍 Database directory: {config.DATABASE_DIR}")
+        print(f"Testing CSV database...")
+        print(f"Database directory: {config.DATABASE_DIR}")
         
         try:
             stats = db.get_stats()
-            print(f"✅ CSV database access successful")
-            print(f"📊 CSV files: food_logs.csv, water_logs.csv, gym_logs.csv, reminders_todos.csv")
+            print(f"CSV database access successful")
+            print(f"CSV files: food_logs.csv, water_logs.csv, gym_logs.csv, reminders_todos.csv")
             
             food_count = stats['food_logs']
             water_count = stats['water_logs']
             gym_count = stats['gym_logs']
             reminder_count = stats['reminders_todos']
             
-            print(f"✅ Database queries completed successfully")
+            print(f"Database queries completed successfully")
             
         except Exception as db_error:
-            print(f"❌ Database error: {db_error}")
+            print(f"Database error: {db_error}")
             import traceback
             traceback.print_exc()
             return jsonify({
@@ -1912,7 +1825,7 @@ def health_check():
             }), 500
         
         # Get communication service status
-        print(f"🔍 Getting communication service status...")
+        print(f"Getting communication service status...")
         comm_status = communication_service.get_status()
         print(f"📱 Communication status: {comm_status}")
         
@@ -1935,13 +1848,13 @@ def health_check():
             ]
         }
         
-        print(f"✅ Health check completed successfully")
+        print(f"Health check completed successfully")
         print(f"🏥 === HEALTH CHECK COMPLETE ===\n")
         
         return jsonify(response_data)
         
     except Exception as e:
-        print(f"❌ Health check error: {e}")
+        print(f"Health check error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -1999,7 +1912,7 @@ def get_weather_summary():
         else:
             return None
     except Exception as e:
-        print(f"⚠️  Error fetching weather: {e}")
+        print(f" Error fetching weather: {e}")
         return None
 
 def get_streaks():
@@ -2059,7 +1972,7 @@ def get_streaks():
                 current_date -= timedelta(days=1)
         
     except Exception as e:
-        print(f"⚠️  Error calculating streaks: {e}")
+        print(f" Error calculating streaks: {e}")
     
     return streaks
 
@@ -2116,18 +2029,18 @@ def get_daily_quote():
                             return quote_text
                 
             except Exception as e:
-                print(f"⚠️  Error fetching quote (attempt {attempt + 1}): {e}")
+                print(f" Error fetching quote (attempt {attempt + 1}): {e}")
                 if attempt < max_attempts - 1:
                     time.sleep(0.5)  # Brief delay before retry
                 continue
         
         # Fallback: If API fails or all quotes are duplicates, use local fallback
-        print("⚠️  Could not fetch new quote from API, using fallback")
+        print(" Could not fetch new quote from API, using fallback")
         fallback_quotes = [
-            "The only bad workout is the one that didn't happen. 💪",
+            "The only bad workout is the one that didn't happen. ",
             "Progress, not perfection. 🌱",
             "You don't have to be great to start, but you have to start to be great. 🚀",
-            "Your body can do it. It's your mind you need to convince. 🧠",
+            "Your body can do it. It's your mind you need to convince. ",
             "Success is the sum of small efforts repeated day in and day out. 📈"
         ]
         # Use day of year for consistent daily selection if API fails
@@ -2136,7 +2049,7 @@ def get_daily_quote():
         return random.choice(fallback_quotes)
         
     except Exception as e:
-        print(f"⚠️  Error in get_daily_quote: {e}")
+        print(f" Error in get_daily_quote: {e}")
         # Ultimate fallback
         return "Progress, not perfection. 🌱"
 
@@ -2200,7 +2113,7 @@ def get_todays_schedule():
                             'type': 'calendar'
                         })
             except Exception as e:
-                print(f"⚠️  Error fetching calendar events for schedule: {e}")
+                print(f" Error fetching calendar events for schedule: {e}")
         
         # Sort by time (all-day events first, then by time)
         schedule_items.sort(key=lambda x: (
@@ -2210,7 +2123,7 @@ def get_todays_schedule():
         
         return schedule_items
     except Exception as e:
-        print(f"⚠️  Error getting today's schedule: {e}")
+        print(f" Error getting today's schedule: {e}")
         return []
 
 def get_weekly_comparison():
@@ -2261,7 +2174,7 @@ def get_weekly_comparison():
             'water_ml': {'this_week': this_week_water_ml, 'last_week': last_week_water_ml}
         }
     except Exception as e:
-        print(f"⚠️  Error calculating weekly comparison: {e}")
+        print(f"  Error calculating weekly comparison: {e}")
         return None
 
 def get_day_context():
@@ -2271,7 +2184,7 @@ def get_day_context():
     if weekday == 0:
         return "Happy Monday! 🎯"
     elif weekday == 4:
-        return "TGIF! 🎉"
+        return "TGIF! "
     elif weekday >= 5:
         return "Happy Weekend! 🌈"
     else:
@@ -2306,15 +2219,15 @@ def morning_checkin():
         if weekday == 0:  # Monday
             greetings = [
                 "Good morning! Happy Monday! ☀️",
-                "Rise and shine! It's Monday - let's start the week strong! 💪",
+                "Rise and shine! It's Monday - let's start the week strong! ",
                 "Morning! New week, new opportunities! 🚀",
                 "Hey there! Monday motivation - you've got this! 🎯"
             ]
         elif weekday == 4:  # Friday
             greetings = [
-                "Good morning! TGIF! 🎉",
+                "Good morning! TGIF! ",
                 "Rise and shine! It's Friday - almost there! 🌟",
-                "Morning! Friday vibes - finish the week strong! 💪",
+                "Morning! Friday vibes - finish the week strong! ",
                 "Hey! TGIF - let's make it a great day! 🎊"
             ]
         elif weekday >= 5:  # Weekend
@@ -2322,17 +2235,17 @@ def morning_checkin():
                 "Good morning! It's the weekend! 🌈",
                 "Rise and shine! Weekend vibes! ☀️",
                 "Morning! Weekend time - enjoy it! 😊",
-                "Hey! Weekend mode activated! 🎉"
+                "Hey! Weekend mode activated! "
             ]
         else:  # Tuesday-Thursday
             greetings = [
                 "Good morning! ☀️",
                 "Rise and shine! 🌅",
-                "Morning! Let's make today great! 💪",
+                "Morning! Let's make today great! ",
                 "Hey there! Ready to tackle the day? 🚀",
                 "Good morning! Hope you slept well! 😊",
                 "Rise and grind! ☕",
-                "Morning! Time to shine! ✨",
+                "Morning! Time to shine!",
                 "Good morning! Another day, another opportunity! 🌟"
             ]
         
@@ -2367,7 +2280,7 @@ def morning_checkin():
             elif streaks['water'] < 7:
                 streak_messages.append(f"You've hit your water goal for the past {streaks['water']} days!")
             else:
-                streak_messages.append(f"You've hit your water goal for {streaks['water']} days straight - keep it up! 💧")
+                streak_messages.append(f"You've hit your water goal for {streaks['water']} days straight - keep it up! ")
         
         if streaks['food'] > 0:
             if streaks['food'] == 1:
@@ -2375,7 +2288,7 @@ def morning_checkin():
             elif streaks['food'] < 7:
                 streak_messages.append(f"You've logged food for {streaks['food']} days in a row!")
             else:
-                streak_messages.append(f"You're on a {streaks['food']}-day food logging streak! 📊")
+                streak_messages.append(f"You're on a {streaks['food']}-day food logging streak! ")
         
         if streak_messages:
             # Combine related streaks naturally
@@ -2383,15 +2296,15 @@ def morning_checkin():
                 # Combine gym and water streaks in one natural sentence
                 gym_msg = streak_messages[0] if "gym" in streak_messages[0].lower() else [m for m in streak_messages if "gym" in m.lower()][0]
                 water_msg = streak_messages[1] if "water" in streak_messages[1].lower() else [m for m in streak_messages if "water" in m.lower()][0]
-                combined = f"💪 {gym_msg} And {water_msg.lower()}"
+                combined = f"{gym_msg} And {water_msg.lower()}"
                 message_parts.append(combined)
                 if len(streak_messages) > 2:
                     food_msg = [m for m in streak_messages if "food" in m.lower() or "logged" in m.lower()]
                     if food_msg:
-                        message_parts.append(f"📊 {food_msg[0]}")
+                        message_parts.append(f"{food_msg[0]}")
             else:
                 for msg in streak_messages:
-                    emoji = "💪" if "gym" in msg.lower() else "💧" if "water" in msg.lower() else "📊"
+                    emoji = ""if "gym" in msg.lower() else "" if "water" in msg.lower() else ""
                     message_parts.append(f"{emoji} {msg}")
         
         # Add today's schedule
@@ -2399,10 +2312,10 @@ def morning_checkin():
         if todays_schedule:
             if len(todays_schedule) == 1:
                 item = todays_schedule[0]
-                message_parts.append(f"📅 Today: {item['time']} - {item['content']}")
+                message_parts.append(f" Today: {item['time']} - {item['content']}")
             else:
                 has_calendar = any(i.get('type') == 'calendar' for i in todays_schedule)
-                message_parts.append(f"📅 Today: {len(todays_schedule)} {'items' if has_calendar else 'reminders'} scheduled")
+                message_parts.append(f" Today: {len(todays_schedule)} {'items' if has_calendar else 'reminders'} scheduled")
                 # Show first 2 items
                 for item in todays_schedule[:2]:
                     message_parts.append(f"   • {item['time']}: {item['content']}")
@@ -2416,7 +2329,7 @@ def morning_checkin():
         
         if incomplete_items:
             items_text = ', '.join([f"{i+1}) {item}" for i, item in enumerate(incomplete_items)])
-            message_parts.append(f"📋 Unfinished: {items_text}")
+            message_parts.append(f"Unfinished: {items_text}")
         
         # Add gym accountability in natural language
         if last_gym and streaks['gym'] == 0:  # Only show if not on a current streak
@@ -2447,22 +2360,22 @@ def morning_checkin():
                         muscle_group = None
                     
                     if days_since == 1:
-                        message_parts.append(f"💪 You hit {muscle_group if muscle_group else 'the gym'} yesterday - great job!")
+                        message_parts.append(f"You hit {muscle_group if muscle_group else 'the gym'} yesterday - great job!")
                     elif days_since == 2:
                         if muscle_group:
-                            message_parts.append(f"💪 You hit {muscle_group} {days_since} days ago - how about hitting a lift today?")
+                            message_parts.append(f"You hit {muscle_group} {days_since} days ago - how about hitting a lift today?")
                         else:
-                            message_parts.append(f"💪 You worked out {days_since} days ago - time for another session?")
+                            message_parts.append(f"You worked out {days_since} days ago - time for another session?")
                     elif days_since == 3:
                         if muscle_group:
-                            message_parts.append(f"💪 It's been {days_since} days since you hit {muscle_group} - ready to get back at it?")
+                            message_parts.append(f"It's been {days_since} days since you hit {muscle_group} - ready to get back at it?")
                         else:
-                            message_parts.append(f"💪 It's been {days_since} days since your last workout - let's get moving!")
+                            message_parts.append(f"It's been {days_since} days since your last workout - let's get moving!")
                     elif days_since >= 4:
                         if muscle_group:
-                            message_parts.append(f"💪 It's been {days_since} days since you hit {muscle_group} - time to get back in the gym!")
+                            message_parts.append(f"It's been {days_since} days since you hit {muscle_group} - time to get back in the gym!")
                         else:
-                            message_parts.append(f"💪 It's been {days_since} days since your last workout - let's get back on track!")
+                            message_parts.append(f"It's been {days_since} days since your last workout - let's get back on track!")
                 except:
                     pass
         
@@ -2471,7 +2384,7 @@ def morning_checkin():
         message_parts.append(f"\n💭 {quote}")
         
         # Always add water/outside reminder
-        message_parts.append("💧 Don't forget to drink water & keep smiling! 😁")
+        message_parts.append("Don't forget to drink water & keep smiling! 😁")
         
         # Send morning check-in via communication service
         user_phone = config.YOUR_PHONE_NUMBER
@@ -2479,7 +2392,7 @@ def morning_checkin():
         if user_phone:
             communication_service.send_response(message, user_phone)
         else:
-            print(f"⚠️  No phone number configured for morning check-in")
+            print(f" No phone number configured for morning check-in")
         
     except Exception as e:
         print(f"Error in morning check-in: {e}")
@@ -2586,7 +2499,7 @@ if __name__ == '__main__':
     # Start the scheduler (only if not running tests)
     if os.getenv('RUNNING_TESTS') != '1':
         scheduler.start()
-        print("⏰ Background scheduler started")
+        print("Background scheduler started")
     
     # Start the Flask app (only if not running tests)
     if os.getenv('RUNNING_TESTS') != '1':

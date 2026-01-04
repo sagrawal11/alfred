@@ -32,7 +32,7 @@ class CommunicationService:
             from twilio.rest import Client as twilio_client
             
             if not self.config.TWILIO_ACCOUNT_SID or not self.config.TWILIO_AUTH_TOKEN:
-                print("⚠️  Twilio credentials not configured. Scheduled SMS functionality disabled.")
+                print("  Twilio credentials not configured. Scheduled SMS functionality disabled.")
                 self.twilio_client = None
                 return
             
@@ -40,13 +40,13 @@ class CommunicationService:
                 self.config.TWILIO_ACCOUNT_SID,
                 self.config.TWILIO_AUTH_TOKEN
             )
-            print("✅ Twilio REST client initialized successfully (for scheduled messages)")
+            print(" Twilio REST client initialized successfully (for scheduled messages)")
             
         except ImportError:
-            print("⚠️  Twilio package not installed. Scheduled SMS functionality disabled.")
+            print("  Twilio package not installed. Scheduled SMS functionality disabled.")
             self.twilio_client = None
         except Exception as e:
-            print(f"❌ Failed to initialize Twilio: {e}")
+            print(f" Failed to initialize Twilio: {e}")
             self.twilio_client = None
     
     def send_response(self, message: str, phone_number: Optional[str] = None) -> Dict[str, Any]:
@@ -111,7 +111,7 @@ class CommunicationService:
             }
             
         except Exception as e:
-            print(f"❌ SMS failed: {e}")
+            print(f" SMS failed: {e}")
             return {
                 'success': False,
                 'method': 'sms',

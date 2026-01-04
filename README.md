@@ -1,260 +1,146 @@
-# 📱 SMS Assistant - Personal SMS Bot
+# SMS Assistant
 
-A personal SMS assistant built with Flask, Twilio, and NLP that helps you track food, water, gym workouts, reminders, and todos via text messages.
+**Your personal productivity assistant that lives in your text messages.** No apps to open, no dashboards to check—just text what you did, what you need, or what you want to know. Powered by advanced NLP and designed to understand you, not just respond to commands.
 
-## 🎯 Features
+## Why This Exists
 
-- **Water Logging**: "drank a bottle" → logs water intake with daily totals
-- **Food Logging**: "ate chicken sandwich" → logs food with macros and daily totals
-- **Gym Workouts**: "did bench press 135x5" → logs workout
-- **Reminders**: "remind me to call mom at 3pm" → sets reminder
-- **Todos**: "todo buy groceries" → adds to todo list
-- **Stats Queries**: "how much have I eaten" → shows daily totals
-- **Task Completion**: "called mom" → marks tasks/reminders as complete
-- **Google Calendar Integration**: Automatically shows calendar events in queries and morning check-ins
-- **Scheduled Reminders**: Automatic SMS reminders at set times
-- **Morning Check-ins**: Daily morning SMS with weather, streaks, quotes, schedule, and calendar events
+Most productivity tools require you to adapt to them. This one adapts to you. Text naturally, make mistakes, be vague—it figures it out. After a long workout, just text "done" and it'll ask what you meant. Forget to respond to a reminder? It'll check back with you. Your todo list getting stale? It'll help you clean it up. This isn't just logging—it's an intelligent system that actually helps you stay on track.
 
-## 🚀 Quick Start
+## Architecture
 
-### Prerequisites
-
-- Python 3.8+
-- Twilio account (free trial available)
-- ngrok (for local testing)
-
-### Installation
-
-1. **Clone and setup:**
-```bash
-cd sms_assistant
-./install.sh  # Creates venv and installs dependencies
-source venv/bin/activate
+```
+┌─────────────┐
+│   Twilio    │
+│   SMS API   │
+└──────┬──────┘
+       │
+       │ HTTP POST (TwiML)
+       ▼
+┌─────────────────────────────────────┐
+│         Flask Application           │
+│  ┌───────────────────────────────┐ │
+│  │  Message Processor             │ │
+│  │  - Intent Classification       │ │
+│  │  - Entity Extraction           │ │
+│  └───────────┬─────────────────────┘ │
+│              │                        │
+│  ┌───────────▼─────────────────────┐ │
+│  │  Gemini NLP Processor           │ │
+│  │  (Gemma-3-12b-it)               │ │
+│  └───────────┬─────────────────────┘ │
+│              │                        │
+│  ┌───────────▼─────────────────────┐ │
+│  │  CSV Database                   │ │
+│  │  - Food logs                    │ │
+│  │  - Water logs                   │ │
+│  │  - Gym logs                     │ │
+│  │  - Reminders/Todos              │ │
+│  └─────────────────────────────────┘ │
+│                                       │
+│  ┌─────────────────────────────────┐ │
+│  │  Background Scheduler           │ │
+│  │  - Reminder checks              │ │
+│  │  - Follow-ups                   │ │
+│  │  - Weekly digests               │ │
+│  │  - Gentle nudges                │ │
+│  └─────────────────────────────────┘ │
+└───────────────────────────────────────┘
+       │
+       │ (optional)
+       ▼
+┌─────────────┐
+│   Google    │
+│  Calendar   │
+└─────────────┘
 ```
 
-2. **Configure environment:**
-```bash
-cp config/env_template.txt .env
-# Edit .env with your Twilio credentials
-```
+## Core Features
 
-3. **Get Twilio credentials:**
-   - Sign up at [twilio.com](https://www.twilio.com) (free $15.50 credit)
-   - Get Account SID and Auth Token from Console Dashboard
-   - Buy a **toll-free number** (~$2-3/month) - No A2P 10DLC registration required!
+### Natural Language Everything
 
-4. **Set up webhook:**
-   - In Twilio Console → Phone Numbers → Your Number
-   - Set "A message comes in" to: `https://your-url.com/webhook/twilio`
-   - For local testing, use ngrok: `ngrok http 5001`
+Forget rigid commands. Text "drank a bottle" or "had a quesadilla" or "did bench press 135 for 5" and it understands. The system uses Google's Gemini API to parse intent and extract entities, so you can phrase things your way. It learns your patterns and gets smarter over time.
 
-5. **Run the bot:**
-```bash
-python app.py
-```
+### Smart Context Awareness
 
-## 📋 Environment Variables
+Ask "what should I do now?" and it synthesizes everything: your incomplete todos, upcoming calendar events, water intake status, meal timing, and time of day to suggest what actually makes sense right now. It's like having a personal assistant that actually knows your situation.
 
-Create a `.env` file with:
+### "What Just Happened?" Mode
 
-```bash
-# Twilio Configuration
-TWILIO_ACCOUNT_SID=your_account_sid_here
-TWILIO_AUTH_TOKEN=your_auth_token_here
-TWILIO_PHONE_NUMBER=+1234567890
+Text "just finished" or "done" when you're exhausted, and instead of guessing, it shows you a numbered list of likely interpretations based on your recent activity. Pick a number. Done. This feature alone saves mental energy when you're drained after a workout or late-night session.
 
-# Your phone number (for scheduled reminders)
-YOUR_PHONE_NUMBER=+1234567890
+### Intelligent Reminder System
 
-# Communication Mode
-COMMUNICATION_MODE=sms
+Reminders don't just fire and forget. If you don't respond, the system checks back with a gentle follow-up. Missed a reminder? It proactively suggests rescheduling with quick options. The system treats reminders as open loops that deserve closure, not notifications to ignore.
 
-# App Settings
-MORNING_CHECKIN_HOUR=8
-EVENING_REMINDER_HOUR=20
+### Task Decay & Cleanup
 
-# Water Bottle Size (milliliters)
-# Default: 500ml (standard water bottle)
-WATER_BOTTLE_SIZE_ML=500
+Your todo list won't become a forgotten archive. The system periodically reviews stale tasks and asks if they're still relevant. Keep it, reschedule it, or delete it—your choice. This keeps your task list meaningful and prevents silent clutter buildup.
 
-# Google Gemini API (for NLP processing)
-GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
+### Weekly Digest
 
-# Google Calendar API (optional - for calendar integration)
-# Get these from Google Cloud Console after OAuth 2.0 setup
-GOOGLE_CLIENT_ID=your_google_client_id_here
-GOOGLE_CLIENT_SECRET=your_google_client_secret_here
-GOOGLE_REFRESH_TOKEN=your_google_refresh_token_here
-GOOGLE_REDIRECT_URI=http://localhost:5001/auth/google/callback
+Every week, get a compact summary of your behavior: water averages, gym frequency, food patterns, task completion rates. Skimmable in 30 seconds, insightful without dashboards. Passive reflection that builds self-awareness with zero effort.
 
-# Weather API (optional - for morning check-in)
-WEATHER_API_KEY=your_openweathermap_api_key_here
-WEATHER_LOCATION=Durham,NC,US
+### Gentle Nudges
 
-# Default Daily Water Goal (milliliters)
-DEFAULT_WATER_GOAL_ML=4000
-```
+Instead of "Drink water now," you get "You're one bottle behind your usual pace today." Context-aware nudges that reference your personal patterns, not absolute goals. They're informative, non-judgmental, and harder to ignore because they feel helpful, not demanding.
 
-## 💰 Cost
+### Undo & Edit
 
-- **Toll-Free Number**: ~$2-3/month (no A2P 10DLC registration needed!)
-- **SMS**: $0.0075 per message
-- **Estimated monthly** (300-600 messages): $4-7/month
-- **Trial account**: $15.50 free credit (~2,000 SMS)
-- **Why toll-free?** Cheaper than local + A2P 10DLC fees ($8 registration + $1.50/month)
+Made a mistake? Text "undo last water" or "delete last food" and it's gone. No hunting through files or reissuing complex commands. This makes logging feel safe—you can always fix it later, which encourages more consistent use.
 
-## 📱 How It Works
+### Google Calendar Integration
 
-### Incoming SMS (TwiML)
-1. User texts your Twilio number
-2. Twilio sends POST to `/webhook/twilio`
-3. Bot processes message with NLP
-4. Returns TwiML XML response
-5. Twilio automatically sends SMS reply
+Optional but powerful. The system reads your calendar and shows events alongside reminders and todos. Ask "what do I have today?" and get everything in one place. Schedule awareness without switching apps.
 
-### Scheduled Reminders (REST API)
-1. Background scheduler checks reminders every minute
-2. Uses Twilio REST API to send proactive SMS
-3. Requires `YOUR_PHONE_NUMBER` in config
+### Custom Food Database
 
-## 🧪 Testing
+Log meals with automatic macro tracking from your custom food database. Same food from different restaurants? Different macros. The system handles portion multipliers, restaurant-specific entries, and learns your eating patterns.
 
-**See `TESTING_GUIDE.md` for complete testing instructions.**
+## What Makes This Different
 
-### Local Testing with ngrok
+**It's forgiving.** Make mistakes, be vague, forget to respond—the system handles it gracefully.
 
-1. **Start the app:**
-```bash
-python app.py
-```
+**It's proactive.** It doesn't just log what you tell it; it follows up, suggests, and helps you stay on track.
 
-2. **Start ngrok:**
-```bash
-ngrok http 5001
-```
+**It's intelligent.** Uses advanced NLP to understand natural language, not just parse commands.
 
-3. **Update Twilio webhook:**
-   - Copy ngrok HTTPS URL (e.g., `https://abc123.ngrok.io`)
-   - Set webhook to: `https://abc123.ngrok.io/webhook/twilio`
+**It's context-aware.** Suggestions and responses consider your current situation, not just your data.
 
-4. **Test:**
-   - Text your Twilio number: "Hello"
-   - Should receive a response
+**It's low-friction.** Everything happens over SMS. No apps, no dashboards, no extra steps.
 
-### Health Check
+**It learns.** The system adapts to your patterns and gets better at understanding you over time.
 
-```bash
-curl http://localhost:5001/health
-```
+## Quick Examples
 
-## 🚀 Deployment (Render)
+**Logging:**
+- `"drank a bottle"` → Logs water, shows daily total and goal progress
+- `"ate sazon quesadilla"` → Logs food with macros from your database
+- `"did bench press 135x5"` → Logs workout with all details
 
-**Cost**: $7/month (Starter plan - required for 24/7 operation)
+**Tasks:**
+- `"remind me to call mom at 3pm"` → Sets time-based reminder
+- `"todo buy groceries"` → Adds to your list
+- `"called mom"` → Intelligently matches and completes the task
 
-1. **Create Render account** at [render.com](https://render.com)
+**Queries:**
+- `"how much have I eaten"` → Daily food totals with macros
+- `"what do I have to do today"` → Todos, reminders, and calendar events
+- `"what should I do now"` → Context-aware suggestions based on your situation
 
-2. **New Web Service:**
-   - Connect GitHub repository
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `python app.py`
-   - **Plan: Starter** ($7/month) - ⚠️ Free tier sleeps (not suitable for webhooks)
+**Smart Features:**
+- `"just finished"` → Shows numbered options of what you might mean
+- `"undo last water"` → Removes last entry instantly
+- Weekly digest sent automatically every Monday
 
-3. **Set Environment Variables:**
-   - Add all variables from `.env` file (see `DEPLOYMENT.md` for list)
+## Technical Stack
 
-4. **Update Twilio Webhook:**
-   - Set to: `https://your-app.onrender.com/webhook/twilio`
+- **Flask** - Web framework for Twilio webhooks
+- **Twilio** - SMS API for messaging
+- **Google Gemini API (Gemma-3-12b-it)** - Natural language processing
+- **CSV Database** - Simple, portable, human-readable storage
+- **APScheduler** - Background task scheduling
+- **Google Calendar API** - Calendar integration
 
-5. **Deploy:**
-   - Render will build and deploy automatically
-   - Check logs for any errors
+## License
 
-**See `docs/DEPLOYMENT_GUIDE.md` for detailed instructions.**
-
-## 📊 Database
-
-The bot uses **CSV files** to store all data (simple, portable, human-readable):
-- `data/logs/food_logs.csv` - Food logs with macros
-- `data/logs/water_logs.csv` - Water intake logs
-- `data/logs/gym_logs.csv` - Gym workout logs
-- `data/logs/reminders_todos.csv` - Reminders and todos
-
-**Benefits:**
-- ✅ Easy to view/edit in Excel, Google Sheets, or any text editor
-- ✅ No database dependencies
-- ✅ Portable and simple
-- ✅ CSV files are created automatically on first use
-
-**Food Database:**
-- Edit `data/wu_foods.json` to add your custom foods with macros
-- Foods are organized by restaurant (e.g., `sazon`, `krafthouse`, `gsoy`)
-- Same food from different restaurants can have different macros
-- See `data/FOOD_DATABASE_GUIDE.md` for detailed instructions
-
-**Google Calendar Integration (Optional):**
-- Connects to your Google Calendar to show events in queries and morning check-ins
-- Requires OAuth 2.0 setup in Google Cloud Console
-- Calendar events appear alongside reminders and todos
-- Read-only access - app can only view, not modify your calendar
-
-## 🔧 Troubleshooting
-
-### "Twilio client not initialized"
-- Check `.env` file has correct credentials
-- Verify Account SID and Auth Token
-- Ensure phone number is in E.164 format (+1XXXXXXXXXX)
-
-### "Webhook not receiving messages"
-- Verify webhook URL in Twilio Console
-- Check app is accessible (use ngrok for local)
-- Test webhook endpoint manually
-
-### "SMS not sending"
-- Check account has credits
-- Verify phone number format
-- Check Twilio Console logs
-
-### "Google Calendar service not available"
-- Verify all Google Calendar credentials are set in `.env`
-- Check that refresh token is valid (may need to re-authenticate)
-- Ensure OAuth consent screen is configured correctly
-- Verify scope matches: `calendar.events.owned.readonly`
-
-## 📝 Example Commands
-
-### Logging
-- `"drank a bottle"` → Logs water with daily total and goal progress
-- `"ate sazon quesedilla"` → Logs food with macros from sazon restaurant
-- `"ate krafthouse quesedilla"` → Logs same food but different macros from krafthouse
-- `"did bench press 135x5"` → Logs workout
-
-### Tasks & Reminders
-- `"remind me to call mom at 5pm tomorrow"` → Sets reminder
-- `"todo buy groceries"` → Adds todo
-- `"called mom"` → Marks task/reminder as complete
-
-### Queries
-- `"how much have I eaten"` → Shows daily food totals
-- `"how much water have I drank"` → Shows daily water total and goal progress
-- `"what do I have to do today"` → Shows todos, reminders, and calendar events
-- `"what's on my to do list"` → Shows todos
-- `"do I have any reminders"` → Shows reminders
-
-### Settings
-- `"my water goal for tomorrow is 5L"` → Sets custom daily water goal
-
-## 🎉 Success Indicators
-
-✅ App starts without errors  
-✅ Health endpoint responds  
-✅ Twilio webhook receives messages  
-✅ SMS responses sent automatically  
-✅ Scheduled reminders work  
-✅ Google Calendar service initialized (if configured)  
-✅ Morning check-ins include weather, streaks, and calendar events  
-
----
-
-**Need help?** Check [Twilio docs](https://www.twilio.com/docs) or open an issue!
-
+See LICENSE file for details.

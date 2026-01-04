@@ -29,37 +29,27 @@ class GeminiNLPProcessor:
                        Gemma models: 'gemma-3-1b-it', 'gemma-3-4b-it', 'gemma-3-12b-it', 'gemma-3-27b-it'
                        Note: Different models have separate quota limits!
         """
-        print("🧠 Initializing Gemini NLP Processor...")
-        
-        # Get API key from config
         api_key = os.getenv('GEMINI_API_KEY', '')
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         
-        # Get model name from parameter, env var, or default
         self.model_name = model_name or os.getenv('GEMINI_MODEL', 'gemma-3-12b-it')
         
-        # Configure Gemini - use new SDK if available
         if NEW_SDK:
             self.client = google_genai.Client(api_key=api_key)
-            print(f"✅ Gemini client loaded (new SDK - {self.model_name})")
+            print(f"Gemini client loaded (new SDK - {self.model_name})")
         else:
             genai.configure(api_key=api_key)
             self.model = genai.GenerativeModel(self.model_name)
-            print(f"✅ Gemini model loaded (old SDK - {self.model_name})")
+            print(f"Gemini model loaded (old SDK - {self.model_name})")
         
-        # Rate limiting: Different models have different quotas
-        # Gemma models: 30 requests/min, 14.4k requests/day
-        # Gemini models: 5 requests/min, 20 requests/day (free tier)
         self.last_request_time = 0
         if 'gemma' in self.model_name.lower():
-            # Gemma: 30 requests per minute = 2 seconds between requests
             self.min_request_interval = 2
-            print(f"⚡ Using Gemma rate limits: 30 req/min, 14.4k req/day")
+            print(f"Using Gemma rate limits: 30 req/min, 14.4k req/day")
         else:
-            # Gemini free tier: 5 requests per minute = 12 seconds between requests
             self.min_request_interval = 12
-            print(f"⚡ Using Gemini rate limits: 5 req/min, 20 req/day (free tier)")
+            print(f"Using Gemini rate limits: 5 req/min, 20 req/day (free tier)")
         
         # Load food database and flatten nested structure
         raw_food_db = food_db or self._load_food_database()
@@ -89,7 +79,7 @@ class GeminiNLPProcessor:
 
 Extract structured information from user messages. Be accurate and handle variations in phrasing."""
         
-        print("🧠 Gemini NLP Processor ready!")
+        print("Gemini NLP Processor ready")
     
     def _rate_limit(self):
         """Enforce rate limiting for free tier (5 requests per minute)"""
@@ -97,7 +87,7 @@ Extract structured information from user messages. Be accurate and handle variat
         time_since_last = current_time - self.last_request_time
         if time_since_last < self.min_request_interval:
             sleep_time = self.min_request_interval - time_since_last
-            print(f"⏳ Rate limiting: waiting {sleep_time:.1f}s...")
+            print(f"Rate limiting: waiting {sleep_time:.1f}s...")
             time.sleep(sleep_time)
         self.last_request_time = time.time()
     
@@ -149,7 +139,7 @@ Extract structured information from user messages. Be accurate and handle variat
             with open(Config.FOOD_DATABASE_PATH, 'r') as f:
                 return json.load(f)
         except FileNotFoundError:
-            print("⚠️  Custom food database not found, using empty DB")
+            print("  Custom food database not found, using empty DB")
             return {}
     
     def _load_snacks_database(self):
@@ -158,10 +148,10 @@ Extract structured information from user messages. Be accurate and handle variat
             from config import Config
             with open(Config.SNACKS_DATABASE_PATH, 'r') as f:
                 snacks_db = json.load(f)
-                print("✅ Snacks database loaded")
+                print(" Snacks database loaded")
                 return snacks_db
         except FileNotFoundError:
-            print("⚠️  Snacks database not found, skipping")
+            print("  Snacks database not found, skipping")
             return {}
     
     def _flatten_food_database(self, raw_db):
@@ -208,7 +198,7 @@ Extract structured information from user messages. Be accurate and handle variat
             with open(Config.GYM_DATABASE_PATH, 'r') as f:
                 return json.load(f)
         except FileNotFoundError:
-            print("⚠️  Gym workout database not found, using empty DB")
+            print("  Gym workout database not found, using empty DB")
             return {}
     
     def _flatten_gym_database(self, raw_db):
@@ -302,7 +292,7 @@ Respond with ONLY the intent name, nothing else."""
                         return valid_intent
                 return 'unknown'
         except Exception as e:
-            print(f"❌ Error classifying intent: {e}")
+            print(f" Error classifying intent: {e}")
             return 'unknown'
     
     def extract_entities(self, message: str) -> Dict:
@@ -332,7 +322,7 @@ Respond with ONLY valid JSON, no other text."""
             else:
                 return json.loads(text)
         except Exception as e:
-            print(f"❌ Error extracting entities: {e}")
+            print(f" Error extracting entities: {e}")
             return {
                 'people': [], 'times': [], 'dates': [], 'numbers': [],
                 'locations': [], 'food_items': [], 'exercises': []
@@ -364,7 +354,7 @@ Respond with ONLY the number in ml (just the number, no units), or "null" if no 
                 return float(numbers[0])
             return None
         except Exception as e:
-            print(f"❌ Error parsing water amount: {e}")
+            print(f" Error parsing water amount: {e}")
             return None
     
     def parse_food(self, message: str) -> Optional[Dict]:
@@ -495,7 +485,7 @@ Respond with ONLY valid JSON, no other text."""
                 }
             return None
         except Exception as e:
-            print(f"❌ Error parsing food: {e}")
+            print(f" Error parsing food: {e}")
             return None
     
     def parse_gym_workout(self, message: str) -> Optional[Dict]:
@@ -565,7 +555,7 @@ Respond with ONLY valid JSON, no other text."""
                 return workout
             return None
         except Exception as e:
-            print(f"❌ Error parsing gym workout: {e}")
+            print(f" Error parsing gym workout: {e}")
             return None
     
     def parse_reminder(self, message: str) -> Optional[Dict]:
@@ -607,7 +597,7 @@ Respond with ONLY valid JSON, no other text."""
                 return reminder
             return None
         except Exception as e:
-            print(f"❌ Error parsing reminder: {e}")
+            print(f" Error parsing reminder: {e}")
             return None
     
     def parse_water_goal(self, message: str) -> Optional[Dict]:
@@ -660,7 +650,7 @@ Respond with ONLY valid JSON, no other text."""
                     }
             return None
         except Exception as e:
-            print(f"❌ Error parsing water goal: {e}")
+            print(f" Error parsing water goal: {e}")
             return None
     
     def parse_stats_query(self, message: str) -> Dict[str, bool]:
@@ -704,7 +694,7 @@ Respond with ONLY valid JSON, no other text."""
             # Default: if unclear, show all
             return {'food': True, 'water': True, 'gym': False, 'todos': False, 'reminders': False, 'all': True}
         except Exception as e:
-            print(f"❌ Error parsing stats query: {e}")
+            print(f" Error parsing stats query: {e}")
             # Default: if error, show all
             return {'food': True, 'water': True, 'gym': False, 'todos': False, 'reminders': False, 'all': True}
     
@@ -752,7 +742,7 @@ Respond with ONLY valid JSON, no other text."""
                     }
             return None
         except Exception as e:
-            print(f"❌ Error guessing intent: {e}")
+            print(f" Error guessing intent: {e}")
             return None
     
     def parse_portion_multiplier(self, message: str) -> float:
