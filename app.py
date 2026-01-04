@@ -311,9 +311,17 @@ class EnhancedMessageProcessor:
             custom_food_db = FOOD_DATABASE
         
         self.nlp_processor = create_gemini_processor(custom_food_db)
+        # Store pending confirmations: {phone_number: {intent, message, entities, reason}}
+        self.pending_confirmations = {}
     
-    def process_message(self, message_body):
+    def process_message(self, message_body, phone_number=None):
         """Main message processing pipeline using intelligent NLP"""
+        # Check if this is a confirmation response first
+        if phone_number and phone_number in self.pending_confirmations:
+            confirmation_response = self.handle_confirmation(message_body, phone_number)
+            if confirmation_response:
+                return confirmation_response
+        
         # Use intelligent NLP processor to classify intent and extract entities
         intent = self.nlp_processor.classify_intent(message_body)
         entities = self.nlp_processor.extract_entities(message_body)
@@ -327,7 +335,7 @@ class EnhancedMessageProcessor:
         if response:
             return response
         
-        return self.fallback_response(message_body)
+        return self.fallback_response(message_body, phone_number)
     
     def handle_intent(self, intent, message, entities):
         """Handle specific intent using intelligent NLP"""
@@ -341,8 +349,17 @@ class EnhancedMessageProcessor:
             return self.handle_todo(message, entities)
         elif intent == 'reminder_set':
             return self.handle_reminder(message, entities)
+        elif intent == 'water_goal_set':
+            return self.handle_water_goal(message, entities)
+        elif intent == 'stats_query':
+            return self.handle_stats_query(message, entities)
+        elif intent == 'task_complete':
+            return self.handle_completion(message, entities)
+        elif intent == 'confirmation':
+            # Handle explicit confirmations (yes, yep, correct, etc.)
+            return self.handle_confirmation(message, None)
         elif intent == 'unknown':
-            return self.fallback_response(message)
+            return self.fallback_response(message, None)
         
         return None
     
@@ -351,8 +368,37 @@ class EnhancedMessageProcessor:
         amount_ml = self.nlp_processor.parse_water_amount(message, entities)
         if amount_ml:
             self.log_water(amount_ml)
+            
+            # Get today's date
+            today = datetime.now().date().isoformat()
+            
+            # Get today's total and goal
+            today_total_ml = db.get_todays_water_total(today)
+            today_goal_ml = db.get_water_goal(today, default_ml=config.DEFAULT_WATER_GOAL_ML)
+            
+            # Calculate remaining and bottles needed
+            remaining_ml = max(0, today_goal_ml - today_total_ml)
+            bottles_needed = max(0, int(round(remaining_ml / config.WATER_BOTTLE_SIZE_ML)))
+            
+            # Format response
             oz = round(amount_ml / 29.5735, 1)
-            return f"✅ Logged {oz}oz water ({amount_ml}ml)"
+            bottles_logged = round(amount_ml / config.WATER_BOTTLE_SIZE_ML, 1)
+            
+            # Determine if it's a full bottle or partial
+            if bottles_logged >= 0.9:  # Close to 1 bottle
+                bottle_text = "1 bottle" if bottles_logged < 1.5 else f"{int(bottles_logged)} bottles"
+            else:
+                bottle_text = f"{bottles_logged:.1f} bottles"
+            
+            response = f"✅ Logged {bottle_text} of water ({amount_ml}ml)\n"
+            response += f"💧 Total for today: {int(today_total_ml)}mL"
+            
+            if remaining_ml > 0:
+                response += f"\n📊 Need about {bottles_needed} more {'bottle' if bottles_needed == 1 else 'bottles'} to hit your goal of {int(today_goal_ml)}mL today"
+            else:
+                response += f"\n🎉 You've hit your goal of {int(today_goal_ml)}mL today!"
+            
+            return response
         return None
     
     def log_water(self, amount_ml):
@@ -376,24 +422,28 @@ class EnhancedMessageProcessor:
             
             # Only log if we have at least a food name or some macros
             if food_name or calories > 0 or protein > 0 or carbs > 0 or fat > 0:
-            # Log to database
+                # Log to database
                 self.log_food(
                     food_name=food_name if food_name else "unknown food",
-                calories=calories,
-                protein=protein,
-                carbs=carbs,
-                fat=fat,
+                    calories=calories,
+                    protein=protein,
+                    carbs=carbs,
+                    fat=fat,
                     restaurant=food_data.get('restaurant'),
-                portion_multiplier=portion_mult
+                    portion_multiplier=portion_mult
                 )
-            
-            # Format response
+                
+                # Get today's date and totals
+                today = datetime.now().date().isoformat()
+                today_totals = db.get_todays_food_totals(today)
+                
+                # Format response
                 serving_info = f" ({food_info['serving_size']})" if 'serving_size' in food_info else ""
                 food_display = food_name.replace('_', ' ').title() if food_name else "food"
                 response = f"🍽️ Logged {food_display}{serving_info}\n"
-                response += f"📊 Nutrition: {calories} cal, {protein}g protein, {carbs}g carbs, {fat}g fat"
+                response += f"📊 This meal: {calories} cal, {protein}g protein, {carbs}g carbs, {fat}g fat\n"
+                response += f"📈 Total today: {int(today_totals['calories'])} cal, {today_totals['protein']:.1f}g protein, {today_totals['carbs']:.1f}g carbs, {today_totals['fat']:.1f}g fat"
                 return response
-            return response
         
         return None
     
@@ -511,32 +561,362 @@ class EnhancedMessageProcessor:
             completed=False
         )
     
-    def handle_completion(self, message, entities):
-        """Handle task/reminder completions"""
-        completion_patterns = [
-            'did', 'done', 'finished', 'completed', 'called', 'went'
-        ]
+    def handle_water_goal(self, message, entities):
+        """Handle water goal setting"""
+        goal_data = self.nlp_processor.parse_water_goal(message)
+        if goal_data:
+            goal_ml = goal_data['goal_ml']
+            target_date = goal_data['date']
+            
+            # Set the goal in database
+            db.set_water_goal(target_date, goal_ml)
+            
+            # Format date for display
+            date_obj = datetime.fromisoformat(target_date).date()
+            today = datetime.now().date()
+            
+            if date_obj == today:
+                date_display = "today"
+            elif date_obj == today + timedelta(days=1):
+                date_display = "tomorrow"
+            else:
+                date_display = date_obj.strftime("%B %d")
+            
+            goal_liters = goal_ml / 1000
+            response = f"💧 Water goal set for {date_display}: {goal_liters}L ({int(goal_ml)}mL)"
+            return response
         
-        if any(pattern in message for pattern in completion_patterns):
-            # Try to match and complete tasks/reminders
-            self.mark_recent_task_complete(message)
-            return "✅ Task marked as complete!"
         return None
     
-    def mark_recent_task_complete(self, message):
-        """Mark recent task as complete based on message content"""
-        # Get most recent incomplete todo
+    def handle_stats_query(self, message, entities):
+        """Handle stats queries (how much eaten, drank, etc.)"""
+        query_data = self.nlp_processor.parse_stats_query(message)
+        today = datetime.now().date().isoformat()
+        
+        response_parts = []
+        
+        # Get water stats if requested
+        if query_data.get('water') or query_data.get('all'):
+            water_total_ml = db.get_todays_water_total(today)
+            water_goal_ml = db.get_water_goal(today, default_ml=config.DEFAULT_WATER_GOAL_ML)
+            water_liters = water_total_ml / 1000
+            goal_liters = water_goal_ml / 1000
+            
+            if water_total_ml > 0:
+                bottles = round(water_total_ml / config.WATER_BOTTLE_SIZE_ML, 1)
+                response_parts.append(f"💧 Water: {water_liters:.1f}L ({int(water_total_ml)}mL, ~{bottles} bottles)")
+                if water_total_ml >= water_goal_ml:
+                    response_parts.append(f"   ✅ Goal reached! ({goal_liters:.1f}L)")
+                else:
+                    remaining = water_goal_ml - water_total_ml
+                    remaining_liters = remaining / 1000
+                    bottles_needed = int(round(remaining / config.WATER_BOTTLE_SIZE_ML))
+                    response_parts.append(f"   📊 {remaining_liters:.1f}L remaining ({bottles_needed} bottles) to reach {goal_liters:.1f}L goal")
+            else:
+                response_parts.append(f"💧 Water: 0L (goal: {goal_liters:.1f}L)")
+        
+        # Get food stats if requested
+        if query_data.get('food') or query_data.get('all'):
+            food_totals = db.get_todays_food_totals(today)
+            if food_totals['calories'] > 0:
+                response_parts.append(f"🍽️ Food: {int(food_totals['calories'])} cal")
+                response_parts.append(f"   📊 {food_totals['protein']:.1f}g protein, {food_totals['carbs']:.1f}g carbs, {food_totals['fat']:.1f}g fat")
+            else:
+                response_parts.append(f"🍽️ Food: No meals logged today")
+        
+        # Get gym stats if requested
+        if query_data.get('gym') or query_data.get('all'):
+            gym_logs = db.get_gym_logs(today)
+            if gym_logs:
+                response_parts.append(f"💪 Gym: {len(gym_logs)} workout{'s' if len(gym_logs) != 1 else ''} logged today")
+            else:
+                response_parts.append(f"💪 Gym: No workouts logged today")
+        
+        # Get todos if requested
+        if query_data.get('todos') or query_data.get('all'):
+            todos = db.get_reminders_todos(type='todo', completed=False)
+            # Filter for today's todos (or all incomplete if no date filter)
+            today_date = datetime.now().date()
+            today_todos = []
+            for todo in todos:
+                # Todos without due dates are always shown
+                due_date_str = todo.get('due_date', '')
+                if not due_date_str:
+                    today_todos.append(todo)
+                else:
+                    try:
+                        due_date = datetime.fromisoformat(due_date_str).date()
+                        if due_date <= today_date:
+                            today_todos.append(todo)
+                    except:
+                        today_todos.append(todo)
+            
+            if today_todos:
+                todo_list = []
+                for i, todo in enumerate(today_todos[:10], 1):  # Limit to 10
+                    content = todo.get('content', '')
+                    due_date_str = todo.get('due_date', '')
+                    if due_date_str:
+                        try:
+                            due_date = datetime.fromisoformat(due_date_str).date()
+                            if due_date == today_date:
+                                todo_list.append(f"   {i}. {content} (today)")
+                            else:
+                                todo_list.append(f"   {i}. {content}")
+                        except:
+                            todo_list.append(f"   {i}. {content}")
+                    else:
+                        todo_list.append(f"   {i}. {content}")
+                
+                response_parts.append(f"📋 Todos ({len(today_todos)}):")
+                response_parts.extend(todo_list)
+                if len(today_todos) > 10:
+                    response_parts.append(f"   ... and {len(today_todos) - 10} more")
+            else:
+                response_parts.append(f"📋 Todos: No todos for today")
+        
+        # Get reminders if requested
+        if query_data.get('reminders') or query_data.get('all'):
+            all_reminders = db.get_reminders_todos(type='reminder', completed=False)
+            today_date = datetime.now().date()
+            today_reminders = []
+            
+            for reminder in all_reminders:
+                due_date_str = reminder.get('due_date', '')
+                if due_date_str:
+                    try:
+                        due_date = datetime.fromisoformat(due_date_str).date()
+                        # Show reminders for today or past (overdue)
+                        if due_date <= today_date:
+                            today_reminders.append(reminder)
+                    except:
+                        pass
+            
+            if today_reminders:
+                # Sort by due date
+                today_reminders.sort(key=lambda x: x.get('due_date', ''))
+                
+                reminder_list = []
+                for i, reminder in enumerate(today_reminders[:10], 1):  # Limit to 10
+                    content = reminder.get('content', '')
+                    due_date_str = reminder.get('due_date', '')
+                    if due_date_str:
+                        try:
+                            due_date = datetime.fromisoformat(due_date_str)
+                            time_str = due_date.strftime("%I:%M %p")
+                            date_str = due_date.strftime("%B %d")
+                            
+                            if due_date.date() == today_date:
+                                reminder_list.append(f"   {i}. {content} at {time_str}")
+                            else:
+                                reminder_list.append(f"   {i}. {content} on {date_str} at {time_str}")
+                        except:
+                            reminder_list.append(f"   {i}. {content}")
+                    else:
+                        reminder_list.append(f"   {i}. {content}")
+                
+                response_parts.append(f"⏰ Reminders ({len(today_reminders)}):")
+                response_parts.extend(reminder_list)
+                if len(today_reminders) > 10:
+                    response_parts.append(f"   ... and {len(today_reminders) - 10} more")
+            else:
+                response_parts.append(f"⏰ Reminders: No reminders for today")
+        
+        if response_parts:
+            # Determine header based on what's being shown
+            if query_data.get('todos') and not query_data.get('all') and not query_data.get('food') and not query_data.get('water') and not query_data.get('gym'):
+                return "📋 Your Todos:\n" + "\n".join(response_parts)
+            elif query_data.get('reminders') and not query_data.get('all') and not query_data.get('food') and not query_data.get('water') and not query_data.get('gym') and not query_data.get('todos'):
+                return "⏰ Your Reminders:\n" + "\n".join(response_parts)
+            else:
+                return "📊 Today's Stats:\n" + "\n".join(response_parts)
+        
+        return "📊 No stats available for today"
+    
+    def handle_completion(self, message, entities):
+        """Handle task/reminder completions"""
+        # Try to match and complete tasks/reminders based on message content
+        completed_item = self.mark_task_complete(message)
+        if completed_item:
+            item_type = completed_item.get('type', 'task')
+            content = completed_item.get('content', 'item')
+            if item_type == 'reminder':
+                return f"✅ Reminder completed: {content}"
+            else:
+                return f"✅ Todo completed: {content}"
+        return "✅ I couldn't find a matching task or reminder to mark as complete."
+    
+    def mark_task_complete(self, message):
+        """Mark task/reminder as complete by matching message content"""
+        message_lower = message.lower()
+        
+        # Get all incomplete todos and reminders
         todos = db.get_reminders_todos(type='todo', completed=False)
+        reminders = db.get_reminders_todos(type='reminder', completed=False)
+        
+        all_items = []
+        for todo in todos:
+            all_items.append({**todo, 'item_type': 'todo'})
+        for reminder in reminders:
+            all_items.append({**reminder, 'item_type': 'reminder'})
+        
+        # Try to find best match by content similarity
+        best_match = None
+        best_score = 0
+        
+        for item in all_items:
+            content = item.get('content', '').lower()
+            if not content:
+                continue
+            
+            # Calculate match score
+            score = 0
+            
+            # Check if key words from message appear in content
+            message_words = set(message_lower.split())
+            content_words = set(content.split())
+            
+            # Count matching words
+            matching_words = message_words.intersection(content_words)
+            # Remove common words that don't help matching
+            common_words = {'the', 'a', 'an', 'and', 'or', 'but', 'to', 'for', 'of', 'in', 'on', 'at', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'should', 'could', 'may', 'might', 'can', 'must'}
+            matching_words = matching_words - common_words
+            
+            if matching_words:
+                score = len(matching_words) / max(len(message_words - common_words), 1)
+            
+            # Bonus for exact phrase match
+            if message_lower in content or content in message_lower:
+                score += 0.5
+            
+            # Bonus if message contains action words that match common completion patterns
+            completion_actions = ['called', 'went', 'did', 'finished', 'completed', 'done', 'bought', 'got', 'sent', 'emailed', 'texted']
+            if any(action in message_lower for action in completion_actions):
+                # Check if the action makes sense with the content
+                for action in completion_actions:
+                    if action in message_lower:
+                        # If content mentions something related to the action, boost score
+                        if any(word in content for word in message_lower.split() if word != action):
+                            score += 0.3
+            
+            if score > best_score:
+                best_score = score
+                best_match = item
+        
+        # If we found a reasonable match (score > 0.2), mark it as complete
+        if best_match and best_score > 0.2:
+            item_id = int(best_match.get('id', 0))
+            db.update_reminder_todo(item_id, completed=True)
+            return {
+                'type': best_match.get('item_type', 'todo'),
+                'content': best_match.get('content', '')
+            }
+        
+        # Fallback: if no good match, try to complete most recent todo
         if todos:
-            # Sort by timestamp descending and get most recent
             todos.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
             most_recent = todos[0]
             item_id = int(most_recent.get('id', 0))
             db.update_reminder_todo(item_id, completed=True)
+            return {
+                'type': 'todo',
+                'content': most_recent.get('content', '')
+            }
+        
+        return None
     
-    def fallback_response(self, message):
-        """Fallback response for unrecognized messages"""
-        return "🤔 I didn't understand that. Try:\n• 'drank a bottle' (water)\n• 'ate [food]' (food logging)\n• 'remind me to [task]' (reminders)\n• 'todo [task]' (todos)\n• 'did bench press 135x5' (gym workout)"
+    def fallback_response(self, message, phone_number=None):
+        """Fallback response for unrecognized messages - tries to guess intent and asks for confirmation"""
+        # Try to make an educated guess using NLP
+        best_guess = self.nlp_processor.guess_intent(message)
+        
+        if best_guess and best_guess.get('confidence', 0) > 0.5:
+            # We have a reasonable guess, but ask for confirmation instead of executing
+            guessed_intent = best_guess.get('intent')
+            guessed_reason = best_guess.get('reason', '')
+            
+            # Store pending confirmation if we have a phone number
+            if phone_number:
+                entities = self.nlp_processor.extract_entities(message)
+                self.pending_confirmations[phone_number] = {
+                    'intent': guessed_intent,
+                    'message': message,
+                    'entities': entities,
+                    'reason': guessed_reason
+                }
+                return f"🤔 {guessed_reason}, is that correct?"
+        
+        # If no good guess or handling failed, provide helpful suggestions
+        suggestions = self._generate_suggestions(message)
+        return f"🤔 I'm not sure what you meant. {suggestions}\n\nTry:\n• 'drank a bottle' (water)\n• 'ate [food]' (food logging)\n• 'remind me to [task]' (reminders)\n• 'todo [task]' (todos)\n• 'did bench press 135x5' (gym workout)\n• 'how much have I eaten' (stats)"
+    
+    def handle_confirmation(self, message, phone_number=None):
+        """Handle confirmation responses (yes, yep, correct, no, etc.)"""
+        message_lower = message.lower().strip()
+        
+        # Determine which phone number to use
+        if phone_number is None:
+            # Try to find phone number from pending confirmations
+            # This handles explicit confirmation intents
+            for pn, pending in self.pending_confirmations.items():
+                phone_number = pn
+                break
+        
+        if not phone_number or phone_number not in self.pending_confirmations:
+            return None
+        
+        pending = self.pending_confirmations[phone_number]
+        
+        # Check if it's a positive confirmation
+        positive_confirmations = ['yes', 'yep', 'yeah', 'yup', 'correct', 'right', 'that\'s right', 'that\'s correct', 
+                                  'sure', 'ok', 'okay', 'confirm', 'confirmed', 'true', '1', 'yea']
+        negative_confirmations = ['no', 'nope', 'nah', 'incorrect', 'wrong', 'false', '0', 'cancel']
+        
+        if any(confirm in message_lower for confirm in positive_confirmations):
+            # User confirmed, execute the pending action
+            intent = pending['intent']
+            original_message = pending['message']
+            entities = pending['entities']
+            
+            # Remove from pending
+            del self.pending_confirmations[phone_number]
+            
+            # Execute the action
+            response = self.handle_intent(intent, original_message, entities)
+            if response:
+                return response
+            else:
+                return "✅ Action completed, but I couldn't generate a response."
+        
+        elif any(confirm in message_lower for confirm in negative_confirmations):
+            # User declined, clear pending and ask what they meant
+            del self.pending_confirmations[phone_number]
+            return "Got it, I won't do that. What did you mean instead?"
+        
+        # If unclear, ask for clarification
+        return "Please respond with 'yes' or 'no' to confirm or cancel."
+    
+    def _generate_suggestions(self, message):
+        """Generate contextual suggestions based on message content"""
+        message_lower = message.lower()
+        
+        # Check for keywords that might indicate what user wants
+        if any(word in message_lower for word in ['water', 'drank', 'drink', 'bottle', 'hydration']):
+            return "Did you mean to log water? Try: 'drank a bottle' or 'drank 500ml'"
+        elif any(word in message_lower for word in ['ate', 'eat', 'food', 'meal', 'lunch', 'dinner', 'breakfast', 'snack']):
+            return "Did you mean to log food? Try: 'ate pizza' or 'had a burger'"
+        elif any(word in message_lower for word in ['gym', 'workout', 'exercise', 'lift', 'bench', 'squat', 'cardio']):
+            return "Did you mean to log a workout? Try: 'did bench press 135x5'"
+        elif any(word in message_lower for word in ['remind', 'reminder', 'remember', 'alert']):
+            return "Did you mean to set a reminder? Try: 'remind me to call mom at 3pm'"
+        elif any(word in message_lower for word in ['todo', 'task', 'need to', 'should', 'have to']):
+            return "Did you mean to add a todo? Try: 'todo buy groceries'"
+        elif any(word in message_lower for word in ['how much', 'how many', 'total', 'stats', 'summary', 'show me']):
+            return "Did you mean to check your stats? Try: 'how much have I eaten' or 'show me my stats'"
+        elif any(word in message_lower for word in ['done', 'finished', 'completed', 'did', 'called', 'went']):
+            return "Did you mean to mark something complete? Try: 'called mom' or 'did groceries'"
+        
+        return "Could you rephrase that?"
 
 # Routes
 @app.route('/webhook/twilio', methods=['POST'])
@@ -566,7 +946,7 @@ def twilio_webhook():
         # Process the message
         print(f"✅ Processing message...")
         processor = EnhancedMessageProcessor()
-        response_text = processor.process_message(message_body)
+        response_text = processor.process_message(message_body, phone_number=from_number)
         
         print(f"🧠 NLP processing complete:")
         print(f"   Response: {response_text}")
@@ -587,7 +967,7 @@ def twilio_webhook():
         print(f"📱 === WEBHOOK PROCESSING COMPLETE ===\n")
         
         return str(response), 200
-            
+        
     except Exception as e:
         print(f"❌ Error processing Twilio webhook: {e}")
         import traceback

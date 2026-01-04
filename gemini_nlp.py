@@ -273,6 +273,10 @@ Extract structured information from user messages. Be accurate and handle variat
 - gym_workout: User is logging a gym workout/exercise
 - reminder_set: User wants to set a reminder (if message contains a time/date like "at 5pm", "tomorrow", "in 1 hour", etc., classify as reminder_set even if it also sounds like a todo)
 - todo_add: User wants to add a todo item (only if there's NO specific time/date mentioned)
+- water_goal_set: User wants to set a custom water goal for a specific day (e.g., "my water goal for tomorrow is 5L", "set water goal to 3L today")
+- stats_query: User is asking about their stats/totals (e.g., "how much have I eaten", "how much water have I drank", "what's my total for today", "show me my stats")
+- task_complete: User is marking a task/reminder as complete (e.g., "called mom", "did groceries", "finished homework", "done with that", "completed the task")
+- confirmation: User is confirming or denying something (e.g., "yes", "yep", "correct", "no", "nope", "that's right")
 - unknown: Doesn't match any category
 
 IMPORTANT: If a message has BOTH a task/todo AND a time/date (e.g., "I need to call mama at 5pm tomorrow"), classify it as "reminder_set" because reminders are more specific than todos.
@@ -285,7 +289,7 @@ Respond with ONLY the intent name, nothing else."""
             intent = self._generate_content(prompt).lower()
             
             # Validate intent
-            valid_intents = ['water_logging', 'food_logging', 'gym_workout', 'reminder_set', 'todo_add', 'unknown']
+            valid_intents = ['water_logging', 'food_logging', 'gym_workout', 'reminder_set', 'todo_add', 'water_goal_set', 'stats_query', 'task_complete', 'confirmation', 'unknown']
             if intent in valid_intents:
                 return intent
             else:
@@ -601,6 +605,151 @@ Respond with ONLY valid JSON, no other text."""
             return None
         except Exception as e:
             print(f"❌ Error parsing reminder: {e}")
+            return None
+    
+    def parse_water_goal(self, message: str) -> Optional[Dict]:
+        """Parse water goal from message (amount and target date)"""
+        prompt = f"""Extract water goal information from this message. Return JSON with:
+{{
+  "goal_liters": <number in liters (e.g., 5 for "5L" or "5 liters")>,
+  "target_date": <date in YYYY-MM-DD format, or "today" or "tomorrow" or null if not specified>
+}}
+
+Examples:
+- "my water goal for tomorrow is 5L" -> {{"goal_liters": 5, "target_date": "tomorrow"}}
+- "set water goal to 3L today" -> {{"goal_liters": 3, "target_date": "today"}}
+- "water goal is 4L" -> {{"goal_liters": 4, "target_date": "today"}}
+
+Message: "{message}"
+
+Respond with ONLY valid JSON, no other text."""
+        
+        try:
+            response_text = self._generate_content(prompt)
+            # Try to extract JSON from response
+            json_match = re.search(r'\{[^}]+\}', response_text)
+            if json_match:
+                goal_data = json.loads(json_match.group())
+                goal_liters = goal_data.get('goal_liters')
+                target_date = goal_data.get('target_date', 'today')
+                
+                if goal_liters:
+                    # Convert liters to milliliters
+                    goal_ml = float(goal_liters) * 1000
+                    
+                    # Parse target date
+                    if target_date == 'today':
+                        date_str = datetime.now().date().isoformat()
+                    elif target_date == 'tomorrow':
+                        date_str = (datetime.now() + timedelta(days=1)).date().isoformat()
+                    elif target_date:
+                        # Try to parse as date string
+                        try:
+                            date_str = datetime.fromisoformat(target_date).date().isoformat()
+                        except:
+                            date_str = datetime.now().date().isoformat()
+                    else:
+                        date_str = datetime.now().date().isoformat()
+                    
+                    return {
+                        'goal_ml': goal_ml,
+                        'date': date_str
+                    }
+            return None
+        except Exception as e:
+            print(f"❌ Error parsing water goal: {e}")
+            return None
+    
+    def parse_stats_query(self, message: str) -> Dict[str, bool]:
+        """Parse what kind of stats the user is asking about"""
+        prompt = f"""Determine what stats the user is asking about. Return JSON with:
+{{
+  "food": true/false (user asking about food/calories/macros),
+  "water": true/false (user asking about water intake),
+  "gym": true/false (user asking about gym workouts),
+  "todos": true/false (user asking about todo list/tasks),
+  "reminders": true/false (user asking about reminders/scheduled items),
+  "all": true/false (user asking about everything/general stats)
+}}
+
+Examples:
+- "how much have I eaten" -> {{"food": true, "water": false, "gym": false, "todos": false, "reminders": false, "all": false}}
+- "how much water have I drank" -> {{"food": false, "water": true, "gym": false, "todos": false, "reminders": false, "all": false}}
+- "what's on my to do list" -> {{"food": false, "water": false, "gym": false, "todos": true, "reminders": false, "all": false}}
+- "do I have any reminders" -> {{"food": false, "water": false, "gym": false, "todos": false, "reminders": true, "all": false}}
+- "what's my total for today" -> {{"food": true, "water": true, "gym": false, "todos": false, "reminders": false, "all": true}}
+- "show me my stats" -> {{"food": true, "water": true, "gym": true, "todos": false, "reminders": false, "all": true}}
+
+Message: "{message}"
+
+Respond with ONLY valid JSON, no other text."""
+        
+        try:
+            response_text = self._generate_content(prompt)
+            # Try to extract JSON from response
+            json_match = re.search(r'\{[^}]+\}', response_text)
+            if json_match:
+                query_data = json.loads(json_match.group())
+                return {
+                    'food': query_data.get('food', False),
+                    'water': query_data.get('water', False),
+                    'gym': query_data.get('gym', False),
+                    'todos': query_data.get('todos', False),
+                    'reminders': query_data.get('reminders', False),
+                    'all': query_data.get('all', False)
+                }
+            # Default: if unclear, show all
+            return {'food': True, 'water': True, 'gym': False, 'todos': False, 'reminders': False, 'all': True}
+        except Exception as e:
+            print(f"❌ Error parsing stats query: {e}")
+            # Default: if error, show all
+            return {'food': True, 'water': True, 'gym': False, 'todos': False, 'reminders': False, 'all': True}
+    
+    def guess_intent(self, message: str) -> Optional[Dict]:
+        """Try to guess the intent when classification is unclear"""
+        prompt = f"""This message was classified as "unknown" but we want to make an educated guess. 
+Analyze the message and determine:
+1. What is the most likely intent?
+2. How confident are you (0.0 to 1.0)?
+3. Why do you think this is the intent?
+
+Return JSON with:
+{{
+  "intent": "<most likely intent name>",
+  "confidence": <number between 0.0 and 1.0>,
+  "reason": "<brief explanation of why you think this is the intent>"
+}}
+
+Available intents: water_logging, food_logging, gym_workout, reminder_set, todo_add, water_goal_set, stats_query, task_complete
+
+If you're not confident (confidence < 0.5), return null or set confidence to 0.
+
+Message: "{message}"
+
+Respond with ONLY valid JSON, no other text."""
+        
+        try:
+            response_text = self._generate_content(prompt)
+            # Try to extract JSON from response
+            json_match = re.search(r'\{[^}]+\}', response_text)
+            if json_match:
+                guess_data = json.loads(json_match.group())
+                intent = guess_data.get('intent', '').lower()
+                confidence = guess_data.get('confidence', 0)
+                
+                # Validate intent
+                valid_intents = ['water_logging', 'food_logging', 'gym_workout', 'reminder_set', 
+                               'todo_add', 'water_goal_set', 'stats_query', 'task_complete']
+                
+                if intent in valid_intents and confidence > 0:
+                    return {
+                        'intent': intent,
+                        'confidence': float(confidence),
+                        'reason': guess_data.get('reason', f'This looks like {intent.replace("_", " ")}')
+                    }
+            return None
+        except Exception as e:
+            print(f"❌ Error guessing intent: {e}")
             return None
     
     def parse_portion_multiplier(self, message: str) -> float:

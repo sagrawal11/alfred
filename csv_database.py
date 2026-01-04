@@ -28,6 +28,7 @@ class CSVDatabase:
         self.gym_logs_file = os.path.join(data_dir, 'gym_logs.csv')
         self.reminders_todos_file = os.path.join(data_dir, 'reminders_todos.csv')
         self.used_quotes_file = os.path.join(data_dir, 'used_quotes.csv')
+        self.water_goals_file = os.path.join(data_dir, 'water_goals.csv')
         
         # Initialize CSV files with headers if they don't exist
         self._init_csv_files()
@@ -70,6 +71,12 @@ class CSVDatabase:
             with open(self.used_quotes_file, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow(['date', 'quote', 'author'])
+        
+        # Water goals (to track custom daily water goals)
+        if not os.path.exists(self.water_goals_file):
+            with open(self.water_goals_file, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['date', 'goal_ml'])
     
     def _get_next_id(self, csv_file: str) -> int:
         """Get the next ID for a CSV file"""
@@ -356,4 +363,80 @@ class CSVDatabase:
                     'author': row.get('author', '')
                 }
         return None
+    
+    # Water goals methods
+    def get_water_goal(self, date: str, default_ml: float = 4000.0) -> float:
+        """Get water goal for a specific date (YYYY-MM-DD), returns default if not set"""
+        rows = self._read_csv(self.water_goals_file)
+        for row in rows:
+            if row.get('date') == date:
+                goal_str = row.get('goal_ml', '')
+                if goal_str:
+                    try:
+                        return float(goal_str)
+                    except ValueError:
+                        pass
+        return default_ml
+    
+    def set_water_goal(self, date: str, goal_ml: float):
+        """Set water goal for a specific date (YYYY-MM-DD)"""
+        rows = self._read_csv(self.water_goals_file)
+        
+        # Check if goal already exists for this date
+        updated = False
+        for row in rows:
+            if row.get('date') == date:
+                row['goal_ml'] = goal_ml
+                updated = True
+                break
+        
+        # If not found, add new row
+        if not updated:
+            rows.append({
+                'date': date,
+                'goal_ml': goal_ml
+            })
+        
+        fieldnames = ['date', 'goal_ml']
+        self._write_csv(self.water_goals_file, rows, fieldnames)
+    
+    def get_todays_water_total(self, date: Optional[str] = None) -> float:
+        """Get total water logged for a specific date (defaults to today)"""
+        if date is None:
+            date = datetime.now().date().isoformat()
+        
+        water_logs = self.get_water_logs(date)
+        total_ml = 0.0
+        for log in water_logs:
+            amount_str = log.get('amount_ml', '0')
+            if amount_str:
+                try:
+                    total_ml += float(amount_str)
+                except ValueError:
+                    pass
+        return total_ml
+    
+    def get_todays_food_totals(self, date: Optional[str] = None) -> Dict[str, float]:
+        """Get total calories and macros for a specific date (defaults to today)"""
+        if date is None:
+            date = datetime.now().date().isoformat()
+        
+        food_logs = self.get_food_logs(date)
+        totals = {
+            'calories': 0.0,
+            'protein': 0.0,
+            'carbs': 0.0,
+            'fat': 0.0
+        }
+        
+        for log in food_logs:
+            for key in totals.keys():
+                value_str = log.get(key, '0')
+                if value_str:
+                    try:
+                        totals[key] += float(value_str)
+                    except ValueError:
+                        pass
+        
+        return totals
 

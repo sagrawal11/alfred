@@ -30,6 +30,10 @@ class Config:
     # Default: 710ml (standard water bottle)
     WATER_BOTTLE_SIZE_ML = int(os.getenv('WATER_BOTTLE_SIZE_ML', 710))
     
+    # Default Daily Water Goal (in milliliters)
+    # Default: 4000ml (4L per day)
+    DEFAULT_WATER_GOAL_ML = int(os.getenv('DEFAULT_WATER_GOAL_ML', 4000))
+    
     # Weather API Configuration (optional - for morning check-in)
     WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '')
     WEATHER_LOCATION = os.getenv('WEATHER_LOCATION', '')  # e.g., "Durham,NC,US" or "New York"
