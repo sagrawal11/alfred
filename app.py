@@ -601,6 +601,10 @@ class EnhancedMessageProcessor:
         self.pending_confirmations = {}
         # Store pending "what just happened" options: {phone_number: {options: [...], timestamp: ...}}
         self.pending_what_happened = {}
+        # Store pending fact query matches: {phone_number: {matches: [...], query: ...}}
+        self.pending_fact_query = {}
+        # Store pending fact deletion matches: {phone_number: {matches: [...], key: ...}}
+        self.pending_fact_deletion = {}
     
     def process_message(self, message_body, phone_number=None):
         """Main message processing pipeline using intelligent NLP"""
@@ -615,6 +619,18 @@ class EnhancedMessageProcessor:
             what_happened_response = self.handle_what_happened_selection(message_body, phone_number)
             if what_happened_response:
                 return what_happened_response
+        
+        # Check if this is a numbered response to fact query matches
+        if phone_number and phone_number in self.pending_fact_query:
+            fact_query_response = self.handle_fact_query_selection(message_body, phone_number)
+            if fact_query_response:
+                return fact_query_response
+        
+        # Check if this is a numbered response to fact deletion matches
+        if phone_number and phone_number in self.pending_fact_deletion:
+            fact_deletion_response = self.handle_fact_deletion_selection(message_body, phone_number)
+            if fact_deletion_response:
+                return fact_deletion_response
         
         # Check if this is a confirmation response first
         if phone_number and phone_number in self.pending_confirmations:
@@ -659,8 +675,16 @@ class EnhancedMessageProcessor:
             return self.handle_vague_completion(message, entities, phone_number)
         elif intent == 'what_should_i_do':
             return self.handle_what_should_i_do(message, entities)
+        elif intent == 'food_suggestion':
+            return self.handle_food_suggestion(message, entities)
         elif intent == 'undo_edit':
             return self.handle_undo_edit(message, entities)
+        elif intent == 'sleep_logging':
+            return self.handle_sleep(message, entities)
+        elif intent == 'fact_storage':
+            return self.handle_fact_storage(message, entities, phone_number)
+        elif intent == 'fact_query':
+            return self.handle_fact_query(message, entities, phone_number)
         elif intent == 'confirmation':
             # Handle explicit confirmations (yes, yep, correct, etc.)
             return self.handle_confirmation(message, phone_number)
@@ -799,15 +823,44 @@ class EnhancedMessageProcessor:
             exercises = workout_data['exercises']
             exercise_details = []
             for ex in exercises:
-                if ex['reps']:
-                    detail = f"{ex['name']} {ex['weight']}x{ex['reps']}"
-                    if ex['sets'] > 1:
-                        detail += f"x{ex['sets']}"
+                name = ex.get('name', 'exercise')
+                sets = ex.get('sets', [])
+                
+                if sets:
+                    # Handle new format with multiple sets
+                    set_details = []
+                    for s in sets:
+                        weight = s.get('weight')
+                        reps = s.get('reps')
+                        if weight and reps:
+                            set_details.append(f"{weight}x{reps}")
+                        elif weight:
+                            set_details.append(f"{weight}")
+                        elif reps:
+                            set_details.append(f"x{reps}")
+                    
+                    if set_details:
+                        detail = f"{name}: {', '.join(set_details)}"
+                    else:
+                        detail = name
                 else:
-                    detail = f"{ex['name']} {ex['weight']}"
+                    # Fallback to old format
+                    weight = ex.get('weight')
+                    reps = ex.get('reps')
+                    sets_count = ex.get('sets', 1)
+                    
+                    if weight and reps:
+                        detail = f"{name} {weight}x{reps}"
+                        if sets_count > 1:
+                            detail += f"x{sets_count}"
+                    elif weight:
+                        detail = f"{name} {weight}"
+                    else:
+                        detail = name
+                
                 exercise_details.append(detail)
             
-            response = f"Logged {workout_data['muscle_group']} workout: {', '.join(exercise_details)}"
+            response = f"Logged {workout_data.get('muscle_group', 'workout')} workout: {', '.join(exercise_details)}"
             return response
         
         return None
@@ -816,16 +869,51 @@ class EnhancedMessageProcessor:
         """Log gym workout to database"""
         exercises = workout_data.get('exercises', [])
         if exercises:
-            # Log first exercise (can be extended to log multiple)
-            ex = exercises[0]
-            exercise_name = f"{workout_data.get('muscle_group', 'workout')} - {ex.get('name', 'exercise')}"
-            db.insert_gym_log(
-                exercise=exercise_name,
-                sets=ex.get('sets'),
-                reps=ex.get('reps'),
-                weight=ex.get('weight'),
-                notes=json.dumps(workout_data.get('exercises', []))
-            )
+            # Log each exercise
+            for ex in exercises:
+                exercise_name = f"{workout_data.get('muscle_group', 'workout')} - {ex.get('name', 'exercise')}"
+                
+                # Handle new format with multiple sets
+                sets = ex.get('sets', [])
+                if sets:
+                    # Store all sets in notes, use first set for main fields
+                    first_set = sets[0]
+                    sets_count = len(sets)
+                    reps = first_set.get('reps')
+                    weight = first_set.get('weight')
+                    
+                    # Build detailed notes with all sets
+                    set_details = []
+                    for i, s in enumerate(sets, 1):
+                        w = s.get('weight')
+                        r = s.get('reps')
+                        if w and r:
+                            set_details.append(f"Set {i}: {w}x{r}")
+                        elif w:
+                            set_details.append(f"Set {i}: {w}")
+                        elif r:
+                            set_details.append(f"Set {i}: x{r}")
+                    
+                    notes = f"All sets: {', '.join(set_details)}"
+                    if len(exercises) > 1:
+                        notes = f"[{len(exercises)} exercises] " + notes
+                    
+                    db.insert_gym_log(
+                        exercise=exercise_name,
+                        sets=sets_count,
+                        reps=reps,
+                        weight=weight,
+                        notes=notes
+                    )
+                else:
+                    # Fallback to old format
+                    db.insert_gym_log(
+                        exercise=exercise_name,
+                        sets=ex.get('sets', 1),
+                        reps=ex.get('reps'),
+                        weight=ex.get('weight'),
+                        notes=json.dumps(ex) if len(exercises) > 1 else ''
+                    )
     
     def handle_todo(self, message, entities):
         """Handle todo creation using enhanced NLP processor"""
@@ -938,6 +1026,28 @@ class EnhancedMessageProcessor:
             else:
                 response_parts.append(f"Gym: No workouts logged today")
         
+        # Get sleep stats if requested
+        if query_data.get('sleep') or query_data.get('all'):
+            sleep_logs = db.get_sleep_logs(today)
+            if sleep_logs:
+                latest = sleep_logs[-1]  # Most recent
+                duration = float(latest.get('duration_hours', 0))
+                sleep_time = latest.get('sleep_time', '')
+                wake_time = latest.get('wake_time', '')
+                response_parts.append(f"Sleep: {duration:.1f} hours ({sleep_time} to {wake_time})")
+            else:
+                # Check yesterday
+                yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
+                yesterday_sleep = db.get_sleep_logs(yesterday)
+                if yesterday_sleep:
+                    latest = yesterday_sleep[-1]
+                    duration = float(latest.get('duration_hours', 0))
+                    sleep_time = latest.get('sleep_time', '')
+                    wake_time = latest.get('wake_time', '')
+                    response_parts.append(f"Sleep (yesterday): {duration:.1f} hours ({sleep_time} to {wake_time})")
+                else:
+                    response_parts.append(f"Sleep: No sleep logged")
+        
         # Get todos if requested
         if query_data.get('todos') or query_data.get('all'):
             todos = db.get_reminders_todos(type='todo', completed=False)
@@ -1029,8 +1139,15 @@ class EnhancedMessageProcessor:
                 response_parts.append(f"Reminders: No reminders for today")
         
         # Get calendar events if requested (and calendar service is available)
-        # Import calendar_service from global scope
-        from __main__ import calendar_service
+        # Try to get calendar_service, handle case where it doesn't exist
+        calendar_service = None
+        try:
+            import sys
+            if hasattr(sys.modules.get('__main__', None), 'calendar_service'):
+                calendar_service = sys.modules['__main__'].calendar_service
+        except:
+            pass
+        
         if calendar_service and (query_data.get('reminders') or query_data.get('todos') or query_data.get('all')):
             try:
                 calendar_events = calendar_service.get_todays_events()
@@ -1548,6 +1665,519 @@ class EnhancedMessageProcessor:
         
         return "No recent entries found to remove"
     
+    def handle_food_suggestion(self, message, entities):
+        """Handle food suggestion requests"""
+        constraints = self.nlp_processor.parse_food_suggestion(message)
+        
+        # Get all foods from database
+        food_db = self.nlp_processor.food_db
+        if not food_db:
+            return "No food database available for suggestions."
+        
+        # Get today's food totals for context
+        today = datetime.now().date().isoformat()
+        today_totals = db.get_todays_food_totals(today)
+        
+        # Get past food logs (to prioritize foods you've eaten before)
+        past_foods = {}
+        food_logs = db.get_food_logs()
+        for log in food_logs[-50:]:  # Last 50 logs
+            food_name = log.get('food_name', '').lower().strip()
+            restaurant = log.get('restaurant', '').lower().strip()
+            if food_name:
+                key = f"{restaurant} {food_name}" if restaurant else food_name
+                past_foods[key] = past_foods.get(key, 0) + 1
+        
+        # Score and filter foods
+        scored_foods = []
+        for food_key, food_data in food_db.items():
+            # Skip entries without proper structure
+            if not isinstance(food_data, dict):
+                continue
+            
+            # Get macros (handle different field names)
+            calories = float(food_data.get('calories', 0) or food_data.get('cal', 0) or 0)
+            protein = float(food_data.get('protein_g', 0) or food_data.get('protein', 0) or 0)
+            carbs = float(food_data.get('carbs_g', 0) or food_data.get('carbs', 0) or 0)
+            fat = float(food_data.get('fat_g', 0) or food_data.get('fat', 0) or 0)
+            
+            # Skip foods with no macros
+            if calories == 0 and protein == 0 and carbs == 0 and fat == 0:
+                continue
+            
+            restaurant = food_data.get('restaurant', '')
+            food_name = food_key.replace('_', ' ').title()
+            
+            # Filter by restaurant if specified
+            if constraints.get('restaurant'):
+                if restaurant.lower() != constraints['restaurant'].lower():
+                    continue
+            
+            # Calculate match score based on constraints
+            score = 0.0
+            matches_constraints = True
+            
+            # High/low protein
+            if constraints.get('high_protein'):
+                if protein < 20:  # Threshold for "high protein"
+                    matches_constraints = False
+                else:
+                    score += protein / 10  # Higher protein = higher score
+            elif constraints.get('low_protein'):
+                if protein > 15:
+                    matches_constraints = False
+                else:
+                    score += (20 - protein) / 10
+            
+            # High/low calories
+            if constraints.get('high_calories'):
+                if calories < 400:
+                    matches_constraints = False
+                else:
+                    score += calories / 100
+            elif constraints.get('low_calories'):
+                if calories > 400:
+                    matches_constraints = False
+                else:
+                    score += (500 - calories) / 100
+            
+            # High/low carbs
+            if constraints.get('high_carbs'):
+                if carbs < 40:
+                    matches_constraints = False
+                else:
+                    score += carbs / 10
+            elif constraints.get('low_carbs'):
+                if carbs > 30:
+                    matches_constraints = False
+                else:
+                    score += (40 - carbs) / 10
+            
+            # High/low fat
+            if constraints.get('high_fat'):
+                if fat < 20:
+                    matches_constraints = False
+                else:
+                    score += fat / 10
+            elif constraints.get('low_fat'):
+                if fat > 15:
+                    matches_constraints = False
+                else:
+                    score += (20 - fat) / 10
+            
+            # If constraints specified but don't match, skip
+            has_constraints = any([
+                constraints.get('high_protein'), constraints.get('low_protein'),
+                constraints.get('high_calories'), constraints.get('low_calories'),
+                constraints.get('high_carbs'), constraints.get('low_carbs'),
+                constraints.get('high_fat'), constraints.get('low_fat')
+            ])
+            if has_constraints and not matches_constraints:
+                continue
+            
+            # Bonus: foods you've eaten before
+            if food_key.lower() in past_foods:
+                score += past_foods[food_key.lower()] * 0.5
+            
+            # Consider remaining macros (if we have daily goals)
+            # For now, just use score
+            
+            scored_foods.append({
+                'name': food_name,
+                'restaurant': restaurant,
+                'calories': calories,
+                'protein': protein,
+                'carbs': carbs,
+                'fat': fat,
+                'score': score
+            })
+        
+        # Sort by score (descending) and take top 5
+        scored_foods.sort(key=lambda x: x['score'], reverse=True)
+        suggestions = scored_foods[:5]
+        
+        if not suggestions:
+            return "No foods match your criteria. Try different constraints or check your food database."
+        
+        # Format response (concise: names, macros, nothing else)
+        response_parts = []
+        for i, food in enumerate(suggestions, 1):
+            name = food['name']
+            if food['restaurant']:
+                name = f"{food['restaurant'].title()} {name}"
+            
+            response_parts.append(
+                f"{i}. {name}: {int(food['calories'])} cal, {food['protein']:.0f}g protein, "
+                f"{food['carbs']:.0f}g carbs, {food['fat']:.0f}g fat"
+            )
+        
+        return '\n'.join(response_parts)
+    
+    def handle_sleep(self, message, entities):
+        """Handle sleep logging"""
+        import re
+        from datetime import datetime, timedelta
+        
+        message_lower = message.lower()
+        
+        # Try to parse sleep times from message
+        # Patterns: "slept at 1:30", "up at 8", "slept 1:30-8", "went to bed at 11", "woke up at 7"
+        sleep_time = None
+        wake_time = None
+        
+        # Look for time patterns
+        time_pattern = r'(\d{1,2}):?(\d{2})?\s*(am|pm)?'
+        all_times = re.findall(time_pattern, message_lower)
+        
+        # Look for sleep/wake keywords
+        if 'slept' in message_lower or 'bed' in message_lower or 'sleep' in message_lower:
+            # Find sleep time
+            for match in all_times:
+                hour = int(match[0])
+                minute = int(match[1]) if match[1] else 0
+                am_pm = match[2].lower() if match[2] else ''
+                
+                if am_pm == 'pm' and hour != 12:
+                    hour += 12
+                elif am_pm == 'am' and hour == 12:
+                    hour = 0
+                
+                # Sleep time is usually later in the day (after 6pm) or earlier (before 6am)
+                if hour >= 18 or hour < 6:
+                    sleep_time = f"{hour:02d}:{minute:02d}"
+                    break
+        
+        if 'up' in message_lower or 'woke' in message_lower or 'wake' in message_lower:
+            # Find wake time
+            for match in all_times:
+                hour = int(match[0])
+                minute = int(match[1]) if match[1] else 0
+                am_pm = match[2].lower() if match[2] else ''
+                
+                if am_pm == 'pm' and hour != 12:
+                    hour += 12
+                elif am_pm == 'am' and hour == 12:
+                    hour = 0
+                
+                # Wake time is usually morning (6am-12pm)
+                if 6 <= hour < 12:
+                    wake_time = f"{hour:02d}:{minute:02d}"
+                    break
+        
+        # Try range format: "slept 1:30-8"
+        range_pattern = r'(\d{1,2}):?(\d{2})?\s*(am|pm)?\s*[-–]\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?'
+        range_match = re.search(range_pattern, message_lower)
+        if range_match:
+            # First time is sleep, second is wake
+            sleep_hour = int(range_match.group(1))
+            sleep_min = int(range_match.group(2)) if range_match.group(2) else 0
+            sleep_ampm = range_match.group(3).lower() if range_match.group(3) else ''
+            
+            wake_hour = int(range_match.group(4))
+            wake_min = int(range_match.group(5)) if range_match.group(5) else 0
+            wake_ampm = range_match.group(6).lower() if range_match.group(6) else ''
+            
+            if sleep_ampm == 'pm' and sleep_hour != 12:
+                sleep_hour += 12
+            elif sleep_ampm == 'am' and sleep_hour == 12:
+                sleep_hour = 0
+            
+            if wake_ampm == 'pm' and wake_hour != 12:
+                wake_hour += 12
+            elif wake_ampm == 'am' and wake_hour == 12:
+                wake_hour = 0
+            
+            sleep_time = f"{sleep_hour:02d}:{sleep_min:02d}"
+            wake_time = f"{wake_hour:02d}:{wake_min:02d}"
+        
+        # If we have both times, calculate duration and log
+        if sleep_time and wake_time:
+            try:
+                sleep_dt = datetime.strptime(sleep_time, "%H:%M")
+                wake_dt = datetime.strptime(wake_time, "%H:%M")
+                
+                # Handle overnight sleep (wake time is next day)
+                if wake_dt <= sleep_dt:
+                    wake_dt += timedelta(days=1)
+                
+                duration = (wake_dt - sleep_dt).total_seconds() / 3600
+                today = datetime.now().date().isoformat()
+                
+                db.insert_sleep_log(today, sleep_time, wake_time, duration)
+                return f"Logged sleep: {sleep_time} to {wake_time} ({duration:.1f} hours)"
+            except:
+                pass
+        
+        # If we only have one time, check if we can get the other from latest sleep
+        latest_sleep = db.get_latest_sleep()
+        if latest_sleep:
+            if sleep_time and not wake_time:
+                # We have sleep time, use latest wake time as reference
+                return f"Logged sleep time: {sleep_time}. Use 'up at [time]' to complete the entry."
+            elif wake_time and not sleep_time:
+                # We have wake time, use latest sleep time
+                prev_sleep_time = latest_sleep.get('sleep_time', '')
+                if prev_sleep_time:
+                    try:
+                        sleep_dt = datetime.strptime(prev_sleep_time, "%H:%M")
+                        wake_dt = datetime.strptime(wake_time, "%H:%M")
+                        if wake_dt <= sleep_dt:
+                            wake_dt += timedelta(days=1)
+                        duration = (wake_dt - sleep_dt).total_seconds() / 3600
+                        today = datetime.now().date().isoformat()
+                        db.insert_sleep_log(today, prev_sleep_time, wake_time, duration)
+                        return f"Logged sleep: {prev_sleep_time} to {wake_time} ({duration:.1f} hours)"
+                    except:
+                        pass
+        
+        return "Couldn't parse sleep times. Try: 'slept at 1:30' and 'up at 8', or 'slept 1:30-8'"
+    
+    def handle_fact_storage(self, message, entities, phone_number=None):
+        """Handle storing facts/information"""
+        # Pattern: "WiFi password is duke-guest-2025", "locker code 4312", "parking spot B17"
+        message_lower = message.lower()
+        
+        # Look for "is" or "=" pattern
+        if ' is ' in message_lower:
+            parts = message_lower.split(' is ', 1)
+            if len(parts) == 2:
+                key = parts[0].strip()
+                value = parts[1].strip()
+                
+                # Extract context if present (e.g., "home WiFi password")
+                context = None
+                context_keywords = ['home', 'work', 'campus', 'apartment', 'office']
+                for ctx in context_keywords:
+                    if ctx in key:
+                        context = ctx
+                        key = key.replace(ctx, '').strip()
+                        break
+                
+                fact_id = db.insert_fact(key, value, context)
+                return f"Stored: {key} = {value}"
+        
+        # Look for "spot" pattern (e.g., "parking spot B17")
+        if ' spot ' in message_lower:
+            parts = message_lower.split(' spot ', 1)
+            if len(parts) == 2:
+                key_prefix = parts[0].strip()
+                value = parts[1].strip()
+                key = f"{key_prefix} spot"
+                fact_id = db.insert_fact(key, value)
+                return f"Stored: {key} = {value}"
+        
+        # Look for number patterns (e.g., "locker code 4312")
+        numbers = entities.get('numbers', [])
+        if numbers:
+            # Try to find what the number is for
+            for word in message_lower.split():
+                if word not in ['is', 'the', 'a', 'an', 'my', 'code', 'number']:
+                    key = word
+                    value = str(numbers[0])
+                    fact_id = db.insert_fact(key, value)
+                    return f"Stored: {key} = {value}"
+        
+        return "Couldn't parse fact. Try: 'WiFi password is duke-guest-2025' or 'locker code 4312'"
+    
+    def handle_fact_query(self, message, entities, phone_number=None):
+        """Handle querying stored facts"""
+        message_lower = message.lower()
+        
+        # Clear any pending fact query state when a new query comes in
+        if phone_number and phone_number in self.pending_fact_query:
+            del self.pending_fact_query[phone_number]
+        
+        # Check if user wants to list all facts
+        list_keywords = ['list all', 'show all', 'all facts', 'all information', 'everything stored', 'all stored']
+        if any(keyword in message_lower for keyword in list_keywords):
+            all_facts = db.get_all_facts()
+            if not all_facts:
+                return "No facts stored yet."
+            
+            response_parts = [f"Stored facts ({len(all_facts)} total):"]
+            for fact in all_facts:
+                key = fact.get('key', '')
+                value = fact.get('value', '')
+                context = fact.get('context', '')
+                if context:
+                    response_parts.append(f"  • {key} ({context}): {value}")
+                else:
+                    response_parts.append(f"  • {key}: {value}")
+            
+            return '\n'.join(response_parts)
+        
+        # Check if user wants to delete a fact
+        delete_keywords = ['delete', 'remove', 'forget', 'erase']
+        if any(keyword in message_lower for keyword in delete_keywords):
+            # Clear any pending fact deletion state when a new deletion request comes in
+            if phone_number and phone_number in self.pending_fact_deletion:
+                del self.pending_fact_deletion[phone_number]
+            # Extract key from delete request
+            for keyword in delete_keywords:
+                if keyword in message_lower:
+                    parts = message_lower.split(keyword, 1)
+                    if len(parts) > 1:
+                        key_phrase = parts[1].strip()
+                        # Remove common words
+                        key_words = [w for w in key_phrase.split() if w not in ['the', 'my', 'a', 'an']]
+                        key = ' '.join(key_words)
+                        
+                        # Try to find and delete
+                        matches = db.search_facts(key)
+                        if matches:
+                            # If multiple matches, ask user to pick one
+                            if len(matches) > 1:
+                                if phone_number:
+                                    self.pending_fact_deletion[phone_number] = {
+                                        'matches': matches,
+                                        'key': key
+                                    }
+                                
+                                response = f"Found {len(matches)} matches. Which one should I delete?\n"
+                                for i, match in enumerate(matches[:5], 1):  # Limit to 5 options
+                                    match_key = match.get('key', '')
+                                    match_value = match.get('value', '')
+                                    context = match.get('context', '')
+                                    if context:
+                                        response += f"{i}. {match_key} ({context}): {match_value}\n"
+                                    else:
+                                        response += f"{i}. {match_key}: {match_value}\n"
+                                return response
+                            else:
+                                # Single match - delete it directly
+                                fact_id = int(matches[0].get('id', 0))
+                                if db.delete_fact(fact_id=fact_id):
+                                    deleted_key = matches[0].get('key', '')
+                                    return f"Deleted: {deleted_key}"
+                                else:
+                                    return f"Failed to delete fact"
+                        
+                        return f"Couldn't find '{key}' to delete"
+            
+            return "What fact would you like to delete? (e.g., 'delete WiFi password')"
+        
+        # Extract key from query (e.g., "what's the WiFi password" -> "wifi password")
+        # Remove question words
+        question_words = ['what', 'where', 'who', 'when', 'how', 'is', 'the', 'my', 's', 'what\'s']
+        words = [w for w in message_lower.split() if w not in question_words]
+        
+        if not words:
+            return "What information are you looking for?"
+        
+        # Try to find matching fact - try both the full query and individual keywords
+        query = ' '.join(words)
+        matches = db.search_facts(query)
+        
+        # If no matches, try searching with individual words
+        if not matches:
+            for word in words:
+                matches = db.search_facts(word)
+                if matches:
+                    break
+        
+        if matches:
+            # If multiple matches, ask user to pick one
+            if len(matches) > 1:
+                if phone_number:
+                    self.pending_fact_query[phone_number] = {
+                        'matches': matches,
+                        'query': query
+                    }
+                
+                response = f"Found {len(matches)} matches. Which one did you mean?\n"
+                for i, match in enumerate(matches[:5], 1):  # Limit to 5 options
+                    key = match.get('key', '')
+                    value = match.get('value', '')
+                    context = match.get('context', '')
+                    if context:
+                        response += f"{i}. {key} ({context}): {value}\n"
+                    else:
+                        response += f"{i}. {key}: {value}\n"
+                return response
+            else:
+                # Single match - return it directly
+                match = matches[0]
+                key = match.get('key', '')
+                value = match.get('value', '')
+                context = match.get('context', '')
+                
+                if context:
+                    return f"{key} ({context}): {value}"
+                return f"{key}: {value}"
+        
+        return f"Couldn't find information about '{query}'"
+    
+    def handle_fact_query_selection(self, message, phone_number):
+        """Handle user's selection from fact query matches"""
+        if phone_number not in self.pending_fact_query:
+            return None
+        
+        pending = self.pending_fact_query[phone_number]
+        matches = pending['matches']
+        
+        # Parse selection (could be "1", "one", "first", etc.)
+        message_lower = message.lower().strip()
+        
+        # Only handle if it looks like a selection (starts with a number)
+        import re
+        numbers = re.findall(r'\d+', message_lower)
+        if numbers:
+            selection = int(numbers[0])
+            if 1 <= selection <= len(matches):
+                match = matches[selection - 1]
+                
+                # Remove from pending
+                del self.pending_fact_query[phone_number]
+                
+                # Return the selected fact
+                key = match.get('key', '')
+                value = match.get('value', '')
+                context = match.get('context', '')
+                
+                if context:
+                    return f"{key} ({context}): {value}"
+                return f"{key}: {value}"
+        
+        # If it doesn't look like a selection, return None to allow normal processing
+        # This clears the pending state so the new query can be processed
+        del self.pending_fact_query[phone_number]
+        return None
+    
+    def handle_fact_deletion_selection(self, message, phone_number):
+        """Handle user's selection from fact deletion matches"""
+        if phone_number not in self.pending_fact_deletion:
+            return None
+        
+        pending = self.pending_fact_deletion[phone_number]
+        matches = pending['matches']
+        
+        # Parse selection (could be "1", "one", "first", etc.)
+        message_lower = message.lower().strip()
+        
+        # Only handle if it looks like a selection (starts with a number)
+        import re
+        numbers = re.findall(r'\d+', message_lower)
+        if numbers:
+            selection = int(numbers[0])
+            if 1 <= selection <= len(matches):
+                match = matches[selection - 1]
+                fact_id = int(match.get('id', 0))
+                
+                # Remove from pending
+                del self.pending_fact_deletion[phone_number]
+                
+                # Delete the selected fact
+                if db.delete_fact(fact_id=fact_id):
+                    deleted_key = match.get('key', '')
+                    return f"Deleted: {deleted_key}"
+                else:
+                    return f"Failed to delete fact"
+        
+        # If it doesn't look like a selection, return None to allow normal processing
+        # This clears the pending state so the new query can be processed
+        del self.pending_fact_deletion[phone_number]
+        return None
+    
     def handle_reschedule_response(self, message, phone_number):
         """Handle user's response to reschedule options"""
         if not hasattr(check_reminder_followups, 'pending_reschedules'):
@@ -1640,9 +2270,8 @@ class EnhancedMessageProcessor:
                 }
                 return f"🤔 {guessed_reason}, is that correct?"
         
-        # If no good guess or handling failed, provide helpful suggestions
-        suggestions = self._generate_suggestions(message)
-        return f"🤔 I'm not sure what you meant. {suggestions}\n\nTry:\n• 'drank a bottle' (water)\n• 'ate [food]' (food logging)\n• 'remind me to [task]' (reminders)\n• 'todo [task]' (todos)\n• 'did bench press 135x5' (gym workout)\n• 'how much have I eaten' (stats)"
+        # If no good guess or handling failed, provide simple message
+        return "I didn't understand. Could you rephrase that?"
     
     def handle_confirmation(self, message, phone_number=None):
         """Handle confirmation responses (yes, yep, correct, no, etc.)"""
@@ -2490,7 +3119,8 @@ if __name__ == '__main__':
     
     # Get port from environment (for cloud deployment) or use default
     port = int(os.getenv('PORT', 5001))
-    host = '0.0.0.0' if os.getenv('RENDER') else 'localhost'
+    # Use 0.0.0.0 for cloud deployments (Render, Koyeb, etc.) or localhost for local dev
+    host = '0.0.0.0' if os.getenv('RENDER') or os.getenv('KOYEB') or os.getenv('PORT') else 'localhost'
     
     print(f"🚀 Starting Alfred the Butler on {host}:{port}")
     print(f"🌐 Health check: http://{host}:{port}/health")

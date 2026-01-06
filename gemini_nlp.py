@@ -261,13 +261,17 @@ Extract structured information from user messages. Be accurate and handle variat
 - water_logging: User is logging water intake
 - food_logging: User is logging food consumption
 - gym_workout: User is logging a gym workout/exercise
+- sleep_logging: User is logging sleep (e.g., "slept at 1:30", "up at 8", "slept 1:30-8", "went to bed at 11", "woke up at 7")
 - reminder_set: User wants to set a reminder (if message contains a time/date like "at 5pm", "tomorrow", "in 1 hour", etc., classify as reminder_set even if it also sounds like a todo)
 - todo_add: User wants to add a todo item (only if there's NO specific time/date mentioned)
 - water_goal_set: User wants to set a custom water goal for a specific day (e.g., "my water goal for tomorrow is 5L", "set water goal to 3L today")
-- stats_query: User is asking about their stats/totals (e.g., "how much have I eaten", "how much water have I drank", "what's my total for today", "show me my stats")
+- stats_query: User is asking about their stats/totals (e.g., "how much have I eaten", "how much water have I drank", "what's my total for today", "show me my stats", "how much did I sleep last night")
+- fact_storage: User is storing a fact/information (e.g., "WiFi password is duke-guest-2025", "locker code 4312", "parking spot B17", "dentist is Dr. Patel")
+- fact_query: User is asking for stored information (e.g., "what's the WiFi password", "where did I park", "what's my locker code", "who is my dentist")
 - task_complete: User is marking a task/reminder as complete (e.g., "called mom", "did groceries", "finished homework", "done with that", "completed the task")
 - vague_completion: User is indicating completion but message is vague/ambiguous (e.g., "just finished", "done", "finished", "all done", "complete" without specific details)
-- what_should_i_do: User is asking what they should do now (e.g., "what should I do now", "what's next", "what do I do", "suggest something")
+- what_should_i_do: User is asking what they should do now (e.g., "what should I do now", "what's next", "what do I do", "suggest something", "I'm bored, what should I do?")
+- food_suggestion: User is asking for food suggestions (e.g., "what should I eat", "something high in protein", "high protein and low calories", "suggest food")
 - undo_edit: User wants to undo or edit a previous action (e.g., "undo last", "delete last food", "edit last water", "remove last reminder", "undo that")
 - confirmation: User is confirming or denying something (e.g., "yes", "yep", "correct", "no", "nope", "that's right")
 - unknown: Doesn't match any category
@@ -282,7 +286,7 @@ Respond with ONLY the intent name, nothing else."""
             intent = self._generate_content(prompt).lower()
             
             # Validate intent
-            valid_intents = ['water_logging', 'food_logging', 'gym_workout', 'reminder_set', 'todo_add', 'water_goal_set', 'stats_query', 'task_complete', 'vague_completion', 'what_should_i_do', 'undo_edit', 'confirmation', 'unknown']
+            valid_intents = ['water_logging', 'food_logging', 'gym_workout', 'sleep_logging', 'reminder_set', 'todo_add', 'water_goal_set', 'stats_query', 'fact_storage', 'fact_query', 'task_complete', 'vague_completion', 'what_should_i_do', 'food_suggestion', 'undo_edit', 'confirmation', 'unknown']
             if intent in valid_intents:
                 return intent
             else:
@@ -509,12 +513,23 @@ Respond with ONLY valid JSON, no other text."""
   "exercises": [
     {{
       "name": "exercise name",
-      "weight": 135 (or null if bodyweight/cardio),
-      "reps": 5 (or null if not specified),
-      "sets": 1 (or null if not specified)
+      "sets": [
+        {{
+          "weight": 135 (or null if bodyweight/cardio),
+          "reps": 5 (or null if not specified),
+          "set_number": 1
+        }}
+      ]
     }}
   ]
 }}
+
+IMPORTANT: Handle multiple sets with different weights/reps:
+- "35s, 40s, 45s for 10, 8, 6" = 3 sets: 35lbs x10, 40lbs x8, 45lbs x6
+- "135x5, 185x3, 225x1" = 3 sets: 135lbs x5, 185lbs x3, 225lbs x1
+- "bench 135x10x3" = 3 sets of 135lbs x10 reps (same weight/reps for all sets)
+- For dumbbells, "35s" means 35 pounds in each hand
+- If only one weight/rep is given but multiple sets mentioned, repeat for all sets
 
 Use the muscle_group field to classify the primary muscle group worked.
 For cardio exercises, use "cardio" as the muscle_group.
@@ -549,6 +564,23 @@ Respond with ONLY valid JSON, no other text."""
                                 # If muscle_group wasn't correctly identified, use database
                                 if not workout.get('muscle_group') or workout.get('muscle_group') == 'unknown':
                                     workout['muscle_group'] = matched_exercise.get('muscle_group', matched_exercise.get('primary_muscle', ''))
+                        
+                        # Normalize sets format - convert old format to new format if needed
+                        if 'sets' in exercise and isinstance(exercise['sets'], int):
+                            # Old format: sets is a number, weight/reps are single values
+                            sets_count = exercise['sets']
+                            weight = exercise.get('weight')
+                            reps = exercise.get('reps')
+                            exercise['sets'] = [
+                                {'weight': weight, 'reps': reps, 'set_number': i+1}
+                                for i in range(sets_count)
+                            ]
+                        elif 'sets' not in exercise or not exercise.get('sets'):
+                            # No sets specified, create one from weight/reps if available
+                            weight = exercise.get('weight')
+                            reps = exercise.get('reps')
+                            if weight or reps:
+                                exercise['sets'] = [{'weight': weight, 'reps': reps, 'set_number': 1}]
                 
                 workout['date'] = datetime.now().isoformat()
                 workout['message'] = message
@@ -660,18 +692,20 @@ Respond with ONLY valid JSON, no other text."""
   "food": true/false (user asking about food/calories/macros),
   "water": true/false (user asking about water intake),
   "gym": true/false (user asking about gym workouts),
+  "sleep": true/false (user asking about sleep duration),
   "todos": true/false (user asking about todo list/tasks),
   "reminders": true/false (user asking about reminders/scheduled items),
   "all": true/false (user asking about everything/general stats)
 }}
 
 Examples:
-- "how much have I eaten" -> {{"food": true, "water": false, "gym": false, "todos": false, "reminders": false, "all": false}}
-- "how much water have I drank" -> {{"food": false, "water": true, "gym": false, "todos": false, "reminders": false, "all": false}}
-- "what's on my to do list" -> {{"food": false, "water": false, "gym": false, "todos": true, "reminders": false, "all": false}}
-- "do I have any reminders" -> {{"food": false, "water": false, "gym": false, "todos": false, "reminders": true, "all": false}}
-- "what's my total for today" -> {{"food": true, "water": true, "gym": false, "todos": false, "reminders": false, "all": true}}
-- "show me my stats" -> {{"food": true, "water": true, "gym": true, "todos": false, "reminders": false, "all": true}}
+- "how much have I eaten" -> {{"food": true, "water": false, "gym": false, "sleep": false, "todos": false, "reminders": false, "all": false}}
+- "how much water have I drank" -> {{"food": false, "water": true, "gym": false, "sleep": false, "todos": false, "reminders": false, "all": false}}
+- "how much did I sleep last night" -> {{"food": false, "water": false, "gym": false, "sleep": true, "todos": false, "reminders": false, "all": false}}
+- "what's on my to do list" -> {{"food": false, "water": false, "gym": false, "sleep": false, "todos": true, "reminders": false, "all": false}}
+- "do I have any reminders" -> {{"food": false, "water": false, "gym": false, "sleep": false, "todos": false, "reminders": true, "all": false}}
+- "what's my total for today" -> {{"food": true, "water": true, "gym": false, "sleep": false, "todos": false, "reminders": false, "all": true}}
+- "show me my stats" -> {{"food": true, "water": true, "gym": true, "sleep": true, "todos": false, "reminders": false, "all": true}}
 
 Message: "{message}"
 
@@ -687,12 +721,13 @@ Respond with ONLY valid JSON, no other text."""
                     'food': query_data.get('food', False),
                     'water': query_data.get('water', False),
                     'gym': query_data.get('gym', False),
+                    'sleep': query_data.get('sleep', False),
                     'todos': query_data.get('todos', False),
                     'reminders': query_data.get('reminders', False),
                     'all': query_data.get('all', False)
                 }
             # Default: if unclear, show all
-            return {'food': True, 'water': True, 'gym': False, 'todos': False, 'reminders': False, 'all': True}
+            return {'food': True, 'water': True, 'gym': False, 'sleep': False, 'todos': False, 'reminders': False, 'all': True}
         except Exception as e:
             print(f" Error parsing stats query: {e}")
             # Default: if error, show all
@@ -766,6 +801,54 @@ Respond with ONLY the number (just the number, no text)."""
             return 1.0
         except:
             return 1.0
+    
+    def parse_food_suggestion(self, message: str) -> Dict:
+        """Parse food suggestion query to extract constraints"""
+        prompt = f"""Extract food constraints from this message. Return JSON with:
+{{
+  "high_protein": true/false (user wants high protein),
+  "low_protein": true/false (user wants low protein),
+  "high_calories": true/false (user wants high calories),
+  "low_calories": true/false (user wants low calories),
+  "high_carbs": true/false (user wants high carbs),
+  "low_carbs": true/false (user wants low carbs),
+  "high_fat": true/false (user wants high fat),
+  "low_fat": true/false (user wants low fat),
+  "restaurant": "restaurant_name" or null (specific restaurant if mentioned),
+  "location": "location_name" or null (e.g., "dining hall", "home", "campus")
+}}
+
+Examples:
+- "what should I eat" -> {{"high_protein": false, "low_protein": false, "high_calories": false, "low_calories": false, "high_carbs": false, "low_carbs": false, "high_fat": false, "low_fat": false, "restaurant": null, "location": null}}
+- "something high in protein" -> {{"high_protein": true, "low_protein": false, "high_calories": false, "low_calories": false, "high_carbs": false, "low_carbs": false, "high_fat": false, "low_fat": false, "restaurant": null, "location": null}}
+- "high protein and low calories" -> {{"high_protein": true, "low_protein": false, "high_calories": false, "low_calories": true, "high_carbs": false, "low_carbs": false, "high_fat": false, "low_fat": false, "restaurant": null, "location": null}}
+- "something from sazon" -> {{"high_protein": false, "low_protein": false, "high_calories": false, "low_calories": false, "high_carbs": false, "low_carbs": false, "high_fat": false, "low_fat": false, "restaurant": "sazon", "location": null}}
+
+Message: "{message}"
+
+Respond with ONLY valid JSON, no other text."""
+        
+        try:
+            response_text = self._generate_content(prompt)
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                constraints = json.loads(json_match.group())
+                return {
+                    'high_protein': constraints.get('high_protein', False),
+                    'low_protein': constraints.get('low_protein', False),
+                    'high_calories': constraints.get('high_calories', False),
+                    'low_calories': constraints.get('low_calories', False),
+                    'high_carbs': constraints.get('high_carbs', False),
+                    'low_carbs': constraints.get('low_carbs', False),
+                    'high_fat': constraints.get('high_fat', False),
+                    'low_fat': constraints.get('low_fat', False),
+                    'restaurant': constraints.get('restaurant'),
+                    'location': constraints.get('location')
+                }
+            return {}
+        except Exception as e:
+            print(f" Error parsing food suggestion: {e}")
+            return {}
 
 # Factory function
 def create_gemini_processor(food_database: Optional[Dict] = None, model_name: Optional[str] = None) -> GeminiNLPProcessor:

@@ -29,6 +29,8 @@ class CSVDatabase:
         self.reminders_todos_file = os.path.join(data_dir, 'reminders_todos.csv')
         self.used_quotes_file = os.path.join(data_dir, 'used_quotes.csv')
         self.water_goals_file = os.path.join(data_dir, 'water_goals.csv')
+        self.sleep_logs_file = os.path.join(data_dir, 'sleep_logs.csv')
+        self.facts_file = os.path.join(data_dir, 'facts.csv')
         
         # Initialize CSV files with headers if they don't exist
         self._init_csv_files()
@@ -77,6 +79,18 @@ class CSVDatabase:
             with open(self.water_goals_file, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow(['date', 'goal_ml'])
+        
+        # Sleep logs
+        if not os.path.exists(self.sleep_logs_file):
+            with open(self.sleep_logs_file, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['id', 'date', 'sleep_time', 'wake_time', 'duration_hours'])
+        
+        # Facts (information recall)
+        if not os.path.exists(self.facts_file):
+            with open(self.facts_file, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['id', 'key', 'value', 'context', 'timestamp'])
     
     def _get_next_id(self, csv_file: str) -> int:
         """Get the next ID for a CSV file"""
@@ -514,4 +528,121 @@ class CSVDatabase:
                         pass
         
         return totals
+    
+    # Sleep logs methods
+    def insert_sleep_log(self, date: str, sleep_time: str, wake_time: str, duration_hours: float) -> int:
+        """Insert a sleep log entry"""
+        sleep_id = self._get_next_id(self.sleep_logs_file)
+        timestamp = datetime.now().isoformat()
+        
+        row = {
+            'id': sleep_id,
+            'date': date,
+            'sleep_time': sleep_time,
+            'wake_time': wake_time,
+            'duration_hours': duration_hours
+        }
+        
+        fieldnames = ['id', 'date', 'sleep_time', 'wake_time', 'duration_hours']
+        self._append_csv(self.sleep_logs_file, row, fieldnames)
+        return sleep_id
+    
+    def get_sleep_logs(self, date: Optional[str] = None) -> List[Dict]:
+        """Get sleep logs, optionally filtered by date"""
+        rows = self._read_csv(self.sleep_logs_file)
+        
+        if date:
+            filtered = []
+            for row in rows:
+                row_date = row.get('date', '')
+                if row_date == date:
+                    filtered.append(row)
+            return filtered
+        return rows
+    
+    def get_latest_sleep(self) -> Optional[Dict]:
+        """Get the most recent sleep log"""
+        rows = self._read_csv(self.sleep_logs_file)
+        if not rows:
+            return None
+        
+        # Sort by timestamp (most recent first)
+        # Use date + sleep_time as proxy for recency
+        try:
+            rows.sort(key=lambda x: (x.get('date', ''), x.get('sleep_time', '')), reverse=True)
+        except:
+            pass
+        
+        return rows[0] if rows else None
+    
+    # Facts (information recall) methods
+    def insert_fact(self, key: str, value: str, context: Optional[str] = None) -> int:
+        """Insert a fact/information entry"""
+        fact_id = self._get_next_id(self.facts_file)
+        timestamp = datetime.now().isoformat()
+        
+        row = {
+            'id': fact_id,
+            'key': key,
+            'value': value,
+            'context': context or '',
+            'timestamp': timestamp
+        }
+        
+        fieldnames = ['id', 'key', 'value', 'context', 'timestamp']
+        self._append_csv(self.facts_file, row, fieldnames)
+        return fact_id
+    
+    def get_all_facts(self) -> List[Dict]:
+        """Get all facts"""
+        return self._read_csv(self.facts_file)
+    
+    def search_facts(self, query: str) -> List[Dict]:
+        """Search facts by key or value (case-insensitive partial match)"""
+        rows = self._read_csv(self.facts_file)
+        query_lower = query.lower()
+        
+        matches = []
+        for row in rows:
+            key = row.get('key', '').lower()
+            value = row.get('value', '').lower()
+            
+            if query_lower in key or query_lower in value:
+                matches.append(row)
+        
+        # Sort by timestamp (most recent first)
+        matches.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        return matches
+    
+    def get_fact(self, fact_id: int) -> Optional[Dict]:
+        """Get a specific fact by ID"""
+        rows = self._read_csv(self.facts_file)
+        for row in rows:
+            if int(row.get('id', 0)) == fact_id:
+                return row
+        return None
+    
+    def delete_fact(self, fact_id: Optional[int] = None, key: Optional[str] = None) -> bool:
+        """Delete a fact by ID or key"""
+        rows = self._read_csv(self.facts_file)
+        
+        original_count = len(rows)
+        filtered_rows = []
+        
+        for row in rows:
+            row_id = int(row.get('id', 0))
+            row_key = row.get('key', '')
+            
+            if fact_id is not None and row_id == fact_id:
+                continue  # Skip this row (delete it)
+            elif key is not None and row_key.lower() == key.lower():
+                continue  # Skip this row (delete it)
+            
+            filtered_rows.append(row)
+        
+        if len(filtered_rows) < original_count:
+            fieldnames = ['id', 'key', 'value', 'context', 'timestamp']
+            self._write_csv(self.facts_file, filtered_rows, fieldnames)
+            return True
+        return False
 
