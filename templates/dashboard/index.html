@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Calendar View</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>Activity Dashboard</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('dashboard_logout') }}" class="btn-logout">Logout</a>
+            </div>
+        </header>
+        
+        <div class="dashboard-content">
+            <div class="calendar-section">
+                <div class="calendar-controls">
+                    <button id="prev-month" class="btn-nav">← Previous</button>
+                    <h2 id="current-month"></h2>
+                    <button id="next-month" class="btn-nav">Next →</button>
+                </div>
+                <div id="calendar-grid" class="calendar-grid"></div>
+            </div>
+            
+            <div class="stats-section">
+                <div id="stats-panel" class="stats-panel">
+                    <p class="placeholder-text">Click on a date to view stats</p>
+                </div>
+                
+                <div class="trends-section">
+                    <h3>Trends</h3>
+                    <div class="trend-buttons">
+                        <button class="btn-trend" data-days="7">7 Days</button>
+                        <button class="btn-trend" data-days="30">30 Days</button>
+                        <button class="btn-trend" data-days="90">90 Days</button>
+                    </div>
+                    <div id="trends-display" class="trends-display">
+                        <p class="placeholder-text">Select a time period to view trends</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentDate = new Date();
+        let selectedDate = null;
+        
+        // Month names
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        
+        // Initialize calendar
+        function initCalendar() {
+            renderCalendar();
+            setupEventListeners();
+        }
+        
+        function setupEventListeners() {
+            document.getElementById('prev-month').addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() - 1);
+                renderCalendar();
+            });
+            
+            document.getElementById('next-month').addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() + 1);
+                renderCalendar();
+            });
+            
+            // Trend buttons
+            document.querySelectorAll('.btn-trend').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const days = parseInt(btn.dataset.days);
+                    loadTrends(days);
+                });
+            });
+        }
+        
+        function renderCalendar() {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            
+            // Update month header
+            document.getElementById('current-month').textContent = 
+                `${monthNames[month]} ${year}`;
+            
+            // Get first day of month and number of days
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const daysInMonth = lastDay.getDate();
+            const startingDayOfWeek = firstDay.getDay();
+            
+            // Create calendar grid
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = '';
+            
+            // Add day headers
+            dayNames.forEach(day => {
+                const header = document.createElement('div');
+                header.className = 'calendar-day-header';
+                header.textContent = day;
+                grid.appendChild(header);
+            });
+            
+            // Add empty cells for days before month starts
+            for (let i = 0; i < startingDayOfWeek; i++) {
+                const empty = document.createElement('div');
+                empty.className = 'calendar-day empty';
+                grid.appendChild(empty);
+            }
+            
+            // Add days of month
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-day';
+                dayElement.textContent = day;
+                dayElement.dataset.date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                
+                // Check if this date has data (we'll highlight it later)
+                dayElement.addEventListener('click', () => {
+                    selectDate(dayElement.dataset.date);
+                });
+                
+                grid.appendChild(dayElement);
+            }
+            
+            // Highlight today
+            const today = new Date();
+            if (today.getFullYear() === year && today.getMonth() === month) {
+                const todayElement = grid.querySelector(`[data-date="${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}"]`);
+                if (todayElement) {
+                    todayElement.classList.add('today');
+                }
+            }
+        }
+        
+        function selectDate(date) {
+            selectedDate = date;
+            
+            // Update selected state
+            document.querySelectorAll('.calendar-day').forEach(day => {
+                day.classList.remove('selected');
+            });
+            const selectedElement = document.querySelector(`[data-date="${date}"]`);
+            if (selectedElement) {
+                selectedElement.classList.add('selected');
+            }
+            
+            // Load stats for this date
+            loadDateStats(date);
+        }
+        
+        async function loadDateStats(date) {
+            const panel = document.getElementById('stats-panel');
+            panel.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch(`/dashboard/api/date/${date}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load stats');
+                }
+                
+                const data = await response.json();
+                displayDateStats(date, data);
+            } catch (error) {
+                panel.innerHTML = `<p class="error">Error loading stats: ${error.message}</p>`;
+            }
+        }
+        
+        function displayDateStats(date, data) {
+            const panel = document.getElementById('stats-panel');
+            const dateObj = new Date(date);
+            const formattedDate = dateObj.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            let html = `<h3>${formattedDate}</h3>`;
+            
+            // Food logs
+            html += '<div class="stats-section-item"><h4>Food</h4>';
+            if (data.food_logs && data.food_logs.length > 0) {
+                html += '<ul>';
+                data.food_logs.forEach(log => {
+                    html += `<li>${log.food_name || 'Unknown'}: ${log.calories || 0} cal`;
+                    if (log.protein || log.carbs || log.fat) {
+                        html += ` (${log.protein || 0}g P, ${log.carbs || 0}g C, ${log.fat || 0}g F)`;
+                    }
+                    html += '</li>';
+                });
+                html += '</ul>';
+                if (data.food_totals) {
+                    html += `<p class="totals">Total: ${Math.round(data.food_totals.calories || 0)} cal, `;
+                    html += `${Math.round(data.food_totals.protein || 0)}g protein, `;
+                    html += `${Math.round(data.food_totals.carbs || 0)}g carbs, `;
+                    html += `${Math.round(data.food_totals.fat || 0)}g fat</p>`;
+                }
+            } else {
+                html += '<p>No food logs</p>';
+            }
+            html += '</div>';
+            
+            // Water logs
+            html += '<div class="stats-section-item"><h4>Water</h4>';
+            if (data.water_logs && data.water_logs.length > 0) {
+                html += '<ul>';
+                data.water_logs.forEach(log => {
+                    const ml = log.amount_ml || 0;
+                    const oz = log.amount_oz || 0;
+                    html += `<li>${Math.round(ml)}ml (${oz.toFixed(1)}oz)</li>`;
+                });
+                html += '</ul>';
+                html += `<p class="totals">Total: ${Math.round(data.water_total_ml || 0)}ml / ${Math.round(data.water_goal_ml || 4000)}ml goal</p>`;
+                const progress = data.water_goal_ml > 0 ? (data.water_total_ml / data.water_goal_ml * 100) : 0;
+                html += `<div class="progress-bar"><div class="progress-fill" style="width: ${Math.min(progress, 100)}%"></div></div>`;
+            } else {
+                html += '<p>No water logs</p>';
+            }
+            html += '</div>';
+            
+            // Gym logs
+            html += '<div class="stats-section-item"><h4>Workouts</h4>';
+            if (data.gym_logs && data.gym_logs.length > 0) {
+                html += '<ul>';
+                data.gym_logs.forEach(log => {
+                    html += `<li>${log.exercise || 'Exercise'}`;
+                    if (log.weight || log.reps || log.sets) {
+                        html += `: `;
+                        const parts = [];
+                        if (log.weight) parts.push(`${log.weight}lbs`);
+                        if (log.reps) parts.push(`${log.reps} reps`);
+                        if (log.sets) parts.push(`${log.sets} sets`);
+                        html += parts.join(', ');
+                    }
+                    if (log.notes) {
+                        html += ` <span class="notes">(${log.notes})</span>`;
+                    }
+                    html += '</li>';
+                });
+                html += '</ul>';
+            } else {
+                html += '<p>No workouts</p>';
+            }
+            html += '</div>';
+            
+            // Todos
+            html += '<div class="stats-section-item"><h4>Todos</h4>';
+            if (data.todos && (data.todos.completed.length > 0 || data.todos.unfinished.length > 0)) {
+                if (data.todos.unfinished.length > 0) {
+                    html += '<p class="section-label">Unfinished:</p><ul>';
+                    data.todos.unfinished.forEach(todo => {
+                        html += `<li>${todo.content || 'Todo'}</li>`;
+                    });
+                    html += '</ul>';
+                }
+                if (data.todos.completed.length > 0) {
+                    html += '<p class="section-label">Completed:</p><ul class="completed">';
+                    data.todos.completed.forEach(todo => {
+                        html += `<li>${todo.content || 'Todo'}</li>`;
+                    });
+                    html += '</ul>';
+                }
+            } else {
+                html += '<p>No todos</p>';
+            }
+            html += '</div>';
+            
+            // Reminders
+            html += '<div class="stats-section-item"><h4>Reminders</h4>';
+            if (data.reminders && (data.reminders.completed.length > 0 || data.reminders.unfinished.length > 0)) {
+                if (data.reminders.unfinished.length > 0) {
+                    html += '<p class="section-label">Unfinished:</p><ul>';
+                    data.reminders.unfinished.forEach(reminder => {
+                        html += `<li>${reminder.content || 'Reminder'}`;
+                        if (reminder.due_date) {
+                            const dueDate = new Date(reminder.due_date);
+                            html += ` <span class="due-date">(due: ${dueDate.toLocaleString()})</span>`;
+                        }
+                        html += '</li>';
+                    });
+                    html += '</ul>';
+                }
+                if (data.reminders.completed.length > 0) {
+                    html += '<p class="section-label">Completed:</p><ul class="completed">';
+                    data.reminders.completed.forEach(reminder => {
+                        html += `<li>${reminder.content || 'Reminder'}</li>`;
+                    });
+                    html += '</ul>';
+                }
+            } else {
+                html += '<p>No reminders</p>';
+            }
+            html += '</div>';
+            
+            panel.innerHTML = html;
+        }
+        
+        async function loadTrends(days) {
+            const display = document.getElementById('trends-display');
+            display.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch(`/dashboard/api/trends/${days}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load trends');
+                }
+                
+                const data = await response.json();
+                displayTrends(data, days);
+            } catch (error) {
+                display.innerHTML = `<p class="error">Error loading trends: ${error.message}</p>`;
+            }
+        }
+        
+        function displayTrends(data, days) {
+            const display = document.getElementById('trends-display');
+            let html = `<h4>${days}-Day Summary</h4>`;
+            html += `<p class="date-range">${data.date_range}</p>`;
+            html += '<div class="trend-metrics">';
+            html += `<div class="trend-metric"><span class="metric-label">Water (avg):</span> <span class="metric-value">${Math.round(data.water_avg_ml)}ml/day</span></div>`;
+            html += `<div class="trend-metric"><span class="metric-label">Calories (avg):</span> <span class="metric-value">${Math.round(data.calories_avg)}/day</span></div>`;
+            html += `<div class="trend-metric"><span class="metric-label">Gym days:</span> <span class="metric-value">${data.gym_days}</span></div>`;
+            html += `<div class="trend-metric"><span class="metric-label">Todo completion:</span> <span class="metric-value">${data.todo_completion_rate.toFixed(1)}%</span></div>`;
+            html += '</div>';
+            
+            display.innerHTML = html;
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initCalendar);
+    </script>
+</body>
+</html>
+

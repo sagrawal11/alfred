@@ -65,6 +65,9 @@ class Config:
     SUPABASE_URL = os.getenv('SUPABASE_URL', '')
     SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
     
+    # Dashboard Configuration
+    DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', '')
+    
     # Database (CSV files) - kept for backward compatibility if needed
     # config.py is in project root, so just use dirname once
     DATABASE_DIR = os.path.join(

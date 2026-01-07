@@ -100,6 +100,18 @@ SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_KEY=your_supabase_service_role_key_here
 
 # =============================================================================
+# DASHBOARD CONFIGURATION
+# =============================================================================
+# Password for accessing the web dashboard
+# Set a strong password to protect your dashboard
+DASHBOARD_PASSWORD=your_password_here
+
+# Flask Secret Key (optional, for session security)
+# Generate a random string for production use
+# If not set, a default dev key will be used (not secure for production)
+FLASK_SECRET_KEY=your_random_secret_key_here
+
+# =============================================================================
 # TWILIO SETUP INSTRUCTIONS
 # =============================================================================
 # 1. Go to https://www.twilio.com and create an account (free trial with $15.50 credit)

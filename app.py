@@ -5,7 +5,7 @@ import atexit
 import csv
 import time
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session, redirect, url_for, render_template
 from twilio.twiml.messaging_response import MessagingResponse
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -48,6 +48,8 @@ def daily_database_dump():
 # Initialize Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
+# Set secret key for sessions (use a random string in production)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 
 # Initialize services
 communication_service = CommunicationService()
@@ -2463,6 +2465,195 @@ def health_check():
             "timestamp": datetime.now().isoformat()
         }), 500
 
+
+# =============================================================================
+# DASHBOARD ROUTES
+# =============================================================================
+
+def check_auth():
+    """Check if user is authenticated"""
+    return session.get('authenticated', False)
+
+@app.route('/dashboard/login', methods=['GET', 'POST'])
+def dashboard_login():
+    """Login page for dashboard"""
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == config.DASHBOARD_PASSWORD:
+            session['authenticated'] = True
+            return redirect(url_for('dashboard'))
+        else:
+            return render_template('dashboard/login.html', error='Invalid password')
+    return render_template('dashboard/login.html')
+
+@app.route('/dashboard/logout')
+def dashboard_logout():
+    """Logout from dashboard"""
+    session.pop('authenticated', None)
+    return redirect(url_for('dashboard_login'))
+
+@app.route('/dashboard')
+def dashboard():
+    """Main dashboard calendar view"""
+    if not check_auth():
+        return redirect(url_for('dashboard_login'))
+    return render_template('dashboard/index.html')
+
+@app.route('/dashboard/api/date/<date>')
+def dashboard_api_date(date):
+    """API endpoint to get stats for a specific date"""
+    if not check_auth():
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    try:
+        # Validate date format (YYYY-MM-DD)
+        datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    
+    # Get food logs
+    food_logs = db.get_food_logs(date)
+    food_totals = db.get_todays_food_totals(date)
+    
+    # Get water logs
+    water_logs = db.get_water_logs(date)
+    water_total_ml = db.get_todays_water_total(date)
+    water_goal_ml = db.get_water_goal(date, default_ml=config.DEFAULT_WATER_GOAL_ML)
+    
+    # Get gym logs
+    gym_logs = db.get_gym_logs(date)
+    
+    # Get todos and reminders for this date
+    all_items = db.get_reminders_todos()
+    
+    # Filter items by date (check if timestamp matches the date)
+    todos_completed = []
+    todos_unfinished = []
+    reminders_completed = []
+    reminders_unfinished = []
+    
+    for item in all_items:
+        item_timestamp = item.get('timestamp', '')
+        if item_timestamp:
+            try:
+                item_date = datetime.fromisoformat(item_timestamp.replace('Z', '+00:00')).date()
+                target_date = datetime.strptime(date, '%Y-%m-%d').date()
+                
+                if item_date == target_date:
+                    is_completed = item.get('completed', False)
+                    item_type = item.get('type', '')
+                    
+                    if item_type == 'todo':
+                        if is_completed:
+                            todos_completed.append(item)
+                        else:
+                            todos_unfinished.append(item)
+                    elif item_type == 'reminder':
+                        if is_completed:
+                            reminders_completed.append(item)
+                        else:
+                            reminders_unfinished.append(item)
+            except (ValueError, AttributeError):
+                pass
+    
+    return jsonify({
+        'food_logs': food_logs,
+        'water_logs': water_logs,
+        'water_total_ml': water_total_ml,
+        'water_goal_ml': water_goal_ml,
+        'gym_logs': gym_logs,
+        'todos': {
+            'completed': todos_completed,
+            'unfinished': todos_unfinished
+        },
+        'reminders': {
+            'completed': reminders_completed,
+            'unfinished': reminders_unfinished
+        },
+        'food_totals': food_totals
+    })
+
+@app.route('/dashboard/api/trends/<int:days>')
+def dashboard_api_trends(days):
+    """API endpoint to get trend data for specified number of days"""
+    if not check_auth():
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    if days not in [7, 30, 90]:
+        return jsonify({'error': 'Invalid days. Use 7, 30, or 90'}), 400
+    
+    try:
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days-1)
+        
+        # Get all logs in the date range
+        all_food_logs = []
+        all_water_logs = []
+        all_gym_logs = []
+        all_todos = []
+        
+        current_date = start_date
+        while current_date <= end_date:
+            date_str = current_date.isoformat()
+            
+            # Get logs for this date
+            food_logs = db.get_food_logs(date_str)
+            water_logs = db.get_water_logs(date_str)
+            gym_logs = db.get_gym_logs(date_str)
+            
+            all_food_logs.extend(food_logs)
+            all_water_logs.extend(water_logs)
+            all_gym_logs.extend(gym_logs)
+            
+            current_date += timedelta(days=1)
+        
+        # Get all todos/reminders
+        all_items = db.get_reminders_todos()
+        
+        # Filter todos by date range
+        for item in all_items:
+            item_timestamp = item.get('timestamp', '')
+            if item_timestamp:
+                try:
+                    item_date = datetime.fromisoformat(item_timestamp.replace('Z', '+00:00')).date()
+                    if start_date <= item_date <= end_date and item.get('type') == 'todo':
+                        all_todos.append(item)
+                except (ValueError, AttributeError):
+                    pass
+        
+        # Calculate averages
+        total_water_ml = sum(float(log.get('amount_ml', 0)) for log in all_water_logs)
+        water_avg_ml = total_water_ml / days if days > 0 else 0
+        
+        total_calories = sum(float(log.get('calories', 0)) for log in all_food_logs)
+        calories_avg = total_calories / days if days > 0 else 0
+        
+        # Count unique gym days
+        gym_dates = set()
+        for log in all_gym_logs:
+            timestamp = log.get('timestamp', '')
+            if timestamp:
+                try:
+                    log_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).date()
+                    gym_dates.add(log_date)
+                except (ValueError, AttributeError):
+                    pass
+        gym_days = len(gym_dates)
+        
+        # Calculate todo completion rate
+        completed_todos = sum(1 for todo in all_todos if todo.get('completed', False))
+        total_todos = len(all_todos)
+        todo_completion_rate = (completed_todos / total_todos * 100) if total_todos > 0 else 0
+        
+        return jsonify({
+            'water_avg_ml': round(water_avg_ml, 1),
+            'calories_avg': round(calories_avg, 1),
+            'gym_days': gym_days,
+            'todo_completion_rate': round(todo_completion_rate, 1),
+            'date_range': f"{start_date.isoformat()} to {end_date.isoformat()}"
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 def get_weather_summary():
