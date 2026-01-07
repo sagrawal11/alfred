@@ -3098,18 +3098,32 @@ def morning_checkin():
                     emoji = ""if "gym" in msg.lower() else "" if "water" in msg.lower() else ""
                     message_parts.append(f"{emoji} {msg}")
         
-        # Add today's schedule
+        # Add today's schedule - separate reminders and calendar events
         todays_schedule = get_todays_schedule()
         if todays_schedule:
-            if len(todays_schedule) == 1:
-                item = todays_schedule[0]
-                message_parts.append(f" Today: {item['time']} - {item['content']}")
-            else:
-                has_calendar = any(i.get('type') == 'calendar' for i in todays_schedule)
-                message_parts.append(f" Today: {len(todays_schedule)} {'items' if has_calendar else 'reminders'} scheduled")
-                # Show first 2 items
-                for item in todays_schedule[:2]:
-                    message_parts.append(f"   • {item['time']}: {item['content']}")
+            # Separate reminders and calendar events
+            reminders_today = [item for item in todays_schedule if item.get('type') == 'reminder']
+            calendar_events = [item for item in todays_schedule if item.get('type') == 'calendar']
+            
+            # Show reminders
+            if reminders_today:
+                if len(reminders_today) == 1:
+                    item = reminders_today[0]
+                    message_parts.append(f"⏰ Reminder for today: {item['time']} - {item['content']}")
+                else:
+                    message_parts.append(f"⏰ Reminders for today ({len(reminders_today)}):")
+                    for item in reminders_today:
+                        message_parts.append(f"   • {item['time']}: {item['content']}")
+            
+            # Show Google Calendar events
+            if calendar_events:
+                if len(calendar_events) == 1:
+                    item = calendar_events[0]
+                    message_parts.append(f"📅 Google Calendar: {item['time']} - {item['content']}")
+                else:
+                    message_parts.append(f"📅 Google Calendar ({len(calendar_events)} events):")
+                    for item in calendar_events:
+                        message_parts.append(f"   • {item['time']}: {item['content']}")
         
         # Add incomplete items
         incomplete_items = []
