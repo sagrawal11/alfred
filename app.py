@@ -2401,13 +2401,13 @@ def health_check():
         print(f"\n🏥 === HEALTH CHECK REQUESTED ===")
         
         # Test database connection
-        print(f"Testing CSV database...")
-        print(f"Database directory: {config.DATABASE_DIR}")
+        print(f"Testing Supabase database...")
+        print(f"Supabase URL: {config.SUPABASE_URL[:30]}..." if config.SUPABASE_URL else "Not configured")
         
         try:
             stats = db.get_stats()
-            print(f"CSV database access successful")
-            print(f"CSV files: food_logs.csv, water_logs.csv, gym_logs.csv, reminders_todos.csv")
+            print(f"Supabase database access successful")
+            print(f"Tables: food_logs, water_logs, gym_logs, reminders_todos, sleep_logs, facts")
             
             food_count = stats['food_logs']
             water_count = stats['water_logs']

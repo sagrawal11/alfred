@@ -143,36 +143,8 @@ Log meals with automatic macro tracking from your custom food database. Same foo
 - **APScheduler** - Background task scheduling
 - **Google Calendar API** - Calendar integration
 
-## Setup & Testing
-
-### Supabase Setup
-
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. Run the SQL schema in `supabase_schema.sql` in your Supabase SQL Editor
-3. Get your Supabase URL and service_role key from Settings → API
-4. Add them to your `.env` file:
-   ```
-   SUPABASE_URL=https://your-project-id.supabase.co
-   SUPABASE_KEY=your_service_role_key_here
-   ```
-
-**Important:** Use the **service_role** key (not the anon key) for server-side operations. The service_role key bypasses Row Level Security (RLS), which is required for this application.
-
-### Testing Supabase Connection
-
-Run the test script to verify your Supabase setup:
-
-```bash
-python test_supabase.py
-```
-
-This will:
-- Test the connection to Supabase
-- Test all database operations (food logs, water logs, gym logs, reminders/todos, quotes, water goals, sleep logs, facts)
-- Automatically clean up test data
-- Show a summary of results
-
-All tests should pass if your Supabase configuration is correct.
+## Viewing Stats
+Go to https://objective-almeria-sarthakagrawal-a8b1c327.koyeb.app/dashboard/login and use the correct password to view daily stats as well as 7, 30, and 90 day trends
 
 ## License
 
