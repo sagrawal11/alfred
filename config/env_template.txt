@@ -86,6 +86,18 @@ GENTLE_NUDGES_ENABLED=true
 GENTLE_NUDGE_CHECK_INTERVAL_HOURS=2
 GOOGLE_REDIRECT_URI=http://localhost:5001/auth/google/callback
 
+# =============================================================================
+# SUPABASE DATABASE CONFIGURATION
+# =============================================================================
+# Supabase Project URL
+# Get this from your Supabase project settings: Settings → API → Project URL
+SUPABASE_URL=https://your-project-id.supabase.co
+
+# Supabase API Key
+# Get this from your Supabase project settings: Settings → API → Project API keys
+# Use the "service_role" key for server-side operations (has full access)
+# Or use the "anon" key if you've set up Row Level Security policies
+SUPABASE_KEY=your_supabase_service_role_key_here
 
 # =============================================================================
 # TWILIO SETUP INSTRUCTIONS

@@ -61,7 +61,11 @@ class Config:
     GOOGLE_REFRESH_TOKEN = os.getenv('GOOGLE_REFRESH_TOKEN', '')
     GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5001/auth/google/callback')
     
-    # Database (CSV files)
+    # Supabase Database Configuration
+    SUPABASE_URL = os.getenv('SUPABASE_URL', '')
+    SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
+    
+    # Database (CSV files) - kept for backward compatibility if needed
     # config.py is in project root, so just use dirname once
     DATABASE_DIR = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),

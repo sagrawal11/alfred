@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config
 from gemini_nlp import create_gemini_processor
 from communication_service import CommunicationService
-from csv_database import CSVDatabase
+from supabase_database import SupabaseDatabase
 from google_calendar import create_calendar_service
 
 # Check if another instance is already running
@@ -55,8 +55,10 @@ communication_service = CommunicationService()
 # Load configuration
 config = Config()
 
-# Initialize CSV database
-db = CSVDatabase(config.DATABASE_DIR)
+# Initialize Supabase database
+if not config.SUPABASE_URL or not config.SUPABASE_KEY:
+    raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
+db = SupabaseDatabase(config.SUPABASE_URL, config.SUPABASE_KEY)
 
 # Validate configuration
 try:
@@ -255,13 +257,7 @@ def check_task_decay():
                     if result['success']:
                         print(f"Task decay check sent for: {content}")
                         # Mark decay check as sent
-                        rows = db._read_csv(db.reminders_todos_file)
-                        for row in rows:
-                            if int(row.get('id', 0)) == todo_id:
-                                row['decay_check_sent'] = 'TRUE'
-                                break
-                        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
-                        db._write_csv(db.reminders_todos_file, rows, fieldnames)
+                        db.mark_decay_check_sent(todo_id)
                         
                         # Store pending response
                         if not hasattr(check_task_decay, 'pending_responses'):
@@ -1545,10 +1541,7 @@ class EnhancedMessageProcessor:
                 amount_ml = last_water.get('amount_ml', '0')
                 
                 # Delete by rewriting CSV without this entry
-                rows = db._read_csv(db.water_logs_file)
-                rows = [r for r in rows if int(r.get('id', 0)) != water_id]
-                fieldnames = ['id', 'timestamp', 'amount_ml', 'amount_oz']
-                db._write_csv(db.water_logs_file, rows, fieldnames)
+                db.delete_water_log(water_id)
                 
                 return f"Removed last water entry ({amount_ml}ml)"
             return "No water entries to remove"
@@ -1563,11 +1556,7 @@ class EnhancedMessageProcessor:
                 food_name = last_food.get('food_name', 'item')
                 
                 # Delete by rewriting CSV without this entry
-                rows = db._read_csv(db.food_logs_file)
-                rows = [r for r in rows if int(r.get('id', 0)) != food_id]
-                fieldnames = ['id', 'timestamp', 'food_name', 'calories', 'protein', 
-                             'carbs', 'fat', 'restaurant', 'portion_multiplier']
-                db._write_csv(db.food_logs_file, rows, fieldnames)
+                db.delete_food_log(food_id)
                 
                 return f"Removed last food entry: {food_name}"
             return "No food entries to remove"
@@ -1582,10 +1571,7 @@ class EnhancedMessageProcessor:
                 exercise = last_gym.get('exercise', 'workout')
                 
                 # Delete by rewriting CSV without this entry
-                rows = db._read_csv(db.gym_logs_file)
-                rows = [r for r in rows if int(r.get('id', 0)) != gym_id]
-                fieldnames = ['id', 'timestamp', 'exercise', 'sets', 'reps', 'weight', 'notes']
-                db._write_csv(db.gym_logs_file, rows, fieldnames)
+                db.delete_gym_log(gym_id)
                 
                 return f"Removed last gym entry: {exercise}"
             return "No gym entries to remove"
@@ -1600,10 +1586,7 @@ class EnhancedMessageProcessor:
                 content = last_todo.get('content', 'item')
                 
                 # Delete by rewriting CSV without this entry
-                rows = db._read_csv(db.reminders_todos_file)
-                rows = [r for r in rows if int(r.get('id', 0)) != todo_id]
-                fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
-                db._write_csv(db.reminders_todos_file, rows, fieldnames)
+                db.delete_reminder_todo(todo_id)
                 
                 return f"Removed last todo: {content}"
             return "No todos to remove"
@@ -1618,10 +1601,7 @@ class EnhancedMessageProcessor:
                 content = last_reminder.get('content', 'item')
                 
                 # Delete by rewriting CSV without this entry
-                rows = db._read_csv(db.reminders_todos_file)
-                rows = [r for r in rows if int(r.get('id', 0)) != reminder_id]
-                fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent', 'decay_check_sent']
-                db._write_csv(db.reminders_todos_file, rows, fieldnames)
+                db.delete_reminder_todo(reminder_id)
                 
                 return f"Removed last reminder: {content}"
             return "No reminders to remove"
@@ -2222,16 +2202,7 @@ class EnhancedMessageProcessor:
                     
                     if reminder:
                         # We need to update the due_date - this requires reading and rewriting the CSV
-                        rows = db._read_csv(db.reminders_todos_file)
-                        for row in rows:
-                            if int(row.get('id', 0)) == reminder_id:
-                                row['due_date'] = new_due_date.isoformat()
-                                row['sent_at'] = ''  # Reset sent_at so it can be sent again
-                                row['follow_up_sent'] = 'FALSE'  # Reset follow-up
-                                break
-                        
-                        fieldnames = ['id', 'timestamp', 'type', 'content', 'due_date', 'completed', 'completed_at', 'sent_at', 'follow_up_sent']
-                        db._write_csv(db.reminders_todos_file, rows, fieldnames)
+                        db.update_reminder_due_date(reminder_id, new_due_date)
                         
                         # Remove from pending reschedules
                         del check_reminder_followups.pending_reschedules[reminder_id]
