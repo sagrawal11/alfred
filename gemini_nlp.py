@@ -264,6 +264,7 @@ Extract structured information from user messages. Be accurate and handle variat
 - sleep_logging: User is logging sleep (e.g., "slept at 1:30", "up at 8", "slept 1:30-8", "went to bed at 11", "woke up at 7")
 - reminder_set: User wants to set a reminder (if message contains a time/date like "at 5pm", "tomorrow", "in 1 hour", etc., classify as reminder_set even if it also sounds like a todo)
 - todo_add: User wants to add a todo item (only if there's NO specific time/date mentioned)
+- assignment_add: User is adding a school assignment (e.g., "CS101 homework 3 due Friday", "Math assignment due tomorrow", "History essay due March 20", mentions class name/number and due date)
 - water_goal_set: User wants to set a custom water goal for a specific day (e.g., "my water goal for tomorrow is 5L", "set water goal to 3L today")
 - stats_query: User is asking about their stats/totals (e.g., "how much have I eaten", "how much water have I drank", "what's my total for today", "show me my stats", "how much did I sleep last night")
 - fact_storage: User is storing a fact/information (e.g., "WiFi password is duke-guest-2025", "locker code 4312", "parking spot B17", "dentist is Dr. Patel")
@@ -276,7 +277,9 @@ Extract structured information from user messages. Be accurate and handle variat
 - confirmation: User is confirming or denying something (e.g., "yes", "yep", "correct", "no", "nope", "that's right")
 - unknown: Doesn't match any category
 
-IMPORTANT: If a message has BOTH a task/todo AND a time/date (e.g., "I need to call mama at 5pm tomorrow"), classify it as "reminder_set" because reminders are more specific than todos.
+IMPORTANT: 
+- If a message mentions a class name/number AND a due date, classify as "assignment_add" (e.g., "CS101 homework due Friday")
+- If a message has BOTH a task/todo AND a time/date (e.g., "I need to call mama at 5pm tomorrow"), classify it as "reminder_set" because reminders are more specific than todos.
 
 Message: "{message}"
 
@@ -286,7 +289,7 @@ Respond with ONLY the intent name, nothing else."""
             intent = self._generate_content(prompt).lower()
             
             # Validate intent
-            valid_intents = ['water_logging', 'food_logging', 'gym_workout', 'sleep_logging', 'reminder_set', 'todo_add', 'water_goal_set', 'stats_query', 'fact_storage', 'fact_query', 'task_complete', 'vague_completion', 'what_should_i_do', 'food_suggestion', 'undo_edit', 'confirmation', 'unknown']
+            valid_intents = ['water_logging', 'food_logging', 'gym_workout', 'sleep_logging', 'reminder_set', 'todo_add', 'assignment_add', 'water_goal_set', 'stats_query', 'fact_storage', 'fact_query', 'task_complete', 'vague_completion', 'what_should_i_do', 'food_suggestion', 'undo_edit', 'confirmation', 'unknown']
             if intent in valid_intents:
                 return intent
             else:
@@ -630,6 +633,62 @@ Respond with ONLY valid JSON, no other text."""
             return None
         except Exception as e:
             print(f" Error parsing reminder: {e}")
+            return None
+    
+    def parse_assignment(self, message: str) -> Optional[Dict]:
+        """Parse assignment from message"""
+        prompt = f"""Extract assignment information from this message. Return JSON:
+{{
+  "class_name": "class name or class number (e.g., 'CS101', 'Math 201', 'History')",
+  "assignment_name": "name of the assignment",
+  "due_date": "YYYY-MM-DD HH:MM:SS" (ISO format, default to end of day if only date given)
+}}
+
+Handle relative dates:
+- "due tomorrow" = tomorrow at 11:59 PM
+- "due Friday" = this Friday at 11:59 PM (or next Friday if today is after Friday)
+- "due March 15" = March 15 at 11:59 PM
+- "due next week" = 7 days from now at 11:59 PM
+
+Examples:
+- "CS101 homework 3 due Friday" -> {{"class_name": "CS101", "assignment_name": "homework 3", "due_date": "..."}}
+- "Math assignment due tomorrow" -> {{"class_name": "Math", "assignment_name": "assignment", "due_date": "..."}}
+- "History 201 essay due March 20" -> {{"class_name": "History 201", "assignment_name": "essay", "due_date": "..."}}
+
+Message: "{message}"
+
+Current date/time: {datetime.now().isoformat()}
+
+Respond with ONLY valid JSON, no other text."""
+        
+        try:
+            text = self._generate_content(prompt)
+            
+            # Extract JSON
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            if json_match:
+                assignment = json.loads(json_match.group())
+                
+                # Parse due_date if it's a string
+                if assignment.get('due_date') and isinstance(assignment['due_date'], str):
+                    try:
+                        due_date = datetime.fromisoformat(assignment['due_date'].replace('Z', '+00:00'))
+                        # If no time specified, default to end of day (11:59 PM)
+                        if due_date.hour == 0 and due_date.minute == 0 and due_date.second == 0:
+                            due_date = due_date.replace(hour=23, minute=59, second=59)
+                        assignment['due_date'] = due_date
+                    except:
+                        # If parsing fails, default to tomorrow end of day
+                        assignment['due_date'] = (datetime.now() + timedelta(days=1)).replace(hour=23, minute=59, second=59)
+                else:
+                    # Default to tomorrow end of day if no date provided
+                    assignment['due_date'] = (datetime.now() + timedelta(days=1)).replace(hour=23, minute=59, second=59)
+                
+                assignment['created_at'] = datetime.now().isoformat()
+                return assignment
+            return None
+        except Exception as e:
+            print(f" Error parsing assignment: {e}")
             return None
     
     def parse_water_goal(self, message: str) -> Optional[Dict]:

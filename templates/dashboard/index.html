@@ -298,6 +298,34 @@
             }
             html += '</div>';
             
+            // Assignments
+            html += '<div class="stats-section-item"><h4>Assignments</h4>';
+            if (data.assignments && (data.assignments.due_today.length > 0 || data.assignments.past_due.length > 0)) {
+                if (data.assignments.past_due.length > 0) {
+                    html += '<p class="section-label">Past Due:</p><ul>';
+                    data.assignments.past_due.forEach(assignment => {
+                        const dueDate = new Date(assignment.due_date);
+                        html += `<li><strong>${assignment.class_name || 'Class'}</strong> - ${assignment.assignment_name || 'Assignment'}`;
+                        html += ` <span class="due-date" style="color: #ff6b6b;">(due: ${dueDate.toLocaleDateString()})</span>`;
+                        html += '</li>';
+                    });
+                    html += '</ul>';
+                }
+                if (data.assignments.due_today.length > 0) {
+                    html += '<p class="section-label">Due Today:</p><ul>';
+                    data.assignments.due_today.forEach(assignment => {
+                        const dueDate = new Date(assignment.due_date);
+                        html += `<li><strong>${assignment.class_name || 'Class'}</strong> - ${assignment.assignment_name || 'Assignment'}`;
+                        html += ` <span class="due-date">(due: ${dueDate.toLocaleTimeString()})</span>`;
+                        html += '</li>';
+                    });
+                    html += '</ul>';
+                }
+            } else {
+                html += '<p>No assignments</p>';
+            }
+            html += '</div>';
+            
             panel.innerHTML = html;
         }
         

@@ -381,4 +381,67 @@ class SupabaseDatabase:
             result = self.supabase.table('facts').delete().eq('key', key).execute()
             return result.data is not None and len(result.data) > 0
         return False
+    
+    # Assignments methods
+    def insert_assignment(self, class_name: str, assignment_name: str, 
+                         due_date: datetime, notes: Optional[str] = None,
+                         completed: bool = False) -> int:
+        """Insert an assignment entry"""
+        data = {
+            'class_name': class_name,
+            'assignment_name': assignment_name,
+            'due_date': due_date.isoformat(),
+            'notes': notes,
+            'completed': completed
+        }
+        result = self.supabase.table('assignments').insert(data).execute()
+        return result.data[0]['id']
+    
+    def get_assignments(self, class_name: Optional[str] = None,
+                       completed: Optional[bool] = None,
+                       due_before: Optional[datetime] = None,
+                       due_after: Optional[datetime] = None) -> List[Dict]:
+        """Get assignments with optional filters"""
+        query = self.supabase.table('assignments').select('*')
+        
+        if class_name:
+            query = query.eq('class_name', class_name)
+        
+        if completed is not None:
+            query = query.eq('completed', completed)
+        
+        if due_before:
+            query = query.lte('due_date', due_before.isoformat())
+        
+        if due_after:
+            query = query.gte('due_date', due_after.isoformat())
+        
+        query = query.order('due_date', desc=False)  # Order by due date ascending (earliest first)
+        result = query.execute()
+        return result.data if result.data else []
+    
+    def update_assignment(self, assignment_id: int, completed: Optional[bool] = None,
+                         due_date: Optional[datetime] = None,
+                         notes: Optional[str] = None):
+        """Update an assignment"""
+        update_data = {}
+        
+        if completed is not None:
+            update_data['completed'] = completed
+            if completed:
+                update_data['completed_at'] = datetime.now().isoformat()
+        
+        if due_date is not None:
+            update_data['due_date'] = due_date.isoformat()
+        
+        if notes is not None:
+            update_data['notes'] = notes
+        
+        if update_data:
+            self.supabase.table('assignments').update(update_data).eq('id', assignment_id).execute()
+    
+    def delete_assignment(self, assignment_id: int) -> bool:
+        """Delete an assignment by ID"""
+        result = self.supabase.table('assignments').delete().eq('id', assignment_id).execute()
+        return result.data is not None and len(result.data) > 0
 

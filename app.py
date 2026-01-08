@@ -663,6 +663,8 @@ class EnhancedMessageProcessor:
             return self.handle_todo(message, entities)
         elif intent == 'reminder_set':
             return self.handle_reminder(message, entities)
+        elif intent == 'assignment_add':
+            return self.handle_assignment(message, entities)
         elif intent == 'water_goal_set':
             return self.handle_water_goal(message, entities)
         elif intent == 'stats_query':
@@ -940,6 +942,29 @@ class EnhancedMessageProcessor:
             response = f"Reminder set: {reminder_data['content']} on {date_str} at {time_str}"
             if reminder_data.get('priority') == 'high':
                 response += "(URGENT)"
+            return response
+        
+        return None
+    
+    def handle_assignment(self, message, entities):
+        """Handle assignment creation using enhanced NLP processor"""
+        assignment_data = self.nlp_processor.parse_assignment(message)
+        if assignment_data:
+            # Store assignment in database
+            assignment_id = db.insert_assignment(
+                class_name=assignment_data['class_name'],
+                assignment_name=assignment_data['assignment_name'],
+                due_date=assignment_data['due_date'],
+                notes=None,
+                completed=False
+            )
+            
+            # Format response
+            due_date = assignment_data['due_date']
+            date_str = due_date.strftime("%B %d")
+            time_str = due_date.strftime("%I:%M %p")
+            
+            response = f"Assignment added: {assignment_data['class_name']} - {assignment_data['assignment_name']} due {date_str} at {time_str}"
             return response
         
         return None
@@ -2556,6 +2581,25 @@ def dashboard_api_date(date):
             except (ValueError, AttributeError):
                 pass
     
+    # Get assignments (show if due date is on or before this date, and not completed)
+    target_date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+    all_assignments = db.get_assignments(completed=False)
+    assignments_due = []
+    assignments_past_due = []
+    
+    for assignment in all_assignments:
+        due_date_str = assignment.get('due_date', '')
+        if due_date_str:
+            try:
+                due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00')).date()
+                if due_date <= target_date_obj:
+                    if due_date == target_date_obj:
+                        assignments_due.append(assignment)
+                    elif due_date < target_date_obj:
+                        assignments_past_due.append(assignment)
+            except (ValueError, AttributeError):
+                pass
+    
     return jsonify({
         'food_logs': food_logs,
         'water_logs': water_logs,
@@ -2569,6 +2613,10 @@ def dashboard_api_date(date):
         'reminders': {
             'completed': reminders_completed,
             'unfinished': reminders_unfinished
+        },
+        'assignments': {
+            'due_today': assignments_due,
+            'past_due': assignments_past_due
         },
         'food_totals': food_totals
     })
@@ -3124,6 +3172,53 @@ def morning_checkin():
                     message_parts.append(f"📅 Google Calendar ({len(calendar_events)} events):")
                     for item in calendar_events:
                         message_parts.append(f"   • {item['time']}: {item['content']}")
+        
+        # Add assignments due soon (within next 7 days)
+        today = datetime.now().date()
+        next_week = today + timedelta(days=7)
+        assignments = db.get_assignments(completed=False, due_after=datetime.combine(today, datetime.min.time()))
+        upcoming_assignments = []
+        for assignment in assignments:
+            due_date_str = assignment.get('due_date', '')
+            if due_date_str:
+                try:
+                    due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00')).date()
+                    if due_date <= next_week:
+                        upcoming_assignments.append({
+                            'assignment': assignment,
+                            'due_date': due_date
+                        })
+                except:
+                    pass
+        
+        if upcoming_assignments:
+            # Sort by due date
+            upcoming_assignments.sort(key=lambda x: x['due_date'])
+            if len(upcoming_assignments) == 1:
+                item = upcoming_assignments[0]
+                assignment = item['assignment']
+                due_date = item['due_date']
+                days_until = (due_date - today).days
+                if days_until == 0:
+                    date_str = "today"
+                elif days_until == 1:
+                    date_str = "tomorrow"
+                else:
+                    date_str = due_date.strftime("%B %d")
+                message_parts.append(f"📚 Assignment: {assignment['class_name']} - {assignment['assignment_name']} due {date_str}")
+            else:
+                message_parts.append(f"📚 Assignments ({len(upcoming_assignments)} upcoming):")
+                for item in upcoming_assignments[:5]:  # Show up to 5
+                    assignment = item['assignment']
+                    due_date = item['due_date']
+                    days_until = (due_date - today).days
+                    if days_until == 0:
+                        date_str = "today"
+                    elif days_until == 1:
+                        date_str = "tomorrow"
+                    else:
+                        date_str = due_date.strftime("%b %d")
+                    message_parts.append(f"   • {assignment['class_name']} - {assignment['assignment_name']} due {date_str}")
         
         # Add incomplete items
         incomplete_items = []

@@ -35,6 +35,7 @@ Most productivity tools require you to adapt to them. This one adapts to you. Te
 │  │  - Water logs                   │ │
 │  │  - Gym logs                     │ │
 │  │  - Reminders/Todos              │ │
+│  │  - Assignments                  │ │
 │  │  - Sleep logs                   │ │
 │  │  - Facts/Information            │ │
 │  └─────────────────────────────────┘ │
@@ -98,6 +99,10 @@ Optional but powerful. The system reads your calendar and shows events alongside
 
 Log meals with automatic macro tracking from your custom food database. Same food from different restaurants? Different macros. The system handles portion multipliers, restaurant-specific entries, and learns your eating patterns.
 
+### Assignment Tracking
+
+Track school assignments with class names and due dates. Text "CS101 homework 3 due Friday" or "Math assignment due tomorrow" and the system automatically extracts the class, assignment name, and due date. Assignments appear in your morning check-ins and dashboard, helping you stay on top of deadlines.
+
 ## What Makes This Different
 
 **It's forgiving.** Make mistakes, be vague, forget to respond—the system handles it gracefully.
@@ -122,11 +127,12 @@ Log meals with automatic macro tracking from your custom food database. Same foo
 **Tasks:**
 - `"remind me to call mom at 3pm"` → Sets time-based reminder
 - `"todo buy groceries"` → Adds to your list
+- `"CS101 homework 3 due Friday"` → Adds assignment with class, name, and due date
 - `"called mom"` → Intelligently matches and completes the task
 
 **Queries:**
 - `"how much have I eaten"` → Daily food totals with macros
-- `"what do I have to do today"` → Todos, reminders, and calendar events
+- `"what do I have to do today"` → Todos, reminders, assignments, and calendar events
 - `"what should I do now"` → Context-aware suggestions based on your situation
 
 **Smart Features:**

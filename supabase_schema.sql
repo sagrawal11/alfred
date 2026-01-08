@@ -79,6 +79,18 @@ CREATE TABLE IF NOT EXISTS facts (
     timestamp TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+-- Assignments table
+CREATE TABLE IF NOT EXISTS assignments (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+    class_name TEXT NOT NULL,
+    assignment_name TEXT NOT NULL,
+    due_date TIMESTAMP NOT NULL,
+    completed BOOLEAN DEFAULT FALSE,
+    completed_at TIMESTAMP,
+    notes TEXT
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_food_logs_timestamp ON food_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_water_logs_timestamp ON water_logs(timestamp);
@@ -89,4 +101,7 @@ CREATE INDEX IF NOT EXISTS idx_reminders_todos_due_date ON reminders_todos(due_d
 CREATE INDEX IF NOT EXISTS idx_sleep_logs_date ON sleep_logs(date);
 CREATE INDEX IF NOT EXISTS idx_facts_key ON facts(key);
 CREATE INDEX IF NOT EXISTS idx_facts_timestamp ON facts(timestamp);
+CREATE INDEX IF NOT EXISTS idx_assignments_due_date ON assignments(due_date);
+CREATE INDEX IF NOT EXISTS idx_assignments_completed ON assignments(completed);
+CREATE INDEX IF NOT EXISTS idx_assignments_class_name ON assignments(class_name);
 
