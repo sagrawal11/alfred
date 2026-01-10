@@ -1,22 +1,21 @@
 # 🚀 Deployment Guide - Quick Reference
 
-## Render Deployment (Recommended)
+## Koyeb Deployment
 
-**Cost**: $7/month (Starter plan - always-on)
+**Current Deployment**: Working on Koyeb at `https://objective-almeria-sarthakagrawal-a8b1c327.koyeb.app`
 
 ### Quick Steps:
 
 1. **Push code to GitHub**
-2. **Create Render account**: [render.com](https://render.com)
+2. **Create Koyeb account**: [koyeb.com](https://koyeb.com)
 3. **New Web Service**:
    - Connect GitHub repo
    - Name: `sms-assistant`
    - Build: `pip install -r requirements.txt`
    - Start: `python app.py`
-   - Plan: **Starter** ($7/month)
-4. **Add environment variables** (from your `.env` file)
-5. **Deploy** and get URL: `https://sms-assistant.onrender.com`
-6. **Update Twilio webhook** to: `https://sms-assistant.onrender.com/webhook/twilio`
+   - Add environment variables (from your `.env` file)
+4. **Deploy** and get URL: `https://your-app.koyeb.app`
+5. **Update Twilio webhook** to: `https://your-app.koyeb.app/webhook/twilio`
 
 ### Environment Variables Needed:
 
@@ -31,13 +30,19 @@ COMMUNICATION_MODE=sms
 NLP_ENGINE=gemini
 MORNING_CHECKIN_HOUR=8
 WATER_BOTTLE_SIZE_ML=500
+SUPABASE_URL=...
+SUPABASE_KEY=...
+DASHBOARD_PASSWORD=...
+KOYEB=true (automatically set by Koyeb)
+PORT=10000 (automatically set by Koyeb)
 ```
 
-### Why Starter Plan?
+### Koyeb Benefits:
 
-- Free tier sleeps after 15 minutes → webhooks won't work
-- Starter plan keeps app always-on → reliable SMS handling
-- $7/month is cheapest always-on option
+- Always-on deployment (no cold starts)
+- Automatic HTTPS and custom domains
+- Simple deployment from GitHub
+- Free tier available with limitations
 
 See `docs/DEPLOYMENT_GUIDE.md` for detailed instructions.
 

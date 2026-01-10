@@ -3390,8 +3390,8 @@ if __name__ == '__main__':
     
     # Get port from environment (for cloud deployment) or use default
     port = int(os.getenv('PORT', 5001))
-    # Use 0.0.0.0 for cloud deployments (Render, Koyeb, etc.) or localhost for local dev
-    host = '0.0.0.0' if os.getenv('RENDER') or os.getenv('KOYEB') or os.getenv('PORT') else 'localhost'
+    # Use 0.0.0.0 for cloud deployments (Koyeb, etc.) or localhost for local dev
+    host = '0.0.0.0' if os.getenv('KOYEB') or os.getenv('PORT') else 'localhost'
     
     print(f"🚀 Starting Alfred the Butler on {host}:{port}")
     print(f"🌐 Health check: http://{host}:{port}/health")
