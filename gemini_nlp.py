@@ -9,6 +9,8 @@ import re
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
+from dateutil import parser as date_parser
+from dateutil.relativedelta import relativedelta
 
 # Try new SDK first, fallback to old one
 try:
@@ -133,14 +135,74 @@ Extract structured information from user messages. Be accurate and handle variat
         return ""
     
     def _load_food_database(self):
-        """Load custom food database from file"""
-        try:
-            from config import Config
-            with open(Config.FOOD_DATABASE_PATH, 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            print("  Custom food database not found, using empty DB")
+        """Load all restaurant food databases from JSON files"""
+        from config import Config
+        import glob
+        
+        # Get data directory path - use config path or default to 'data' relative to project root
+        if hasattr(Config, 'FOOD_DATABASE_PATH'):
+            data_dir = os.path.dirname(Config.FOOD_DATABASE_PATH)
+            if not os.path.isabs(data_dir):
+                # Relative path, make absolute relative to config.py location
+                config_dir = os.path.dirname(os.path.abspath(Config.__file__ if hasattr(Config, '__file__') else __file__))
+                data_dir = os.path.join(config_dir, data_dir)
+        else:
+            # Fallback to 'data' directory relative to project root
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            data_dir = os.path.join(project_root, 'data')
+        
+        # Ensure directory exists
+        if not os.path.exists(data_dir):
+            print(f"  Data directory not found: {data_dir}")
             return {}
+        
+        # Load all restaurant JSON files
+        restaurant_files = glob.glob(os.path.join(data_dir, '*.json'))
+        
+        # Filter out non-restaurant files (snacks.json, gym_workouts.json, wu_foods.json, all_restaurants.json)
+        exclude_files = {'snacks.json', 'gym_workouts.json', 'wu_foods.json', 'all_restaurants.json'}
+        restaurant_files = [f for f in restaurant_files if os.path.basename(f) not in exclude_files]
+        
+        all_restaurants = {}
+        
+        for json_file in sorted(restaurant_files):
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    restaurant_data = json.load(f)
+                    all_restaurants.update(restaurant_data)
+                    restaurant_name = list(restaurant_data.keys())[0] if restaurant_data else 'unknown'
+                    # Count total food items recursively
+                    def count_items(d):
+                        count = 0
+                        if isinstance(d, dict):
+                            for v in d.values():
+                                if isinstance(v, dict):
+                                    if 'calories' in v:
+                                        count += 1  # Food item
+                                    else:
+                                        count += count_items(v)  # Category, recurse
+                        return count
+                    item_count = sum(count_items(v) for v in restaurant_data.values())
+                    print(f"  Loaded {restaurant_name} ({item_count} items) from {os.path.basename(json_file)}")
+            except Exception as e:
+                print(f"  Error loading {json_file}: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        if not all_restaurants:
+            print("  No restaurant databases found, trying fallback...")
+            # Try to load old wu_foods.json as fallback
+            try:
+                if hasattr(Config, 'FOOD_DATABASE_PATH') and os.path.exists(Config.FOOD_DATABASE_PATH):
+                    with open(Config.FOOD_DATABASE_PATH, 'r') as f:
+                        fallback_data = json.load(f)
+                        print(f"  Loaded fallback from {Config.FOOD_DATABASE_PATH}")
+                        return fallback_data
+            except FileNotFoundError:
+                print("  No food database files found")
+                return {}
+        
+        return all_restaurants
     
     def _load_snacks_database(self):
         """Load snacks database from file"""
@@ -154,40 +216,195 @@ Extract structured information from user messages. Be accurate and handle variat
             print("  Snacks database not found, skipping")
             return {}
     
+    def _get_restaurant_nicknames(self):
+        """Map restaurant nicknames to normalized restaurant keys"""
+        return {
+            'kraft': 'the_devils_krafthouse',
+            'krafthouse': 'the_devils_krafthouse',
+            'skillet': 'the_skillet',
+            'pitch': 'the_pitchfork',
+            'pitchfork': 'the_pitchfork',
+            'gsoy': 'ginger_and_soy',
+            'ginger and soy': 'ginger_and_soy',
+            'ginger & soy': 'ginger_and_soy',
+            'gothic': 'gothic_grill',
+        }
+    
+    def _get_restaurant_variations(self, restaurant_key):
+        """Get all variations (nickname, normalized, with spaces) for a restaurant key"""
+        variations = []
+        seen = set()
+        
+        # Helper to add variation if not seen
+        def add_variation(var):
+            var_lower = var.lower()
+            if var_lower not in seen:
+                seen.add(var_lower)
+                variations.append(var)
+        
+        # Add normalized key
+        add_variation(restaurant_key)
+        
+        # Add version with spaces
+        restaurant_spaces = restaurant_key.replace('_', ' ')
+        if restaurant_spaces != restaurant_key:
+            add_variation(restaurant_spaces)
+        
+        # Add nicknames (reverse lookup)
+        nicknames_map = self._get_restaurant_nicknames()
+        for nickname, normalized in nicknames_map.items():
+            if normalized == restaurant_key:
+                add_variation(nickname)
+                # Also add nickname with space/underscore variations
+                if ' ' in nickname:
+                    add_variation(nickname.replace(' ', '_'))
+                elif '_' in nickname:
+                    add_variation(nickname.replace('_', ' '))
+        
+        return variations
+    
     def _flatten_food_database(self, raw_db):
         """Flatten nested food database structure into a flat dict for easier lookup
         
-        Input: {"sazon": {"quesedilla": {...}, "burrito": {...}}, "krafthouse": {"quesedilla": {...}}}
-        Output: {"quesedilla": {...}, "sazon quesedilla": {...}, "krafthouse quesedilla": {...}}
+        Handles hierarchical structures like:
+        - {"restaurant": {"category": {"food": {...}}}} (nested)
+        - {"restaurant": {"food": {...}}} (flat)
+        - {"restaurant": {"category": {"subcategory": {"food": {...}}}}} (deeply nested)
         
-        Note: Restaurant name is now the top-level key, not a field in food_data
+        Output: Multiple lookup keys prioritizing "restaurant food" order.
+        Also includes nickname variations (e.g., "kraft", "gsoy", "skillet", "pitch").
         """
         flattened = {}
         if not raw_db:
             return flattened
         
-        for restaurant, foods in raw_db.items():
-            if isinstance(foods, dict):
-                for food_key, food_data in foods.items():
-                    # Add restaurant name to food data for later reference
-                    food_data_with_restaurant = {**food_data, 'restaurant': restaurant}
-                    
-                    # Add food with just its key (for generic matching)
-                    # If multiple restaurants have same food, last one wins (could be improved)
-                    flattened[food_key] = food_data_with_restaurant
-                    
-                    # Add "restaurant food" format (e.g., "sazon quesedilla")
-                    flattened[f"{restaurant} {food_key}"] = food_data_with_restaurant
-                    
-                    # Add "food restaurant" format (e.g., "quesedilla sazon")
-                    flattened[f"{food_key} {restaurant}"] = food_data_with_restaurant
-                    
-                    # Handle common misspellings/variations
-                    if food_key.lower() in ['quesadilla', 'quesedilla']:
-                        # Add variations for both spellings
-                        for spelling in ['quesadilla', 'quesedilla']:
-                            flattened[f"{restaurant} {spelling}"] = food_data_with_restaurant
-                            flattened[f"{spelling} {restaurant}"] = food_data_with_restaurant
+        def traverse_and_flatten(current_dict, path_prefix=None, restaurant=None):
+            """Recursively traverse nested dictionary and flatten"""
+            if path_prefix is None:
+                path_prefix = []
+            
+            for key, value in current_dict.items():
+                if isinstance(value, dict):
+                    # Check if this is a food item (has nutrition data - calories field is definitive)
+                    # Food items have 'calories' field, categories don't
+                    if 'calories' in value:
+                        # This is a food item
+                        food_key = key
+                        food_data = value.copy()
+                        
+                        # Add restaurant name to food data
+                        if restaurant:
+                            food_data['restaurant'] = restaurant
+                        
+                        # Create various search keys for lookup
+                        search_keys = []
+                        
+                        # 1. Just the food key (e.g., "brown_rice")
+                        search_keys.append(food_key)
+                        
+                        # 2. Food key with spaces (e.g., "brown rice")
+                        food_key_spaces = food_key.replace('_', ' ')
+                        if food_key_spaces != food_key:
+                            search_keys.append(food_key_spaces)
+                        
+                        # 3. With restaurant prefix (PRIORITY: restaurant comes FIRST in user messages)
+                        # e.g., "kraft quesadilla", "gsoy brown rice", "skillet omelette"
+                        if restaurant:
+                            # Get all restaurant variations (normalized, spaces, nicknames)
+                            restaurant_variations = self._get_restaurant_variations(restaurant)
+                            
+                            for restaurant_var in restaurant_variations:
+                                # Priority 1: Restaurant + food (primary search pattern - user says "restaurant food")
+                                search_keys.append(f"{restaurant_var} {food_key}")
+                                search_keys.append(f"{restaurant_var} {food_key_spaces}")
+                                
+                                # Priority 2: Food from restaurant (less common but valid pattern)
+                                search_keys.append(f"{food_key} from {restaurant_var}")
+                                search_keys.append(f"{food_key_spaces} from {restaurant_var}")
+                                
+                                # With category path: "restaurant category food"
+                                if path_prefix:
+                                    category_path = ' '.join(path_prefix)
+                                    search_keys.append(f"{restaurant_var} {category_path} {food_key}")
+                                    search_keys.append(f"{restaurant_var} {category_path} {food_key_spaces}")
+                                    
+                                    # Also "food from restaurant" with category
+                                    search_keys.append(f"{food_key_spaces} from {restaurant_var}")
+                                    
+                                    # Also without underscores in category path
+                                    category_path_spaces = ' '.join([p.replace('_', ' ') for p in path_prefix])
+                                    if category_path_spaces != category_path:
+                                        search_keys.append(f"{restaurant_var} {category_path_spaces} {food_key}")
+                                        search_keys.append(f"{restaurant_var} {category_path_spaces} {food_key_spaces}")
+                            
+                            # Also add reverse order without "from" (lowest priority - user rarely says "food restaurant")
+                            restaurant_spaces = restaurant.replace('_', ' ')
+                            search_keys.append(f"{food_key} {restaurant}")
+                            search_keys.append(f"{food_key_spaces} {restaurant}")
+                            search_keys.append(f"{food_key} {restaurant_spaces}")
+                            search_keys.append(f"{food_key_spaces} {restaurant_spaces}")
+                        
+                        # 4. With category path (without restaurant)
+                        if path_prefix:
+                            category_path = ' '.join(path_prefix)
+                            search_keys.append(f"{category_path} {food_key}")
+                            search_keys.append(f"{category_path} {food_key_spaces}")
+                        
+                        # 5. Just food name variations (remove common prefixes/suffixes for better matching)
+                        # e.g., "brown rice" from "brown rice bowl base"
+                        if food_key_spaces and len(food_key_spaces) > 5:  # Only for longer names
+                            # Extract main food name (remove common suffixes)
+                            main_name = food_key_spaces
+                            for suffix in [' bowl', ' base', ' portion', ' taco', ' protein', ' toppings', ' sauce']:
+                                if main_name.endswith(suffix):
+                                    main_name = main_name[:-len(suffix)].strip()
+                                    break
+                            if main_name != food_key_spaces and len(main_name) > 2:
+                                search_keys.append(main_name)
+                                if restaurant:
+                                    # Add with restaurant variations
+                                    restaurant_variations = self._get_restaurant_variations(restaurant)
+                                    for restaurant_var in restaurant_variations:
+                                        # Restaurant first (most common)
+                                        search_keys.append(f"{restaurant_var} {main_name}")
+                                        # Food from restaurant (less common)
+                                        search_keys.append(f"{main_name} from {restaurant_var}")
+                                    # Lower priority reverse order without "from"
+                                    restaurant_spaces = restaurant.replace('_', ' ')
+                                    search_keys.append(f"{main_name} {restaurant_spaces}")
+                        
+                        # Add all search keys to flattened dict
+                        for search_key in search_keys:
+                            search_key_lower = search_key.lower().strip()
+                            # Use best match (prefer exact matches, then longer matches)
+                            if search_key_lower not in flattened:
+                                flattened[search_key_lower] = food_data
+                            else:
+                                # If key already exists, prefer the one with more context (longer path)
+                                existing = flattened[search_key_lower]
+                                if len(search_key_lower) > len(str(existing.get('food_name', ''))):
+                                    flattened[search_key_lower] = food_data
+                        
+                        # Handle common misspellings/variations
+                        if 'quesadilla' in food_key or 'quesedilla' in food_key:
+                            for spelling in ['quesadilla', 'quesedilla']:
+                                # Replace with each spelling variation
+                                for search_key in search_keys:
+                                    variant_key = search_key.replace('quesadilla', spelling).replace('quesedilla', spelling).lower()
+                                    if variant_key not in flattened:
+                                        flattened[variant_key] = food_data
+                    else:
+                        # This is a category/subcategory, continue traversing
+                        new_path = path_prefix + [key]
+                        traverse_and_flatten(value, new_path, restaurant)
+                else:
+                    # Leaf value that's not a dict - shouldn't happen in food database
+                    pass
+        
+        # Process each restaurant
+        for restaurant, restaurant_data in raw_db.items():
+            if isinstance(restaurant_data, dict):
+                traverse_and_flatten(restaurant_data, [], restaurant)
         
         return flattened
     
@@ -366,11 +583,15 @@ Respond with ONLY the number in ml (just the number, no units), or "null" if no 
     
     def parse_food(self, message: str) -> Optional[Dict]:
         """Parse food information from message, extracting macros if provided"""
+        # Get nickname mapping for the prompt
+        nicknames_map = self._get_restaurant_nicknames()
+        nickname_examples = ', '.join([f'"{nickname}" = "{full}"' for nickname, full in list(nicknames_map.items())[:4]])
+        
         prompt = f"""Extract food information from this message. Return JSON:
 {{
-  "food_name": "name of food",
-  "portion_multiplier": 1.0,
-  "restaurant": "restaurant name if mentioned",
+  "food_name": "name of food (extract just the food name, ignore words like 'a', 'an', 'the', 'ate', 'eating')",
+  "portion_multiplier": 1.0 (extract portion multiplier: "half" or "half of" = 0.5, "double" = 2.0, "2x" = 2.0, "1.5" = 1.5, "quarter" = 0.25, default = 1.0),
+  "restaurant": "restaurant name if mentioned (handle both formats: 'restaurant food' OR 'food from restaurant')",
   "calories": null (extract if mentioned like "200 cal", "200 calories"),
   "protein_g": null (extract if mentioned like "20g protein", "20g p"),
   "carbs_g": null (extract if mentioned like "22g carbs", "22g c"),
@@ -380,9 +601,32 @@ Respond with ONLY the number in ml (just the number, no units), or "null" if no 
   "sugars_g": null (extract if mentioned like "5g sugar")
 }}
 
-IMPORTANT: If macros are provided in the message (calories, protein, carbs, fat, etc.), extract them directly.
-If the food is in this database, you can use its nutrition info, but user-provided macros take priority:
-{json.dumps(list(self.food_db.keys())[:10], indent=2)}
+IMPORTANT RULES:
+1. Restaurant can appear in TWO formats:
+   - "restaurant food" (most common): "kraft quesadilla", "gsoy brown rice", "skillet omelette", "pitch pizza"
+   - "food from restaurant" (less common): "ice cream sundae from gothic", "quesadilla from kraft"
+2. Restaurant nickname mappings: {nickname_examples}
+   - "kraft" = "the_devils_krafthouse" (also "krafthouse")
+   - "skillet" = "the_skillet"
+   - "pitch" or "pitchfork" = "the_pitchfork"
+   - "gsoy" = "ginger_and_soy"
+   - "gothic" = "gothic_grill"
+3. Portion multipliers - extract from phrases like:
+   - "half" or "half of" = 0.5
+   - "double" = 2.0
+   - "2x" or "2 x" = 2.0
+   - "1.5" or "one and a half" = 1.5
+   - "quarter" = 0.25
+   - Numbers like "2 quesadillas" = 2.0
+4. Ignore filler words: "just ate a", "just ate", "eating a", "had a", etc.
+5. Food name should be clean: remove articles ("a", "an", "the") and action words ("ate", "eating", "had")
+6. If macros are provided in the message, extract them directly. User-provided macros take priority over database values.
+
+EXAMPLES:
+- "just ate a kraft quesedilla" → {{"food_name": "quesedilla", "portion_multiplier": 1.0, "restaurant": "kraft"}}
+- "just ate half of an ice cream sundae from gothic" → {{"food_name": "ice cream sundae", "portion_multiplier": 0.5, "restaurant": "gothic"}}
+- "gsoy brown rice bowl" → {{"food_name": "brown rice bowl", "portion_multiplier": 1.0, "restaurant": "gsoy"}}
+- "double skillet omelette" → {{"food_name": "omelette", "portion_multiplier": 2.0, "restaurant": "skillet"}}
 
 Message: "{message}"
 
@@ -397,35 +641,139 @@ Respond with ONLY valid JSON, no other text."""
                 food_data = json.loads(json_match.group())
                 
                 # Look up in food database (now flattened)
-                food_name = food_data.get('food_name', '').lower()
-                restaurant = food_data.get('restaurant', '').lower()
+                food_name = food_data.get('food_name', '').lower().strip()
+                restaurant = food_data.get('restaurant', '').lower().strip()
                 
-                # Try exact match first (e.g., "sazon quesadilla")
-                search_terms = [food_name]
+                # Build search terms prioritizing "restaurant food" order (user always says restaurant first)
+                search_terms = []
+                
+                # Normalize restaurant name (handle nicknames)
                 if restaurant:
-                    search_terms.append(f"{restaurant} {food_name}")
-                    search_terms.append(f"{food_name} {restaurant}")
+                    # Check if it's a nickname and get the normalized name
+                    nicknames_map = self._get_restaurant_nicknames()
+                    normalized_restaurant = nicknames_map.get(restaurant, restaurant)
+                    if normalized_restaurant != restaurant:
+                        restaurant = normalized_restaurant
+                    
+                    # Get all restaurant variations (normalized, spaces, nickname)
+                    restaurant_variations = self._get_restaurant_variations(restaurant)
+                    
+                    # Get food name variations
+                    food_name_spaces = food_name.replace('_', ' ')
+                    
+                    # Priority 1: "restaurant food" (exact match with restaurant first - most common)
+                    for restaurant_var in restaurant_variations:
+                        search_terms.append(f"{restaurant_var} {food_name}")
+                        if food_name_spaces != food_name:
+                            search_terms.append(f"{restaurant_var} {food_name_spaces}")
+                    
+                    # Priority 2: "food from restaurant" (less common but valid pattern)
+                    for restaurant_var in restaurant_variations:
+                        search_terms.append(f"{food_name} from {restaurant_var}")
+                        if food_name_spaces != food_name:
+                            search_terms.append(f"{food_name_spaces} from {restaurant_var}")
+                    
+                    # Priority 3: Just food name (lower priority - no restaurant context)
+                    search_terms.append(food_name)
+                    if food_name_spaces != food_name:
+                        search_terms.append(food_name_spaces)
+                    
+                    # Priority 4: "food restaurant" (lowest priority - reverse order without "from")
+                    for restaurant_var in restaurant_variations:
+                        search_terms.append(f"{food_name} {restaurant_var}")
+                        if food_name_spaces != food_name:
+                            search_terms.append(f"{food_name_spaces} {restaurant_var}")
+                else:
+                    # No restaurant specified - just search food name
+                    search_terms = [food_name]
+                    food_name_spaces = food_name.replace('_', ' ')
+                    if food_name_spaces != food_name:
+                        search_terms.append(food_name_spaces)
                 
-                # Look for best match
+                # Look for best match with priority scoring
                 best_match = None
                 best_score = 0
                 
+                # Get restaurant variations for matching
+                restaurant_variations_for_matching = []
+                if restaurant:
+                    restaurant_variations_for_matching = self._get_restaurant_variations(restaurant)
+                    # Also add original restaurant name
+                    restaurant_variations_for_matching.append(restaurant)
+                    # Add lowercase versions
+                    restaurant_variations_for_matching.extend([r.lower() for r in restaurant_variations_for_matching])
+                
                 for key, value in self.food_db.items():
-                    key_lower = key.lower()
-                    # Check if any search term matches
-                    for term in search_terms:
-                        if term in key_lower or key_lower in term:
-                            # Score based on match quality
-                            if term == key_lower:
-                                score = 100  # Exact match
-                            elif term in key_lower:
-                                score = 50   # Partial match
-                            else:
-                                score = 25   # Contains match
-                            
-                            if score > best_score:
-                                best_score = score
-                                best_match = (key, value)
+                    key_lower = key.lower().strip()
+                    
+                    # STRICT: If restaurant is specified, ONLY consider matches that include the restaurant
+                    if restaurant and restaurant_variations_for_matching:
+                        # Check if ANY restaurant variation appears in the key
+                        restaurant_in_key = any(rest_var.lower() in key_lower for rest_var in restaurant_variations_for_matching)
+                        if not restaurant_in_key:
+                            # Skip this match entirely - restaurant doesn't match
+                            continue
+                    
+                    # Check each search term and score based on priority and match quality
+                    for i, term in enumerate(search_terms):
+                        term_lower = term.lower().strip()
+                        
+                        # Calculate match score
+                        score = 0
+                        match_type = None
+                        
+                        # Exact match gets highest score
+                        if term_lower == key_lower:
+                            score = 200 - (i * 2)  # Earlier search terms (restaurant-first) get higher scores
+                            match_type = 'exact'
+                        # Check if search term starts with restaurant (restaurant-first pattern)
+                        elif restaurant and term_lower.startswith(restaurant.lower()) and term_lower in key_lower:
+                            score = 150 - (i * 2)  # Restaurant-first matches get high priority
+                            match_type = 'restaurant_first'
+                        # Check if restaurant is in the key (any position) - already verified above
+                        elif restaurant and restaurant.lower() in key_lower and term_lower in key_lower:
+                            score = 100 - (i * 1)
+                            match_type = 'restaurant_anywhere'
+                        # Partial match (search term contains key or vice versa)
+                        # Only allow if restaurant matches (already checked above)
+                        elif term_lower in key_lower:
+                            score = 50 - (i * 0.5)
+                            match_type = 'contains'
+                        elif key_lower in term_lower:
+                            score = 40 - (i * 0.5)
+                            match_type = 'key_contains'
+                        
+                        # Bonus: Exact match on food name part (even without restaurant)
+                        if food_name and food_name in key_lower:
+                            score += 10
+                        
+                        if score > best_score:
+                            best_score = score
+                            best_match = (key, value)
+                
+                # Get portion multiplier with fallback
+                portion_multiplier = food_data.get('portion_multiplier')
+                if portion_multiplier is None:
+                    # Fallback: try to parse from message if Gemini didn't extract it
+                    try:
+                        portion_multiplier = self.parse_portion_multiplier(message)
+                    except:
+                        portion_multiplier = 1.0
+                else:
+                    try:
+                        portion_multiplier = float(portion_multiplier)
+                    except (ValueError, TypeError):
+                        # Invalid value, try fallback parser
+                        try:
+                            portion_multiplier = self.parse_portion_multiplier(message)
+                        except:
+                            portion_multiplier = 1.0
+                
+                # Ensure portion_multiplier is valid (between 0 and 10)
+                if portion_multiplier is None or portion_multiplier < 0:
+                    portion_multiplier = 1.0
+                elif portion_multiplier > 10:
+                    portion_multiplier = 10.0  # Cap at 10x for safety
                 
                 # Check if macros were provided in the message
                 calories = food_data.get('calories')
@@ -440,31 +788,54 @@ Respond with ONLY valid JSON, no other text."""
                 
                 if best_match:
                     key, value = best_match
-                    # Extract food name from key (remove restaurant prefix if present)
-                    food_name = key.replace('_', ' ')
-                    # Remove restaurant prefix if it exists (e.g., "sazon quesedilla" -> "quesedilla")
+                    # Extract food name - use food_name from value if available, otherwise use key
+                    if 'food_name' in value:
+                        food_name = value['food_name']
+                    else:
+                        food_name = key.replace('_', ' ')
+                        # Remove restaurant prefix if it exists
+                        matched_restaurant = value.get('restaurant', '')
+                        if matched_restaurant:
+                            restaurant_lower = matched_restaurant.lower().replace('_', ' ')
+                            food_name_lower = food_name.lower()
+                            if food_name_lower.startswith(restaurant_lower + ' '):
+                                food_name = food_name[len(restaurant_lower) + 1:]
+                            elif food_name_lower.endswith(' ' + restaurant_lower):
+                                food_name = food_name[:-len(restaurant_lower) - 1]
+                    
                     matched_restaurant = value.get('restaurant', '')
-                    if matched_restaurant and food_name.startswith(matched_restaurant + ' '):
-                        food_name = food_name[len(matched_restaurant) + 1:]
-                    elif matched_restaurant and food_name.endswith(' ' + matched_restaurant):
-                        food_name = food_name[:-len(matched_restaurant) - 1]
+                    
+                    # Convert database fields (protein_g, carbs_g, fat_g) to expected format (protein, carbs, fat)
+                    # Handle both old format (protein, carbs, fat) and new format (protein_g, carbs_g, fat_g)
+                    db_calories = value.get('calories', 0)
+                    db_protein = value.get('protein_g', value.get('protein', 0))
+                    db_carbs = value.get('carbs_g', value.get('carbs', 0))
+                    db_fat = value.get('fat_g', value.get('fat', 0))
+                    db_fiber = value.get('dietary_fiber_g', value.get('fiber', 0))
                     
                     # Use provided macros if available, otherwise use database values
                     if has_provided_macros:
                         food_data_dict = {
-                            'calories': calories if calories is not None else value.get('calories', 0),
-                            'protein': protein_g if protein_g is not None else value.get('protein_g', value.get('protein', 0)),
-                            'carbs': carbs_g if carbs_g is not None else value.get('carbs_g', value.get('carbs', 0)),
-                            'fat': fat_g if fat_g is not None else value.get('fat_g', value.get('fat', 0)),
-                            'fiber': dietary_fiber_g if dietary_fiber_g is not None else value.get('dietary_fiber_g', value.get('fiber', 0))
+                            'calories': calories if calories is not None else db_calories,
+                            'protein': protein_g if protein_g is not None else db_protein,
+                            'carbs': carbs_g if carbs_g is not None else db_carbs,
+                            'fat': fat_g if fat_g is not None else db_fat,
+                            'fiber': dietary_fiber_g if dietary_fiber_g is not None else db_fiber
                         }
                     else:
-                        food_data_dict = value
+                        # Convert to expected format (protein, carbs, fat instead of protein_g, carbs_g, fat_g)
+                        food_data_dict = {
+                            'calories': db_calories,
+                            'protein': db_protein,
+                            'carbs': db_carbs,
+                            'fat': db_fat,
+                            'fiber': db_fiber
+                        }
                     
                     return {
                         'food_name': food_name,
                         'food_data': food_data_dict,
-                        'portion_multiplier': food_data.get('portion_multiplier', 1.0),
+                        'portion_multiplier': portion_multiplier,
                         'restaurant': matched_restaurant
                     }
                 
@@ -479,7 +850,7 @@ Respond with ONLY valid JSON, no other text."""
                             'fat': fat_g if fat_g is not None else 0,
                             'fiber': dietary_fiber_g if dietary_fiber_g is not None else 0
                         },
-                        'portion_multiplier': food_data.get('portion_multiplier', 1.0),
+                        'portion_multiplier': portion_multiplier,
                         'restaurant': food_data.get('restaurant')
                     }
                 
@@ -487,7 +858,7 @@ Respond with ONLY valid JSON, no other text."""
                 return {
                     'food_name': food_data.get('food_name', ''),
                     'food_data': {'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0},
-                    'portion_multiplier': food_data.get('portion_multiplier', 1.0),
+                    'portion_multiplier': portion_multiplier,
                     'restaurant': food_data.get('restaurant')
                 }
             return None
@@ -792,6 +1163,117 @@ Respond with ONLY valid JSON, no other text."""
             # Default: if error, show all
             return {'food': True, 'water': True, 'gym': False, 'todos': False, 'reminders': False, 'all': True}
     
+    def parse_date_query(self, message: str) -> Dict[str, Any]:
+        """Parse date/timeframe query from message
+        
+        Returns:
+            {
+                'type': 'specific_date' or 'timeframe' or None,
+                'date': 'YYYY-MM-DD' (if specific_date),
+                'timeframe': 'week' or 'month' (if timeframe),
+                'count': 1, 2, etc. (number of weeks/months),
+                'direction': 'past' or 'future' (defaults to 'past')
+            }
+        """
+        current_date = datetime.now().date()
+        message_lower = message.lower()
+        
+        # Try to extract date/timeframe using Gemini
+        prompt = f"""Extract date or timeframe information from this message. Return JSON with:
+{{
+  "query_type": "specific_date" or "timeframe" or "none",
+  "date_str": "YYYY-MM-DD format date if specific_date (e.g., '2024-01-15'), null otherwise",
+  "timeframe_type": "week" or "month" or "day" or null (only if query_type is 'timeframe'),
+  "timeframe_count": number like 1, 2, 3 (only if query_type is 'timeframe'),
+  "timeframe_direction": "past" or "future" (default: "past")
+}}
+
+Current date: {current_date.isoformat()}
+
+Handle these patterns:
+- "yesterday" -> {{"query_type": "specific_date", "date_str": "{((current_date - timedelta(days=1)).isoformat())}", ...}}
+- "today" -> {{"query_type": "specific_date", "date_str": "{current_date.isoformat()}", ...}}
+- "last week" -> {{"query_type": "timeframe", "timeframe_type": "week", "timeframe_count": 1, "timeframe_direction": "past", ...}}
+- "two weeks ago" -> {{"query_type": "timeframe", "timeframe_type": "week", "timeframe_count": 2, "timeframe_direction": "past", ...}}
+- "last month" -> {{"query_type": "timeframe", "timeframe_type": "month", "timeframe_count": 1, "timeframe_direction": "past", ...}}
+- "January 15th" or "Jan 15" -> {{"query_type": "specific_date", "date_str": "2024-01-15" (assume current year if year not specified), ...}}
+- "January 15, 2024" -> {{"query_type": "specific_date", "date_str": "2024-01-15", ...}}
+
+If no date/timeframe is mentioned, return {{"query_type": "none", ...}}
+
+Message: "{message}"
+
+Respond with ONLY valid JSON, no other text."""
+        
+        try:
+            response_text = self._generate_content(prompt)
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                query_type = parsed.get('query_type', 'none')
+                
+                if query_type == 'specific_date':
+                    date_str = parsed.get('date_str')
+                    if date_str:
+                        try:
+                            # Parse and validate date
+                            parsed_date = date_parser.parse(date_str).date()
+                            return {
+                                'type': 'specific_date',
+                                'date': parsed_date.isoformat()
+                            }
+                        except:
+                            pass
+                
+                elif query_type == 'timeframe':
+                    timeframe_type = parsed.get('timeframe_type', 'week')
+                    count = parsed.get('timeframe_count', 1)
+                    direction = parsed.get('timeframe_direction', 'past')
+                    
+                    if timeframe_type in ['week', 'month', 'day']:
+                        return {
+                            'type': 'timeframe',
+                            'timeframe': timeframe_type,
+                            'count': int(count),
+                            'direction': direction
+                        }
+                
+                # Fallback: try simple patterns
+                if 'yesterday' in message_lower:
+                    yesterday = (current_date - timedelta(days=1)).isoformat()
+                    return {'type': 'specific_date', 'date': yesterday}
+                elif 'today' in message_lower:
+                    return {'type': 'specific_date', 'date': current_date.isoformat()}
+                elif 'last week' in message_lower or 'past week' in message_lower:
+                    return {'type': 'timeframe', 'timeframe': 'week', 'count': 1, 'direction': 'past'}
+                elif 'last month' in message_lower or 'past month' in message_lower:
+                    return {'type': 'timeframe', 'timeframe': 'month', 'count': 1, 'direction': 'past'}
+                elif re.search(r'\d+\s*weeks?\s+ago', message_lower):
+                    match = re.search(r'(\d+)\s*weeks?\s+ago', message_lower)
+                    if match:
+                        count = int(match.group(1))
+                        return {'type': 'timeframe', 'timeframe': 'week', 'count': count, 'direction': 'past'}
+                
+            # No date/timeframe found
+            return {'type': None}
+        except Exception as e:
+            print(f" Error parsing date query: {e}")
+            # Fallback to simple patterns
+            message_lower = message.lower()
+            current_date = datetime.now().date()
+            
+            if 'yesterday' in message_lower:
+                yesterday = (current_date - timedelta(days=1)).isoformat()
+                return {'type': 'specific_date', 'date': yesterday}
+            elif 'today' in message_lower:
+                return {'type': 'specific_date', 'date': current_date.isoformat()}
+            elif 'last week' in message_lower:
+                return {'type': 'timeframe', 'timeframe': 'week', 'count': 1, 'direction': 'past'}
+            elif 'last month' in message_lower:
+                return {'type': 'timeframe', 'timeframe': 'month', 'count': 1, 'direction': 'past'}
+            
+            return {'type': None}
+    
     def guess_intent(self, message: str) -> Optional[Dict]:
         """Try to guess the intent when classification is unclear"""
         prompt = f"""This message was classified as "unknown" but we want to make an educated guess. 
@@ -842,23 +1324,51 @@ Respond with ONLY valid JSON, no other text."""
     def parse_portion_multiplier(self, message: str) -> float:
         """Parse portion multiplier from message"""
         prompt = f"""Extract portion multiplier from this message:
-- "half" = 0.5
+- "half" or "half of" = 0.5
+- "quarter" or "quarter of" = 0.25
 - "double" = 2.0
-- "2x" = 2.0
-- "1.5" = 1.5
+- "2x" or "2 x" = 2.0
+- "1.5" or "one and a half" = 1.5
+- Numbers like "2 quesadillas" or "3 slices" = use the number (2.0, 3.0, etc.)
 - default = 1.0
+
+Examples:
+- "half of an ice cream" → 0.5
+- "just ate half" → 0.5
+- "double portion" → 2.0
+- "2 quesadillas" → 2.0
+- "one and a half servings" → 1.5
 
 Message: "{message}"
 
-Respond with ONLY the number (just the number, no text)."""
+Respond with ONLY the number (0.5, 1.0, 2.0, etc.), nothing else."""
         
         try:
-            text = self._generate_content(prompt)
+            text = self._generate_content(prompt).lower().strip()
+            
+            # First try to extract number directly
             numbers = re.findall(r'\d+\.?\d*', text)
             if numbers:
-                return float(numbers[0])
+                value = float(numbers[0])
+                # If we found a number, check if it's part of "half" (0.5) or already a valid multiplier
+                if 'half' in text or '0.5' in text or '.5' in text:
+                    return 0.5
+                elif value >= 0.1 and value <= 10:
+                    return value
+            
+            # Check for word-based multipliers
+            if 'half' in text:
+                return 0.5
+            elif 'quarter' in text:
+                return 0.25
+            elif 'double' in text:
+                return 2.0
+            elif 'triple' in text:
+                return 3.0
+            
             return 1.0
-        except:
+        except Exception as e:
+            print(f" Error parsing portion multiplier: {e}")
             return 1.0
     
     def parse_food_suggestion(self, message: str) -> Dict:

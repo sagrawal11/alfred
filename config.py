@@ -76,11 +76,13 @@ class Config:
         'logs'
     )
     
-    # Food Database
+    # Food Database (legacy - now loads all restaurant JSON files automatically)
+    # Individual restaurant files are in data/ directory (e.g., sazon.json, ginger_and_soy.json)
+    # The system automatically loads all *.json files from data/ excluding snacks.json, gym_workouts.json
     FOOD_DATABASE_PATH = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         'data',
-        'wu_foods.json'
+        'wu_foods.json'  # Kept for backward compatibility/fallback
     )
     
     # Gym Workout Database

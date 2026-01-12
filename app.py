@@ -5,6 +5,7 @@ import atexit
 import csv
 import time
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from flask import Flask, request, jsonify, session, redirect, url_for, render_template
 from twilio.twiml.messaging_response import MessagingResponse
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -571,30 +572,12 @@ def init_db():
     db._init_csv_files()
     print("CSV database initialized (all CSV files ready)")
 
-# Load hardcoded food database
-def load_food_database():
-    try:
-        with open(config.FOOD_DATABASE_PATH, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        # Create empty database if it doesn't exist
-        return {}
-
-FOOD_DATABASE = load_food_database()
-
 # Core message processing
 class EnhancedMessageProcessor:
     def __init__(self):
-        # Load custom food database
-        try:
-            with open(config.FOOD_DATABASE_PATH, 'r') as f:
-                custom_food_db = json.load(f)
-                print("Custom food database loaded")
-        except FileNotFoundError:
-            print("Custom food database not found, using default")
-            custom_food_db = FOOD_DATABASE
-        
-        self.nlp_processor = create_gemini_processor(custom_food_db)
+        # Create NLP processor - it will automatically load all restaurant JSON files
+        # from the data directory (handles nested structures automatically)
+        self.nlp_processor = create_gemini_processor()
         # Store pending confirmations: {phone_number: {intent, message, entities, reason}}
         self.pending_confirmations = {}
         # Store pending "what just happened" options: {phone_number: {options: [...], timestamp: ...}}
@@ -1008,20 +991,68 @@ class EnhancedMessageProcessor:
     def handle_stats_query(self, message, entities):
         """Handle stats queries (how much eaten, drank, etc.)"""
         query_data = self.nlp_processor.parse_stats_query(message)
-        today = datetime.now().date().isoformat()
+        date_query = self.nlp_processor.parse_date_query(message)
+        
+        today = datetime.now().date()
+        today_str = today.isoformat()
+        
+        # Determine date/timeframe to query
+        query_date = None
+        start_date = None
+        end_date = None
+        date_label = "today"
+        
+        if date_query.get('type') == 'specific_date':
+            query_date = date_query.get('date')
+            date_obj = datetime.fromisoformat(query_date).date()
+            if date_obj == today:
+                date_label = "today"
+            elif date_obj == today - timedelta(days=1):
+                date_label = "yesterday"
+            else:
+                date_label = date_obj.strftime("%B %d, %Y")
+        elif date_query.get('type') == 'timeframe':
+            timeframe_type = date_query.get('timeframe')
+            count = date_query.get('count', 1)
+            direction = date_query.get('direction', 'past')
+            
+            if timeframe_type == 'week':
+                if direction == 'past':
+                    end_date = (today - timedelta(days=1)).isoformat()  # End yesterday
+                    start_date = (today - timedelta(weeks=count, days=1)).isoformat()
+                    date_label = f"last {count} week{'s' if count > 1 else ''}" if count == 1 else f"past {count} weeks"
+                else:
+                    start_date = (today + timedelta(days=1)).isoformat()
+                    end_date = (today + timedelta(weeks=count)).isoformat()
+                    date_label = f"next {count} week{'s' if count > 1 else ''}"
+            elif timeframe_type == 'month':
+                if direction == 'past':
+                    # Start of month N months ago, end yesterday
+                    end_date = (today - timedelta(days=1)).isoformat()
+                    start_date_obj = (today - relativedelta(months=count)).replace(day=1)
+                    start_date = start_date_obj.isoformat()
+                    date_label = f"last {count} month{'s' if count > 1 else ''}"
+                else:
+                    start_date = (today + timedelta(days=1)).isoformat()
+                    end_date_obj = (today + relativedelta(months=count))
+                    end_date = end_date_obj.isoformat()
+                    date_label = f"next {count} month{'s' if count > 1 else ''}"
+        else:
+            # Default to today
+            query_date = today_str
         
         response_parts = []
         
-        # Get water stats if requested
-        if query_data.get('water') or query_data.get('all'):
-            water_total_ml = db.get_todays_water_total(today)
-            water_goal_ml = db.get_water_goal(today, default_ml=config.DEFAULT_WATER_GOAL_ML)
+        # Get water stats if requested (only for specific dates, not timeframes)
+        if (query_data.get('water') or query_data.get('all')) and query_date:
+            water_total_ml = db.get_todays_water_total(query_date)
+            water_goal_ml = db.get_water_goal(query_date, default_ml=config.DEFAULT_WATER_GOAL_ML)
             water_liters = water_total_ml / 1000
             goal_liters = water_goal_ml / 1000
             
             if water_total_ml > 0:
                 bottles = round(water_total_ml / config.WATER_BOTTLE_SIZE_ML, 1)
-                response_parts.append(f"Water: {water_liters:.1f}L ({int(water_total_ml)}mL, ~{bottles} bottles)")
+                response_parts.append(f"Water ({date_label}): {water_liters:.1f}L ({int(water_total_ml)}mL, ~{bottles} bottles)")
                 if water_total_ml >= water_goal_ml:
                     response_parts.append(f"    Goal reached! ({goal_liters:.1f}L)")
                 else:
@@ -1030,16 +1061,94 @@ class EnhancedMessageProcessor:
                     bottles_needed = int(round(remaining / config.WATER_BOTTLE_SIZE_ML))
                     response_parts.append(f"    {remaining_liters:.1f}L remaining ({bottles_needed} bottles) to reach {goal_liters:.1f}L goal")
             else:
-                response_parts.append(f"Water: 0L (goal: {goal_liters:.1f}L)")
+                response_parts.append(f"Water ({date_label}): 0L (goal: {goal_liters:.1f}L)")
         
         # Get food stats if requested
         if query_data.get('food') or query_data.get('all'):
-            food_totals = db.get_todays_food_totals(today)
-            if food_totals['calories'] > 0:
-                response_parts.append(f"Food: {int(food_totals['calories'])} cal")
-                response_parts.append(f"{food_totals['protein']:.1f}g protein, {food_totals['carbs']:.1f}g carbs, {food_totals['fat']:.1f}g fat")
+            if query_date:
+                # Specific date: show list of foods + totals
+                food_logs = db.get_food_logs(query_date)
+                food_totals = db.get_todays_food_totals(query_date)
+                
+                if food_logs:
+                    response_parts.append(f"Food ({date_label}):")
+                    
+                    # List foods
+                    for log in food_logs[:20]:  # Limit to 20 items
+                        food_name = log.get('food_name', 'Unknown')
+                        calories = log.get('calories', 0)
+                        multiplier = log.get('portion_multiplier', 1.0)
+                        if multiplier and multiplier != 1.0:
+                            food_name += f" (x{multiplier:.1f})"
+                        response_parts.append(f"  • {food_name}: {int(calories)} cal")
+                    
+                    if len(food_logs) > 20:
+                        response_parts.append(f"  ... and {len(food_logs) - 20} more items")
+                    
+                    # Totals
+                    response_parts.append(f"\nTotal: {int(food_totals['calories'])} cal")
+                    response_parts.append(f"{food_totals['protein']:.1f}g protein, {food_totals['carbs']:.1f}g carbs, {food_totals['fat']:.1f}g fat")
+                else:
+                    response_parts.append(f"Food ({date_label}): No meals logged")
+            elif start_date and end_date:
+                # Timeframe: show common foods + average macros
+                food_logs = db.get_food_logs(start_date=start_date, end_date=end_date)
+                
+                if food_logs:
+                    # Calculate totals
+                    totals = {'calories': 0.0, 'protein': 0.0, 'carbs': 0.0, 'fat': 0.0}
+                    food_counts = {}
+                    
+                    for log in food_logs:
+                        food_name = log.get('food_name', 'Unknown')
+                        calories = float(log.get('calories', 0) or 0)
+                        protein = float(log.get('protein', 0) or 0)
+                        carbs = float(log.get('carbs', 0) or 0)
+                        fat = float(log.get('fat', 0) or 0)
+                        multiplier = float(log.get('portion_multiplier', 1.0) or 1.0)
+                        
+                        totals['calories'] += calories * multiplier
+                        totals['protein'] += protein * multiplier
+                        totals['carbs'] += carbs * multiplier
+                        totals['fat'] += fat * multiplier
+                        
+                        # Count foods
+                        food_counts[food_name] = food_counts.get(food_name, 0) + 1
+                    
+                    # Calculate days in range
+                    start_obj = datetime.fromisoformat(start_date).date()
+                    end_obj = datetime.fromisoformat(end_date).date()
+                    days = (end_obj - start_obj).days + 1
+                    
+                    # Average macros
+                    avg_calories = totals['calories'] / days if days > 0 else 0
+                    avg_protein = totals['protein'] / days if days > 0 else 0
+                    avg_carbs = totals['carbs'] / days if days > 0 else 0
+                    avg_fat = totals['fat'] / days if days > 0 else 0
+                    
+                    response_parts.append(f"Food ({date_label}):")
+                    
+                    # Show most common foods (top 10)
+                    sorted_foods = sorted(food_counts.items(), key=lambda x: x[1], reverse=True)
+                    if sorted_foods:
+                        response_parts.append(f"Most common:")
+                        for food_name, count in sorted_foods[:10]:
+                            response_parts.append(f"  • {food_name}: {count} time{'s' if count > 1 else ''}")
+                    
+                    # Average macros
+                    response_parts.append(f"\nAverage per day:")
+                    response_parts.append(f"{int(avg_calories)} cal, {avg_protein:.1f}g protein, {avg_carbs:.1f}g carbs, {avg_fat:.1f}g fat")
+                    response_parts.append(f"\nTotal over {days} days: {int(totals['calories'])} cal")
+                else:
+                    response_parts.append(f"Food ({date_label}): No meals logged")
             else:
-                response_parts.append(f"Food: No meals logged today")
+                # Default to today
+                food_totals = db.get_todays_food_totals(today_str)
+                if food_totals['calories'] > 0:
+                    response_parts.append(f"Food: {int(food_totals['calories'])} cal")
+                    response_parts.append(f"{food_totals['protein']:.1f}g protein, {food_totals['carbs']:.1f}g carbs, {food_totals['fat']:.1f}g fat")
+                else:
+                    response_parts.append(f"Food: No meals logged today")
         
         # Get gym stats if requested
         if query_data.get('gym') or query_data.get('all'):
@@ -1197,9 +1306,10 @@ class EnhancedMessageProcessor:
             elif query_data.get('reminders') and not query_data.get('all') and not query_data.get('food') and not query_data.get('water') and not query_data.get('gym') and not query_data.get('todos'):
                 return "Your Reminders:\n" + "\n".join(response_parts)
             else:
-                return "Today's Stats:\n" + "\n".join(response_parts)
+                header = f"{date_label.title()}'s Stats" if date_label != "today" else "Today's Stats"
+                return f"{header}:\n" + "\n".join(response_parts)
         
-        return "No stats available for today"
+        return f"No stats available for {date_label}"
     
     def handle_completion(self, message, entities):
         """Handle task/reminder completions"""
@@ -1689,8 +1799,10 @@ class EnhancedMessageProcessor:
         past_foods = {}
         food_logs = db.get_food_logs()
         for log in food_logs[-50:]:  # Last 50 logs
-            food_name = log.get('food_name', '').lower().strip()
-            restaurant = log.get('restaurant', '').lower().strip()
+            food_name = log.get('food_name') or ''
+            restaurant = log.get('restaurant') or ''
+            food_name = food_name.lower().strip() if food_name else ''
+            restaurant = restaurant.lower().strip() if restaurant else ''
             if food_name:
                 key = f"{restaurant} {food_name}" if restaurant else food_name
                 past_foods[key] = past_foods.get(key, 0) + 1
@@ -1713,7 +1825,11 @@ class EnhancedMessageProcessor:
                 continue
             
             restaurant = food_data.get('restaurant', '')
-            food_name = food_key.replace('_', ' ').title()
+            # Use food_name from data if available, otherwise derive from key
+            if 'food_name' in food_data:
+                food_name = food_data['food_name']
+            else:
+                food_name = food_key.replace('_', ' ').title()
             
             # Filter by restaurant if specified
             if constraints.get('restaurant'):
@@ -2631,7 +2747,19 @@ def dashboard_api_trends(days):
         return jsonify({'error': 'Invalid days. Use 7, 30, or 90'}), 400
     
     try:
-        end_date = datetime.now().date()
+        # Allow optional end_date parameter (defaults to today)
+        end_date_str = request.args.get('end_date', None)
+        if end_date_str:
+            try:
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                # Don't allow future dates
+                if end_date > datetime.now().date():
+                    end_date = datetime.now().date()
+            except ValueError:
+                end_date = datetime.now().date()
+        else:
+            end_date = datetime.now().date()
+        
         start_date = end_date - timedelta(days=days-1)
         
         # Get all logs in the date range

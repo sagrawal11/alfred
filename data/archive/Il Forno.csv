@@ -1,0 +1,62 @@
+Food Name,Restaurant,Food Type,Calories,Fat,Saturated Fat,Trans Fat,Cholesterol,Sodium,Potassium,Carbs,Dietary Fiber,Sugars,Protein
+Fettuccine - Portion (255g),Il Forno,Pasta - Pasta,403,2.5,0,0,0,0,110,79,5,1,15
+Rigatoni - Portion (255g),Il Forno,Pasta - Pasta,403,2.5,0,0,0,0,110,79,5,1,15
+Spaghetti - Portion (255g),Il Forno,Pasta - Pasta,403,2.5,0,0,0,0,110,79,5,1,15
+Alfredo Sauce - 3 oz Portion (85g),Il Forno,Pasta - Sauce,209,18,11,0,60,320,30,5,0,0,5
+Arrabbiata Sauce - 3 oz Portion (85g),Il Forno,Pasta - Sauce,53,3,0,0,0,290,40,7,1,5,1
+Chickpea Pesto Sauce - 2 oz Portion (57g),Il Forno,Pasta - Sauce,163,16,1.5,0,0,90,70,4,1,0,2
+Parma Rosa Sauce - 5 oz Portion (142g),Il Forno,Pasta - Sauce,213,15,9,0,50,660,25,12,1,8,5
+Pomodoro Sauce - 3 oz Portion (85g),Il Forno,Pasta - Sauce,54,4.5,0.5,0,0,280,55,4,1,2,1
+Baby Spinach - .5 oz Portion (13g),Il Forno,Pasta - Toppings,3,0,0,0,0,10,60,0,0,0,0
+Crushed Red Pepper - Garnish (1g),Il Forno,Pasta - Toppings,0,0,0,0,0,0,0,0,0,0,0
+Fresh Basil - Garnish (1g),Il Forno,Pasta - Toppings,0,0,0,0,0,0,0,0,0,0,0
+Mozzarella Cheese - 1 oz Portion (28g),Il Forno,Pasta - Toppings,90,7,4,0,20,230,45,1,0,0,7
+Roasted Mushroom - 1 oz Portion (28g),Il Forno,Pasta - Toppings,18,1.5,0,0,0,70,100,1,1,1,1
+Roasted Red Pepper - 1 oz Portion (28g),Il Forno,Pasta - Toppings,5,0,0,0,0,80,0,1,0,1,0
+Roasted Tomatoes - 2 oz Portion (57g),Il Forno,Pasta - Toppings,14,0.5,0,0,0,170,130,2,1,1,0
+Sauteed Onions - 2 oz Portion (57g),Il Forno,Pasta - Toppings,37,1.5,0,0,0,85,90,6,1,3,1
+Steamed Broccoli - 2 oz Portion (107g),Il Forno,Pasta - Toppings,38,0,0,0,0,45,310,8,3,1,3
+Sweet Peppers - 2 oz Portion (57g),Il Forno,Pasta - Toppings,24,1.5,0,0,0,105,0,3,1,1,0
+Grated Cheese Blend - .5 Tablespoon Serving (7g),Il Forno,Pasta - Toppings,13,1,0.5,0,5,45,0,0,0,0,1
+Breadstick - Breadstick (30g),Il Forno,Pasta - Toppings,122,3.5,1,0,5,210,60,18,1,2,3
+Garden Pesto Pasta - 1/2 Container (270g),Il Forno,Premade Pasta,311,10,1,0,0,290,190,45,4,3,10
+Parma Rosa Pasta - 1/2 Container (321g),Il Forno,Premade Pasta,414,11,5,0,80,530,390,49,4,6,30
+Salmon Alfredo Pasta - 1/2 Container (237g),Il Forno,Premade Pasta,435,16,8,0,85,280,110,43,2,1,26
+Spicy IL Forno Pasta - 1/2 Container (287g),Il Forno,Premade Pasta,359,12,3.5,0,25,670,170,48,4,7,17
+Blaise Pizza - Pizza (419g),Il Forno,Premade Pizza,1088,25,10,0,45,2660,470,154,7,33,43
+Bruschetta Pizza - Pizza (352g),Il Forno,Premade Pizza,1020,34,11,0,35,1730,530,134,7,17,38
+Cheese Pizza - Pizza (340g),Il Forno,Premade Pizza,988,28,11,0,50,2420,500,139,7,21,41
+Four Cheese Pizza - Pizza (390g),Il Forno,Premade Pizza,1195,45,21,0,100,2650,540,138,7,19,56
+Harvest Pizza - Pizza (464g),Il Forno,Premade Pizza,954,26,9,0,35,2580,630,139,8,19,35
+Heritage Honey Pizza - Pizza (385g),Il Forno,Premade Pizza,1132,32,10,0,45,2470,530,159,8,21,42
+Kyle's BBQ Pizza - Pizza (460g),Il Forno,Premade Pizza,1556,74,16,0,100,3200,690,168,7,41,46
+Margherita Pizza - Pizza (351g),Il Forno,Premade Pizza,1010,36,10,0,35,2070,420,132,7,16,34
+PJ's New Yorker - Pizza (426g),Il Forno,Premade Pizza,1182,45,18,0,95,3100,650,141,8,22,50
+Quattro Pizza - Pizza (421g),Il Forno,Premade Pizza,1285,53,21,0,135,3390,700,140,7,21,57
+Rustic Pizza - Pizza (478g),Il Forno,Premade Pizza,1351,54,34,3.5,200,4800,600,157,9,25,71
+Stinger Pizza - Pizza (545g),Il Forno,Premade Pizza,1512,57,22,0,85,4560,620,178,10,39,61
+Cheese Pizza Slice - Slice (124g),Il Forno,Premade Pizza,421,15,6,0,30,930,220,52,2,6,19
+Homemade Pizza Dough - Crust (185g),Il Forno,Pizza - Dough,717,11,1,0,0,1370,380,126,6,12,22
+Chickpea Pesto Sauce - 2 oz Portion (92g),Il Forno,Pizza - Sauce,280,27,2.5,0,0,150,85,6,2,1,3
+Neapolitan Sauce - 3 oz Serving (128g),Il Forno,Pizza - Sauce,21,0,0,0,0,760,0,5,1,3,1
+NY Pizza Sauce - 3 oz Portion (85g),Il Forno,Pizza - Sauce,46,0,0,0,0,470,0,10,2,9,1
+Olive Oil Blend - 1 oz Portion (28g),Il Forno,Pizza - Sauce,246,26,2,0,0,0,0,0,0,0,0
+Arugula - .5 oz Portion (14g),Il Forno,Pizza - Toppings,3,0,0,0,0,5,0,0,0,0,0
+Balsamic Glaze - .25 oz Portion (7g),Il Forno,Pizza - Toppings,14,0,0,0,0,0,0,3,0,3,0
+Banana Pepper - 1 oz Portion (28g),Il Forno,Pizza - Toppings,5,0,0,0,0,280,0,1,1,0,0
+Black Olives - .5 oz Portion (14g),Il Forno,Pizza - Toppings,15,1.5,0,0,0,105,0,1,0,0,0
+Cheddar Cheese - 1 oz Portion (28g),Il Forno,Pizza - Toppings,111,9,5,0,30,180,0,1,0,0,7
+Corn - .5 oz Portion (28g),Il Forno,Pizza - Toppings,23,0,0,0,0,0,0,5,0,1,1
+Fresh Basil - Garnish (1g),Il Forno,Pizza - Toppings,0,0,0,0,0,0,0,0,0,0,0
+Fresh Mozzarella Cheese Balls - 2.5 oz Portion (71g),Il Forno,Pizza - Toppings,177,13,9,0,40,190,50,2,0,2,13
+Grated Cheese Blend - .5 Tablespoon (7g),Il Forno,Pizza - Toppings,13,1,0.5,0,5,45,0,0,0,0,1
+Hot Sauce - 1 oz Portion (28g),Il Forno,Pizza - Toppings,38,4,2.5,0,10,640,10,1,0,0,0
+Jalapeno - 1 oz Portion (28g),Il Forno,Pizza - Toppings,5,0,0,0,0,480,0,1,1,0,0
+Mixed Peppers - 1 oz Portion (28g),Il Forno,Pizza - Toppings,4,0,0,0,0,50,0,1,0,0,0
+Mushroom - 1 oz Portion (28g),Il Forno,Pizza - Toppings,18,1.5,0,0,0,70,100,1,1,1,1
+Pepperoni - 1.5 oz Portion (43g),Il Forno,Pizza - Toppings,213,20,9,0,55,710,120,0,0,0,8
+Red Onion - 1 oz Portion (24g),Il Forno,Pizza - Toppings,11,0,0,0,0,0,40,2,0,1,0
+Ricotta - 1 oz Portion (28g),Il Forno,Pizza - Toppings,46,3,2,0,15,110,0,1,0,0,3
+Roasted Red Peppers - 1 oz Portion (28g),Il Forno,Pizza - Toppings,5,0,0,0,0,80,0,1,0,1,0
+Shredded Mozzarella Cheese - 2.5 oz Portion (71g),Il Forno,Pizza - Toppings,225,17,10,0,50,570,115,2,0,0,17
+White Onion - 1 oz Portion (28g),Il Forno,Pizza - Toppings,12,0,0,0,0,85,45,3,0,1,0

@@ -1,0 +1,90 @@
+Food Name,Restaurant,Food Type,Calories,Fat,Saturated Fat,Trans Fat,Cholesterol,Sodium,Potassium,Carbs,Dietary Fiber,Sugars,Protein
+"Flour Tortilla 12"" - Tortilla (95g)",Sazon,Quesedilla Base,293,7,3.5,0,0,560,65,48,1,1,8
+"Flour Tortilla 6"" - 3 Tortilla Portion (99g)",Sazon,Taco Base,301,8,3.5,0,0,570,65,48,2,0,9
+Latin Arepa Bowl - Arepa (72g),Sazon,Bowl Base,163,8,0.5,0,0,180,75,23,2,< 1,3
+"White Corn Tortilla 6"" - 3 Tortilla Portion (87g)",Sazon,Taco Base,274,15,1,0,0,20,90,32,4,0,3
+Portobello Mushrooms - Bowl Portion (92g),Sazon,Bowl Protein,30,0,0,0,0,730,190,5,1,1,1
+Tofrizo - Bowl Portion (210g),Sazon,Bowl Protein,270,16,2,0,0,450,420,12,5,3,24
+Portobello Mushrooms - Taco Portion (92g),Sazon,Taco Protein,29,0,0,0,0,730,190,5,< 1,< 1,1
+Tofrizo - Taco Portion (210g),Sazon,Taco Protein,270,16,2,0,0,450,420,12,5,3,24
+Portobello Mushrooms - Quesedilla Portion (92g),Sazon,Quesedilla Protein,30,0,0,0,0,730,190,5,1,1,1
+Tofrizo Quesedilla Portion (210g),Sazon,Quesedilla Protein,270,16,2,0,0,450,420,12,5,3,24
+Portobello Mushrooms - Burrito Portion (92g),Sazon,Burrito Portion,30,0,0,0,0,730,190,5,1,1,1
+Tofrizo Burrito Portion (210g),Sazon,Burrito Portion,270,16,2,0,0,450,420,12,5,3,24
+Black Beans - Taco Portion (76g),Sazon,Taco Toppings,60,0,0,0,0,630,250,11,3,1,4
+Shredded Cheddar Monterey Jack Cheese - Arepa Bowl Portion (11g),Sazon,Taco Toppings,40,3,2,0,10,65,0,0,0,0,2
+Cheese Cotija - Taco Portion (14g),Sazon,Taco Toppings,51,4,2.5,0,15,50,10,0,0,0,3
+Cilantro Lime Coleslaw - Taco Portion (58g),Sazon,Taco Toppings,143,12,1,0,0,470,65,7,< 1,9,0
+Habanero Coleslaw - Taco Portion (58g),Sazon,Taco Toppings,65,5,0,0,0,150,70,4,< 1,2,< 1
+Fajita Peppers and Onions - Taco Portion (55g),Sazon,Taco Toppings,60,4.5,0,0,0,0,65,4,< 1,2,0
+Guacamole - Taco Portion (85g),Sazon,Taco Toppings,102,8,1,0,0,320,330,7,4,1,1
+Maduros (Sweet Plantains) - 2 Piece Portion (55g),Sazon,Taco Toppings,159,6,1,0,0,0,190,25,1,10,< 1
+Cilantro Lime Brown Rice - Taco Portion (73g),Sazon,Taco Toppings,70,0.5,0,0,0,45,50,15,1,0,1
+Cilantro Lime White Rice - Quesadilla Portion (98g),Sazon,Taco Toppings,100,0,0,0,0,55,45,22,1,0,2
+Pico de Gallo - Quesadilla Portion (45g),Sazon,Taco Toppings,10,0,0,0,0,45,100,2,0,1,0
+Corn Salsa - Taco Portion (33g),Sazon,Taco Toppings,26,0,0,0,0,140,70,6,< 1,2,< 1
+Roasted Salsa - 2 oz Portion (57g),Sazon,Taco Toppings,20,0,0,0,0,160,115,4,< 1,2,< 1
+Romaine Lettuce - Arepa Bowl Portion (25g),Sazon,Taco Toppings,0,0,0,0,0,0,60,1,0,0,0
+Queso Dip - Arepa Bowl Portion (69g),Sazon,Taco Toppings,130,9,5,0,30,600,180,5,0,2,6
+Black Beans - Taco Portion (76g),Sazon,Bowl Toppings,60,0,0,0,0,630,250,11,3,1,4
+Shredded Cheddar Monterey Jack Cheese - Arepa Bowl Portion (11g),Sazon,Bowl Toppings,39,3,2,0,10,65,0,0,0,0,2
+Cheese Cotija - Taco Portion (14g),Sazon,Bowl Toppings,51,4,2.5,0,15,50,10,0,0,0,3
+Cilantro Lime Coleslaw - Taco Portion (58g),Sazon,Bowl Toppings,143,12,1,0,0,470,65,7,< 1,9,0
+Habanero Coleslaw - Taco Portion (58g),Sazon,Bowl Toppings,65,5,0,0,0,150,70,4,< 1,2,< 1
+Fajita Peppers and Onions - Taco Portion (55g),Sazon,Bowl Toppings,60,4.5,0,0,0,0,65,4,< 1,2,0
+Guacamole - Taco Portion (85g),Sazon,Bowl Toppings,102,8,1,0,0,320,330,7,4,1,1
+Maduros (Sweet Plantains) - 2 Piece Portion (55g),Sazon,Bowl Toppings,159,6,1,0,0,0,190,25,1,10,< 1
+Cilantro Lime Brown Rice - Taco Portion (73g),Sazon,Bowl Toppings,70,0.5,0,0,0,45,50,15,1,0,1
+Cilantro Lime White Rice - Quesadilla Portion (98g),Sazon,Bowl Toppings,100,0,0,0,0,55,45,22,1,0,2
+Pico de Gallo - Quesadilla Portion (45g),Sazon,Bowl Toppings,10,0,0,0,0,45,100,2,0,1,0
+Corn Salsa - Taco Portion (33g),Sazon,Bowl Toppings,26,0,0,0,0,140,70,6,< 1,2,< 1
+Roasted Salsa - 2 oz Portion (57g),Sazon,Bowl Toppings,20,0,0,0,0,160,115,4,< 1,2,< 1
+Romaine Lettuce - Arepa Bowl Portion (25g),Sazon,Bowl Toppings,4,0,0,0,0,0,60,< 1,0,0,0
+Queso Dip - Arepa Bowl Portion (69g),Sazon,Bowl Toppings,126,9,5,0,30,600,180,5,0,2,6
+Black Beans - Taco Portion (76g),Sazon,Quesedilla Toppings,60,0,0,0,0,630,250,11,3,1,4
+Shredded Cheddar Monterey Jack Cheese - Arepa Bowl Portion (11g),Sazon,Quesedilla Toppings,200,16,9,0,50,340,0,2,0,0,12
+Cheese Cotija - Taco Portion (14g),Sazon,Quesedilla Toppings,51,4,2.5,0,15,50,10,0,0,0,3
+Cilantro Lime Coleslaw - Taco Portion (58g),Sazon,Quesedilla Toppings,143,12,1,0,0,470,65,7,< 1,9,0
+Habanero Coleslaw - Taco Portion (58g),Sazon,Quesedilla Toppings,65,5,0,0,0,150,70,4,< 1,2,< 1
+Fajita Peppers and Onions - Taco Portion (55g),Sazon,Quesedilla Toppings,60,4.5,0,0,0,0,65,4,< 1,2,0
+Guacamole - Taco Portion (85g),Sazon,Quesedilla Toppings,102,8,1,0,0,320,330,7,4,1,1
+Maduros (Sweet Plantains) - 2 Piece Portion (55g),Sazon,Quesedilla Toppings,159,6,1,0,0,0,190,25,1,10,< 1
+Cilantro Lime Brown Rice - Taco Portion (73g),Sazon,Quesedilla Toppings,70,0.5,0,0,0,45,50,15,1,0,1
+Cilantro Lime White Rice - Quesadilla Portion (98g),Sazon,Quesedilla Toppings,100,0,0,0,0,55,45,22,1,0,2
+Pico de Gallo - Quesadilla Portion (45g),Sazon,Quesedilla Toppings,10,0,0,0,0,45,100,2,0,1,0
+Corn Salsa - Taco Portion (33g),Sazon,Quesedilla Toppings,26,0,0,0,0,140,70,6,< 1,2,< 1
+Roasted Salsa - 2 oz Portion (57g),Sazon,Quesedilla Toppings,20,0,0,0,0,160,115,4,< 1,2,< 1
+Romaine Lettuce - Arepa Bowl Portion (25g),Sazon,Quesedilla Toppings,4,0,0,0,0,0,60,< 1,0,0,0
+Queso Dip - Arepa Bowl Portion (69g),Sazon,Quesedilla Toppings,126,9,5,0,30,600,180,5,0,2,6
+Black Beans - Taco Portion (76g),Sazon,Burrito Toppings,40,0,0,0,0,420,170,7,2,1,2
+Shredded Cheddar Monterey Jack Cheese - Arepa Bowl Portion (11g),Sazon,Burrito Toppings,40,3,2,0,10,65,0,0,0,0,2
+Cheese Cotija - Taco Portion (14g),Sazon,Burrito Toppings,51,4,2.5,0,15,50,10,0,0,0,3
+Cilantro Lime Coleslaw - Taco Portion (58g),Sazon,Burrito Toppings,100,8,0.5,0,0,320,45,5,0,6,0
+Habanero Coleslaw - Taco Portion (58g),Sazon,Burrito Toppings,45,3.5,0,0,0,100,50,3,0,1,0
+Fajita Peppers and Onions - Taco Portion (55g),Sazon,Burrito Toppings,40,3,0,0,0,0,45,3,0,1,0
+Guacamole - Taco Portion (85g),Sazon,Burrito Toppings,120,10,1.5,0,0,370,390,8,5,1,2
+Maduros (Sweet Plantains) - 2 Piece Portion (55g),Sazon,Burrito Toppings,159,6,1,0,0,0,190,25,1,10,< 1
+Cilantro Lime Brown Rice - Taco Portion (73g),Sazon,Burrito Toppings,45,0,0,0,0,30,35,10,1,0,1
+Cilantro Lime White Rice - Quesadilla Portion (98g),Sazon,Burrito Toppings,70,0,0,0,0,35,30,15,0,0,2
+Pico de Gallo - Quesadilla Portion (45g),Sazon,Burrito Toppings,10,0,0,0,0,50,110,2,1,1,0
+Corn Salsa - Taco Portion (33g),Sazon,Burrito Toppings,0,0,0,0,0,10,0,0,0,0,0
+Roasted Salsa - 2 oz Portion (57g),Sazon,Burrito Toppings,20,0,0,0,0,160,115,4,< 1,2,< 1
+Romaine Lettuce - Arepa Bowl Portion (25g),Sazon,Burrito Toppings,0,0,0,0,0,0,60,1,0,0,0
+Queso Dip - Arepa Bowl Portion (69g),Sazon,Burrito Toppings,130,9,5,0,30,600,180,5,0,2,6
+Chipotle Crema - Portion (34g),Sazon,Sauce,119,12,3,0,20,105,30,3,0,1,< 1
+Fresco Sauce - Portion (57g),Sazon,Sauce,99,8,6,0,35,35,100,3,0,3,2
+Habanero Red Hot Sauce - Portion (32g),Sazon,Sauce,1,0,0,0,0,380,0,0,0,0,0
+Hot Cilantro Aioli - Portion (28g),Sazon,Sauce,125,11,2,0,10,290,15,5,0,0,0
+Mild Cilantro Aioli - Portion (28g),Sazon,Sauce,129,12,2,0,10,300,15,5,0,0,0
+Chips - Bag (88g),Sazon,Sides,237,17,1,0,0,280,0,17,2,0,2
+Chips and Salsa - Portion (152g),Sazon,Sides,259,18,1.5,0,0,450,130,22,3,2,3
+"Flour Tortilla 6"" - Tortilla (33g)",Sazon,Sides,100,2.5,1,0,0,190,20,16,< 1,0,3
+Guacamole - 6 oz Portion (175g),Sazon,Sides,211,17,2.5,0,0,650,680,15,8,2,3
+Horchata - 13 oz Portion (394g),Sazon,Sides,446,7,2.5,0,15,180,0,90,0,73,5
+Latin Arepa Bowl - Arepa (72g),Sazon,Sides,163,8,0.5,0,0,180,75,23,2,< 1,3
+Maduros (Sweet Plantains) - 2 Piece Portion (55g),Sazon,Sides,159,6,1,0,0,0,190,25,1,10,< 1
+Pico de Gallo - Taco Portion (45g),Sazon,Sides,10,0,0,0,0,45,100,2,0,1,0
+Queso Dip - Side Portion (113g),Sazon,Sides,208,15,8,0,45,980,300,8,0,4,9
+Tostones - 5 Piece Portion (118g),Sazon,Sides,279,10,1,0,0,740,0,46,2,1,2
+Triple Chocolate Cookie - Cookie (128g),Sazon,Sides,470,16,7,0,45,310,0,79,2,27,6
+"White Corn Tortilla 6"" - Tortilla (29g)",Sazon,Sides,91,5,0,0,0,5,30,11,1,0,< 1

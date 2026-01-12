@@ -37,6 +37,7 @@
                         <button class="btn-trend" data-days="30">30 Days</button>
                         <button class="btn-trend" data-days="90">90 Days</button>
                     </div>
+                    <p class="trends-hint">Click a date on the calendar, then select a time period to view trends ending on that date</p>
                     <div id="trends-display" class="trends-display">
                         <p class="placeholder-text">Select a time period to view trends</p>
                     </div>
@@ -48,11 +49,34 @@
     <script>
         let currentDate = new Date();
         let selectedDate = null;
+        let selectedTrendDays = null;
+        let selectedTrendEndDate = null;
         
         // Month names
         const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                           'July', 'August', 'September', 'October', 'November', 'December'];
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        
+        // Get today's date as YYYY-MM-DD (local time, no timezone issues)
+        function getTodayString() {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        
+        // Parse date string YYYY-MM-DD to Date object (local time)
+        function parseLocalDate(dateStr) {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            return new Date(year, month - 1, day);
+        }
+        
+        // Check if date is in the future
+        function isFutureDate(dateStr) {
+            const todayStr = getTodayString();
+            return dateStr > todayStr;
+        }
         
         // Initialize calendar
         function initCalendar() {
@@ -71,11 +95,17 @@
                 renderCalendar();
             });
             
-            // Trend buttons
+            // Trend buttons - now require clicking a date first (or use today)
             document.querySelectorAll('.btn-trend').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const days = parseInt(btn.dataset.days);
-                    loadTrends(days);
+                    // Use selected date or today as end date
+                    const endDate = selectedDate || getTodayString();
+                    if (isFutureDate(endDate)) {
+                        alert('Cannot select future dates');
+                        return;
+                    }
+                    selectTrendRange(days, endDate);
                 });
             });
         }
@@ -114,36 +144,90 @@
             }
             
             // Add days of month
+            const todayStr = getTodayString();
             for (let day = 1; day <= daysInMonth; day++) {
                 const dayElement = document.createElement('div');
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 dayElement.className = 'calendar-day';
                 dayElement.textContent = day;
-                dayElement.dataset.date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                dayElement.dataset.date = dateStr;
                 
-                // Check if this date has data (we'll highlight it later)
-                dayElement.addEventListener('click', () => {
-                    selectDate(dayElement.dataset.date);
-                });
+                // Disable future dates
+                if (isFutureDate(dateStr)) {
+                    dayElement.classList.add('future');
+                    dayElement.style.opacity = '0.4';
+                    dayElement.style.cursor = 'not-allowed';
+                } else {
+                    dayElement.addEventListener('click', () => {
+                        selectDate(dateStr);
+                    });
+                }
+                
+                // Highlight today with outline
+                if (dateStr === todayStr) {
+                    dayElement.classList.add('today');
+                }
                 
                 grid.appendChild(dayElement);
             }
             
-            // Highlight today
-            const today = new Date();
-            if (today.getFullYear() === year && today.getMonth() === month) {
-                const todayElement = grid.querySelector(`[data-date="${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}"]`);
-                if (todayElement) {
-                    todayElement.classList.add('today');
-                }
+            // Apply range highlighting if a trend range is selected
+            if (selectedTrendDays && selectedTrendEndDate) {
+                highlightTrendRange(selectedTrendDays, selectedTrendEndDate);
             }
         }
         
+        function highlightTrendRange(days, endDateStr) {
+            const endDate = parseLocalDate(endDateStr);
+            const startDate = new Date(endDate);
+            startDate.setDate(startDate.getDate() - (days - 1));
+            
+            document.querySelectorAll('.calendar-day').forEach(dayEl => {
+                const dateStr = dayEl.dataset.date;
+                if (!dateStr || dayEl.classList.contains('empty')) return;
+                
+                const date = parseLocalDate(dateStr);
+                if (date >= startDate && date <= endDate && !dayEl.classList.contains('future')) {
+                    dayEl.classList.add('in-range');
+                }
+            });
+        }
+        
+        function selectTrendRange(days, endDate) {
+            selectedTrendDays = days;
+            selectedTrendEndDate = endDate;
+            
+            // Update active button
+            document.querySelectorAll('.btn-trend').forEach(btn => {
+                btn.classList.remove('active');
+                if (parseInt(btn.dataset.days) === days) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Re-render calendar to show range highlighting
+            renderCalendar();
+            
+            // Load trends
+            loadTrends(days, endDate);
+        }
+        
         function selectDate(date) {
+            if (isFutureDate(date)) {
+                return; // Prevent selecting future dates
+            }
+            
             selectedDate = date;
+            
+            // Clear trend selection
+            selectedTrendDays = null;
+            selectedTrendEndDate = null;
+            document.querySelectorAll('.btn-trend').forEach(btn => btn.classList.remove('active'));
             
             // Update selected state
             document.querySelectorAll('.calendar-day').forEach(day => {
                 day.classList.remove('selected');
+                day.classList.remove('in-range');
             });
             const selectedElement = document.querySelector(`[data-date="${date}"]`);
             if (selectedElement) {
@@ -152,6 +236,9 @@
             
             // Load stats for this date
             loadDateStats(date);
+            
+            // Clear trends display
+            document.getElementById('trends-display').innerHTML = '<p class="placeholder-text">Select a time period to view trends</p>';
         }
         
         async function loadDateStats(date) {
@@ -173,7 +260,8 @@
         
         function displayDateStats(date, data) {
             const panel = document.getElementById('stats-panel');
-            const dateObj = new Date(date);
+            // Parse date as local date to avoid timezone issues
+            const dateObj = parseLocalDate(date);
             const formattedDate = dateObj.toLocaleDateString('en-US', { 
                 weekday: 'long', 
                 year: 'numeric', 
@@ -329,12 +417,14 @@
             panel.innerHTML = html;
         }
         
-        async function loadTrends(days) {
+        async function loadTrends(days, endDate) {
             const display = document.getElementById('trends-display');
             display.innerHTML = '<p>Loading...</p>';
             
             try {
-                const response = await fetch(`/dashboard/api/trends/${days}`);
+                // Include end_date parameter if provided
+                const url = endDate ? `/dashboard/api/trends/${days}?end_date=${endDate}` : `/dashboard/api/trends/${days}`;
+                const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error('Failed to load trends');
                 }

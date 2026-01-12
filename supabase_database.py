@@ -38,15 +38,29 @@ class SupabaseDatabase:
         result = self.supabase.table('food_logs').insert(data).execute()
         return result.data[0]['id']
     
-    def get_food_logs(self, date: Optional[str] = None) -> List[Dict]:
-        """Get food logs, optionally filtered by date"""
+    def get_food_logs(self, date: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict]:
+        """Get food logs, optionally filtered by date or date range
+        
+        Args:
+            date: Single date to filter by (YYYY-MM-DD) - takes precedence over start_date/end_date
+            start_date: Start date for range filtering (YYYY-MM-DD)
+            end_date: End date for range filtering (YYYY-MM-DD)
+        """
         query = self.supabase.table('food_logs').select('*')
         
         if date:
-            # Filter by date (YYYY-MM-DD)
-            start_date = f"{date}T00:00:00"
-            end_date = f"{date}T23:59:59"
-            query = query.gte('timestamp', start_date).lte('timestamp', end_date)
+            # Filter by single date (YYYY-MM-DD)
+            start = f"{date}T00:00:00"
+            end = f"{date}T23:59:59"
+            query = query.gte('timestamp', start).lte('timestamp', end)
+        elif start_date or end_date:
+            # Filter by date range
+            if start_date:
+                start = f"{start_date}T00:00:00"
+                query = query.gte('timestamp', start)
+            if end_date:
+                end = f"{end_date}T23:59:59"
+                query = query.lte('timestamp', end)
         
         query = query.order('timestamp', desc=True)
         result = query.execute()
