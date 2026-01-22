@@ -35,9 +35,8 @@ class SupabaseDatabase:
             'restaurant': restaurant,
             'portion_multiplier': float(portion_multiplier)
         }
-        # Add phone_number if provided (for RLS policies)
-        if phone_number:
-            data['phone_number'] = phone_number
+        # Note: phone_number column doesn't exist in schema, so we don't include it
+        # If RLS requires it, we'll need to add the column to the database schema first
         result = self.supabase.table('food_logs').insert(data).execute()
         return result.data[0]['id']
     
@@ -79,9 +78,7 @@ class SupabaseDatabase:
             'amount_ml': float(amount_ml),
             'amount_oz': float(amount_oz)
         }
-        # Add phone_number if provided (for RLS policies)
-        if phone_number:
-            data['phone_number'] = phone_number
+        # Note: phone_number column doesn't exist in schema, so we don't include it
         result = self.supabase.table('water_logs').insert(data).execute()
         return result.data[0]['id']
     
@@ -110,9 +107,7 @@ class SupabaseDatabase:
             'weight': float(weight) if weight is not None else None,
             'notes': notes
         }
-        # Add phone_number if provided (for RLS policies)
-        if phone_number:
-            data['phone_number'] = phone_number
+        # Note: phone_number column doesn't exist in schema, so we don't include it
         result = self.supabase.table('gym_logs').insert(data).execute()
         return result.data[0]['id']
     
@@ -140,9 +135,7 @@ class SupabaseDatabase:
             'due_date': due_date.isoformat() if due_date else None,
             'completed': completed
         }
-        # Add phone_number if provided (for RLS policies)
-        if phone_number:
-            data['phone_number'] = phone_number
+        # Note: phone_number column doesn't exist in schema, so we don't include it
         result = self.supabase.table('reminders_todos').insert(data).execute()
         return result.data[0]['id']
     
@@ -336,9 +329,7 @@ class SupabaseDatabase:
             'wake_time': wake_time,
             'duration_hours': float(duration_hours)
         }
-        # Add phone_number if provided (for RLS policies)
-        if phone_number:
-            data['phone_number'] = phone_number
+        # Note: phone_number column doesn't exist in schema, so we don't include it
         result = self.supabase.table('sleep_logs').insert(data).execute()
         return result.data[0]['id']
     
@@ -368,9 +359,7 @@ class SupabaseDatabase:
             'value': value,
             'context': context
         }
-        # Add phone_number if provided (for RLS policies)
-        if phone_number:
-            data['phone_number'] = phone_number
+        # Note: phone_number column doesn't exist in schema, so we don't include it
         result = self.supabase.table('facts').insert(data).execute()
         return result.data[0]['id']
     
@@ -426,9 +415,7 @@ class SupabaseDatabase:
             'notes': notes,
             'completed': completed
         }
-        # Add phone_number if provided (for RLS policies)
-        if phone_number:
-            data['phone_number'] = phone_number
+        # Note: phone_number column doesn't exist in schema, so we don't include it
         result = self.supabase.table('assignments').insert(data).execute()
         return result.data[0]['id']
     
