@@ -21,7 +21,9 @@ body {
 
 /* Login Page */
 .login-container {
+    position: relative;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
@@ -131,27 +133,30 @@ body {
     box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
 }
 
-.login-footer-links {
-    margin-top: 2rem;
+.login-page-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
     text-align: center;
-    padding-top: 1.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1.5rem;
 }
 
 .footer-link {
-    color: #000000;
+    color: #0a0a0a;
     text-decoration: none;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
+    font-weight: 500;
     transition: all 0.3s ease;
 }
 
 .footer-link:hover {
-    color: #333333;
+    color: #1a1a1a;
     text-decoration: underline;
 }
 
 .footer-separator {
-    color: #666;
+    color: rgba(0, 0, 0, 0.5);
     margin: 0 0.75rem;
     font-size: 0.9rem;
 }
