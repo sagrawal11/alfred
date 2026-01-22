@@ -27,9 +27,13 @@ class SupabaseDatabase:
                        portion_multiplier: float = 1.0, phone_number: Optional[str] = None) -> int:
         """Insert a food log entry"""
         # #region agent log
-        import json, time
-        with open('/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'B', 'location': 'supabase_database.py:28', 'message': 'insert_food_log entry', 'data': {'food_name': food_name, 'has_phone_number_param': bool(phone_number)}, 'timestamp': time.time() * 1000}) + '\n')
+        import json, time, os
+        log_path = '/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log'
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'B', 'location': 'supabase_database.py:28', 'message': 'insert_food_log entry', 'data': {'food_name': food_name, 'has_phone_number_param': bool(phone_number)}, 'timestamp': time.time() * 1000}) + '\n')
+        except: pass
         # #endregion
         data = {
             'food_name': food_name,
@@ -41,27 +45,33 @@ class SupabaseDatabase:
             'portion_multiplier': float(portion_multiplier)
         }
         # #region agent log
-        with open('/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'B', 'location': 'supabase_database.py:40', 'message': 'data prepared for insert', 'data': {'data_keys': list(data.keys()), 'supabase_url_length': len(self.supabase.url) if hasattr(self.supabase, 'url') else 0}, 'timestamp': time.time() * 1000}) + '\n')
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'B', 'location': 'supabase_database.py:40', 'message': 'data prepared for insert', 'data': {'data_keys': list(data.keys()), 'supabase_url_length': len(self.supabase.url) if hasattr(self.supabase, 'url') else 0}, 'timestamp': time.time() * 1000}) + '\n')
+        except: pass
         # #endregion
         # Note: phone_number column doesn't exist in schema, so we don't include it
         # If RLS requires it, we'll need to add the column to the database schema first
         try:
             result = self.supabase.table('food_logs').insert(data).execute()
             # #region agent log
-            with open('/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'B', 'location': 'supabase_database.py:45', 'message': 'insert succeeded', 'data': {'result_id': result.data[0]['id'] if result.data else None}, 'timestamp': time.time() * 1000}) + '\n')
+            try:
+                with open(log_path, 'a') as f:
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'B', 'location': 'supabase_database.py:45', 'message': 'insert succeeded', 'data': {'result_id': result.data[0]['id'] if result.data else None}, 'timestamp': time.time() * 1000}) + '\n')
+            except: pass
             # #endregion
             return result.data[0]['id']
         except Exception as e:
             # #region agent log
-            with open('/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log', 'a') as f:
-                error_data = {'error_type': type(e).__name__, 'error_message': str(e)}
-                if hasattr(e, 'message'):
-                    error_data['error_message_attr'] = str(e.message)
-                if hasattr(e, 'code'):
-                    error_data['error_code'] = str(e.code)
-                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'B', 'location': 'supabase_database.py:52', 'message': 'insert failed with RLS error', 'data': error_data, 'timestamp': time.time() * 1000}) + '\n')
+            try:
+                with open(log_path, 'a') as f:
+                    error_data = {'error_type': type(e).__name__, 'error_message': str(e)}
+                    if hasattr(e, 'message'):
+                        error_data['error_message_attr'] = str(e.message)
+                    if hasattr(e, 'code'):
+                        error_data['error_code'] = str(e.code)
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'B', 'location': 'supabase_database.py:52', 'message': 'insert failed with RLS error', 'data': error_data, 'timestamp': time.time() * 1000}) + '\n')
+            except: pass
             # #endregion
             raise
     

@@ -137,7 +137,11 @@
                 if (data.success) {
                     addMessage(data.response, true);
                 } else {
-                    addMessage(`Error: ${data.error || 'Unknown error occurred'}`, true);
+                    let errorMsg = `Error: ${data.error || 'Unknown error occurred'}`;
+                    if (data.error_type) {
+                        errorMsg += `\nType: ${data.error_type}`;
+                    }
+                    addMessage(errorMsg, true);
                 }
             } catch (error) {
                 addMessage(`Error: Failed to send message. ${error.message}`, true);

@@ -2689,9 +2689,18 @@ def dashboard_api_chat():
         print(f"Error processing chat message: {e}")
         import traceback
         traceback.print_exc()
+        
+        # Extract detailed error information for debugging
+        error_details = str(e)
+        if hasattr(e, 'message'):
+            error_details = str(e.message)
+        if hasattr(e, 'code'):
+            error_details += f" (code: {e.code})"
+        
         return jsonify({
             'success': False,
-            'error': str(e),
+            'error': error_details,
+            'error_type': type(e).__name__,
             'timestamp': datetime.now().isoformat()
         }), 500
 
