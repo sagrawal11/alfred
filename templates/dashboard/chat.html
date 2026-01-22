@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Test - SMS Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>SMS Assistant Chat Test</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('dashboard') }}" class="btn-secondary">← Back to Dashboard</a>
+                <a href="{{ url_for('dashboard_logout') }}" class="btn-logout">Logout</a>
+            </div>
+        </header>
+        
+        <div class="chat-container">
+            <div class="chat-info">
+                <p>This is a testing interface that uses the same message processing logic as the SMS system. Send messages below to test all features.</p>
+            </div>
+            
+            <div id="chat-messages" class="chat-messages">
+                <div class="chat-message bot-message">
+                    <div class="message-content">
+                        <p>Hello! I'm your SMS assistant. Send me a message to get started. Try commands like:</p>
+                        <ul class="help-list">
+                            <li>"drank 500ml water"</li>
+                            <li>"ate kraft quesadilla"</li>
+                            <li>"what did I eat yesterday"</li>
+                            <li>"help"</li>
+                        </ul>
+                    </div>
+                    <div class="message-timestamp"></div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <form id="chat-form" class="chat-form">
+                    <input 
+                        type="text" 
+                        id="chat-input" 
+                        class="chat-input" 
+                        placeholder="Type your message here..." 
+                        autocomplete="off"
+                        autofocus
+                    >
+                    <button type="submit" class="btn-send" id="send-button">
+                        <span>Send</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+        
+        // Auto-scroll to bottom
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Format timestamp
+        function formatTimestamp() {
+            const now = new Date();
+            return now.toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            });
+        }
+        
+        // Add message to chat
+        function addMessage(text, isBot = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${isBot ? 'bot-message' : 'user-message'}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            // Handle multi-line responses (preserve line breaks)
+            const lines = text.split('\n');
+            lines.forEach((line, index) => {
+                if (line.trim()) {
+                    const p = document.createElement('p');
+                    p.textContent = line;
+                    contentDiv.appendChild(p);
+                } else if (index < lines.length - 1) {
+                    // Add spacing for empty lines
+                    const br = document.createElement('br');
+                    contentDiv.appendChild(br);
+                }
+            });
+            
+            const timestampDiv = document.createElement('div');
+            timestampDiv.className = 'message-timestamp';
+            timestampDiv.textContent = formatTimestamp();
+            
+            messageDiv.appendChild(contentDiv);
+            messageDiv.appendChild(timestampDiv);
+            
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+        
+        // Handle form submission
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const message = chatInput.value.trim();
+            if (!message) return;
+            
+            // Add user message
+            addMessage(message, false);
+            
+            // Clear input and disable
+            chatInput.value = '';
+            sendButton.disabled = true;
+            sendButton.textContent = 'Sending...';
+            
+            try {
+                const response = await fetch('/dashboard/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    addMessage(data.response, true);
+                } else {
+                    addMessage(`Error: ${data.error || 'Unknown error occurred'}`, true);
+                }
+            } catch (error) {
+                addMessage(`Error: Failed to send message. ${error.message}`, true);
+            } finally {
+                sendButton.disabled = false;
+                sendButton.innerHTML = '<span>Send</span>';
+                chatInput.focus();
+            }
+        });
+        
+        // Initial scroll
+        scrollToBottom();
+    </script>
+</body>
+</html>

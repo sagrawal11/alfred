@@ -2643,6 +2643,52 @@ def opt_in():
     """Opt-in information page"""
     return render_template('dashboard/optin.html')
 
+@app.route('/dashboard/chat')
+def dashboard_chat():
+    """Chatbot testing interface"""
+    if not check_auth():
+        return redirect(url_for('dashboard_login'))
+    return render_template('dashboard/chat.html')
+
+@app.route('/dashboard/api/chat', methods=['POST'])
+def dashboard_api_chat():
+    """API endpoint for chatbot message processing"""
+    if not check_auth():
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    try:
+        data = request.get_json()
+        message = data.get('message', '').strip()
+        
+        if not message:
+            return jsonify({'error': 'Message is required'}), 400
+        
+        # Use a consistent test phone number for state management
+        test_phone_number = 'test_user_dashboard'
+        
+        # Process the message using the same logic as SMS
+        processor = EnhancedMessageProcessor()
+        response_text = processor.process_message(message, phone_number=test_phone_number)
+        
+        if not response_text:
+            response_text = "I didn't understand that. Try sending 'help' for available commands."
+        
+        return jsonify({
+            'success': True,
+            'response': response_text,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Error processing chat message: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 @app.route('/dashboard')
 def dashboard():
     """Main dashboard calendar view"""
