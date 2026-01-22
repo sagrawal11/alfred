@@ -2633,6 +2633,16 @@ def dashboard_logout():
     session.pop('authenticated', None)
     return redirect(url_for('dashboard_login'))
 
+@app.route('/dashboard/privacy')
+def privacy_policy():
+    """Privacy policy page"""
+    return render_template('dashboard/privacy.html')
+
+@app.route('/dashboard/opt-in')
+def opt_in():
+    """Opt-in information page"""
+    return render_template('dashboard/optin.html')
+
 @app.route('/dashboard')
 def dashboard():
     """Main dashboard calendar view"""

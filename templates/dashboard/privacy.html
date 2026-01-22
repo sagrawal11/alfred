@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - SMS Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+</head>
+<body>
+    <div class="privacy-container">
+        <div class="privacy-content">
+            <h1>Privacy Policy</h1>
+            
+            <div class="privacy-meta">
+                <p><strong>Business Name:</strong> Sarthak Agrawal</p>
+                <p><strong>Effective Date:</strong> <span id="effective-date"></span></p>
+            </div>
+            
+            <div class="privacy-section">
+                <h2>Overview</h2>
+                <p>This Privacy Policy describes how information is collected, used, and handled for this personal SMS-based assistant operated by <strong>Sarthak Agrawal</strong>.</p>
+                <p>This service is intended for <strong>personal use by a single user (the owner)</strong> and is not offered to the general public.</p>
+            </div>
+            
+            <div class="privacy-section">
+                <h2>Information Collected</h2>
+                <p>The service may collect and process the following information:</p>
+                <ul class="privacy-list">
+                    <li>Phone number used to send and receive SMS messages</li>
+                    <li>Message content voluntarily sent by the user (e.g., reminders, notes, logs)</li>
+                    <li>Message metadata required to deliver SMS messages (such as timestamps)</li>
+                </ul>
+                <p>No additional personal information is collected beyond what is necessary to operate SMS messaging.</p>
+            </div>
+            
+            <div class="privacy-section">
+                <h2>How Information Is Used</h2>
+                <p>Information is used solely to:</p>
+                <ul class="privacy-list">
+                    <li>Send and receive SMS messages</li>
+                    <li>Provide reminders, notifications, and assistant responses</li>
+                    <li>Maintain basic message history for functionality and continuity</li>
+                </ul>
+                <p>Messages are primarily <strong>user-initiated</strong> and informational in nature.</p>
+            </div>
+            
+            <div class="privacy-section">
+                <h2>Data Sharing</h2>
+                <p>Message data is <strong>not sold, rented, or shared</strong> with third parties.</p>
+                <p>Information may be processed by third-party service providers <strong>only as required to deliver SMS messages</strong>, such as messaging and telecommunications providers (e.g., Twilio).</p>
+            </div>
+            
+            <div class="privacy-section">
+                <h2>Data Retention</h2>
+                <p>Message data is retained only as long as necessary to operate the service and may be deleted at any time by the owner.</p>
+            </div>
+            
+            <div class="privacy-section">
+                <h2>SMS Consent</h2>
+                <p>By sending the keyword <code>START</code> to the associated Toll-Free number, the user explicitly consents to receive SMS text messages from <strong>Sarthak Agrawal</strong>.</p>
+                <p>Consent is not shared with any other parties and is limited to this service.</p>
+                <p>You may opt out at any time by replying <code>STOP</code>.</p>
+            </div>
+            
+            <div class="privacy-section">
+                <h2>Data Security</h2>
+                <p>Reasonable technical measures are used to protect message data and prevent unauthorized access. However, no system can be guaranteed to be 100% secure.</p>
+            </div>
+            
+            <div class="privacy-section">
+                <h2>Changes to This Policy</h2>
+                <p>This Privacy Policy may be updated from time to time. Any changes will be reflected on this page with an updated effective date.</p>
+            </div>
+            
+            <div class="privacy-section">
+                <h2>Contact</h2>
+                <p>For questions about this Privacy Policy or SMS messaging, reply <code>HELP</code> to any message from this service.</p>
+            </div>
+            
+            <div class="privacy-footer">
+                <p class="last-updated">Last updated: <span id="last-updated-date"></span></p>
+                <a href="{{ url_for('dashboard_login') }}" class="btn-back">← Back to Login</a>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        (function() {
+            var opts = { year: 'numeric', month: 'long', day: 'numeric' };
+            var d = new Date().toLocaleDateString('en-US', opts);
+            document.getElementById('effective-date').textContent = d;
+            document.getElementById('last-updated-date').textContent = d;
+        })();
+    </script>
+</body>
+</html>

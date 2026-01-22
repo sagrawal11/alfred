@@ -131,6 +131,307 @@ body {
     box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
 }
 
+.login-footer-links {
+    margin-top: 2rem;
+    text-align: center;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.footer-link {
+    color: #000000;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.footer-link:hover {
+    color: #333333;
+    text-decoration: underline;
+}
+
+.footer-separator {
+    color: #666;
+    margin: 0 0.75rem;
+    font-size: 0.9rem;
+}
+
+/* Privacy Policy Page */
+.privacy-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0f0f0f 100%);
+    background-attachment: fixed;
+    padding: 2rem;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    animation: fadeIn 0.5s ease-in;
+}
+
+.privacy-content {
+    max-width: 800px;
+    width: 100%;
+    background: rgba(26, 26, 26, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 3rem;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.privacy-content h1 {
+    color: #e0e0e0;
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    letter-spacing: -0.5px;
+}
+
+.privacy-meta {
+    background: rgba(0, 212, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border-left: 3px solid #00d4ff;
+    margin-bottom: 2rem;
+}
+
+.privacy-meta p {
+    color: #d0d0d0;
+    margin: 0.5rem 0;
+    font-size: 0.95rem;
+}
+
+.privacy-content code {
+    color: #00d4ff;
+    font-family: 'Courier New', monospace;
+    font-size: 0.95em;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    background: rgba(0, 212, 255, 0.1);
+}
+
+.privacy-list {
+    color: #d0d0d0;
+    line-height: 2;
+    margin: 1rem 0;
+    padding-left: 1.5rem;
+}
+
+.privacy-list li {
+    margin-bottom: 0.75rem;
+}
+
+.last-updated {
+    color: #888;
+    font-size: 0.9rem;
+    margin-bottom: 2rem;
+    font-style: italic;
+}
+
+.privacy-section {
+    margin-bottom: 2.5rem;
+    animation: fadeIn 0.6s ease-in;
+}
+
+.privacy-section h2 {
+    color: #00d4ff;
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    letter-spacing: -0.3px;
+}
+
+.privacy-section p {
+    color: #d0d0d0;
+    line-height: 1.8;
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+.privacy-footer {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+}
+
+.privacy-footer .last-updated {
+    margin-bottom: 1.5rem;
+}
+
+.btn-back {
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    background: rgba(0, 212, 255, 0.1);
+    color: #00d4ff;
+    text-decoration: none;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-back:hover {
+    background: rgba(0, 212, 255, 0.2);
+    border-color: rgba(0, 212, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 212, 255, 0.2);
+}
+
+/* Opt-In Page */
+.optin-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0f0f0f 100%);
+    background-attachment: fixed;
+    padding: 2rem;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    animation: fadeIn 0.5s ease-in;
+}
+
+.optin-content {
+    max-width: 800px;
+    width: 100%;
+    background: rgba(26, 26, 26, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 3rem;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.optin-content h1 {
+    color: #e0e0e0;
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 2rem;
+    letter-spacing: -0.5px;
+}
+
+.optin-section {
+    margin-bottom: 2.5rem;
+    animation: fadeIn 0.6s ease-in;
+}
+
+.optin-section h2 {
+    color: #00d4ff;
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    letter-spacing: -0.3px;
+}
+
+.optin-section p {
+    color: #d0d0d0;
+    line-height: 1.8;
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+.optin-meta {
+    background: rgba(0, 212, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border-left: 3px solid #00d4ff;
+    margin-bottom: 2rem;
+}
+
+.optin-meta p {
+    color: #d0d0d0;
+    margin: 0.5rem 0;
+    font-size: 0.95rem;
+}
+
+.optin-box {
+    background: rgba(0, 212, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    margin: 1.5rem 0;
+}
+
+.optin-box h3 {
+    color: #00d4ff;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.optin-box p {
+    margin-bottom: 1rem;
+}
+
+.keyword-box {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    margin: 1rem 0;
+    text-align: center;
+}
+
+.keyword-box code {
+    color: #00d4ff;
+    font-size: 1.2rem;
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2px;
+}
+
+.message-box {
+    background: rgba(42, 42, 42, 0.6);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border-left: 3px solid #00d4ff;
+    margin: 1rem 0;
+}
+
+.message-box p {
+    color: #d0d0d0;
+    margin: 0;
+    font-style: italic;
+    line-height: 1.8;
+}
+
+.optin-list {
+    color: #d0d0d0;
+    line-height: 2;
+    margin: 1rem 0;
+    padding-left: 1.5rem;
+}
+
+.optin-list li {
+    margin-bottom: 0.75rem;
+}
+
+.optin-list li strong {
+    color: #00d4ff;
+}
+
+.optin-note {
+    color: #888;
+    font-size: 0.9rem;
+    font-style: italic;
+    margin-top: 0.5rem;
+}
+
+.optin-footer {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+}
+
+.optin-footer .last-updated {
+    color: #888;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+    font-style: italic;
+}
+
 /* Dashboard */
 .dashboard-container {
     max-width: 1400px;
