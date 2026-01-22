@@ -24,7 +24,7 @@ class SupabaseDatabase:
     # Food logs methods
     def insert_food_log(self, food_name: str, calories: float, protein: float, 
                        carbs: float, fat: float, restaurant: Optional[str] = None,
-                       portion_multiplier: float = 1.0) -> int:
+                       portion_multiplier: float = 1.0, phone_number: Optional[str] = None) -> int:
         """Insert a food log entry"""
         data = {
             'food_name': food_name,
@@ -35,6 +35,9 @@ class SupabaseDatabase:
             'restaurant': restaurant,
             'portion_multiplier': float(portion_multiplier)
         }
+        # Add phone_number if provided (for RLS policies)
+        if phone_number:
+            data['phone_number'] = phone_number
         result = self.supabase.table('food_logs').insert(data).execute()
         return result.data[0]['id']
     
@@ -67,7 +70,7 @@ class SupabaseDatabase:
         return result.data if result.data else []
     
     # Water logs methods
-    def insert_water_log(self, amount_ml: float, amount_oz: Optional[float] = None) -> int:
+    def insert_water_log(self, amount_ml: float, amount_oz: Optional[float] = None, phone_number: Optional[str] = None) -> int:
         """Insert a water log entry"""
         if amount_oz is None:
             amount_oz = amount_ml / 29.5735
@@ -76,6 +79,9 @@ class SupabaseDatabase:
             'amount_ml': float(amount_ml),
             'amount_oz': float(amount_oz)
         }
+        # Add phone_number if provided (for RLS policies)
+        if phone_number:
+            data['phone_number'] = phone_number
         result = self.supabase.table('water_logs').insert(data).execute()
         return result.data[0]['id']
     
@@ -95,7 +101,7 @@ class SupabaseDatabase:
     # Gym logs methods
     def insert_gym_log(self, exercise: str, sets: Optional[int] = None,
                       reps: Optional[int] = None, weight: Optional[float] = None,
-                      notes: Optional[str] = None) -> int:
+                      notes: Optional[str] = None, phone_number: Optional[str] = None) -> int:
         """Insert a gym log entry"""
         data = {
             'exercise': exercise,
@@ -104,6 +110,9 @@ class SupabaseDatabase:
             'weight': float(weight) if weight is not None else None,
             'notes': notes
         }
+        # Add phone_number if provided (for RLS policies)
+        if phone_number:
+            data['phone_number'] = phone_number
         result = self.supabase.table('gym_logs').insert(data).execute()
         return result.data[0]['id']
     
@@ -123,7 +132,7 @@ class SupabaseDatabase:
     # Reminders and todos methods
     def insert_reminder_todo(self, type: str, content: str, 
                             due_date: Optional[datetime] = None,
-                            completed: bool = False) -> int:
+                            completed: bool = False, phone_number: Optional[str] = None) -> int:
         """Insert a reminder or todo entry"""
         data = {
             'type': type,
@@ -131,6 +140,9 @@ class SupabaseDatabase:
             'due_date': due_date.isoformat() if due_date else None,
             'completed': completed
         }
+        # Add phone_number if provided (for RLS policies)
+        if phone_number:
+            data['phone_number'] = phone_number
         result = self.supabase.table('reminders_todos').insert(data).execute()
         return result.data[0]['id']
     
@@ -316,7 +328,7 @@ class SupabaseDatabase:
         return totals
     
     # Sleep logs methods
-    def insert_sleep_log(self, date: str, sleep_time: str, wake_time: str, duration_hours: float) -> int:
+    def insert_sleep_log(self, date: str, sleep_time: str, wake_time: str, duration_hours: float, phone_number: Optional[str] = None) -> int:
         """Insert a sleep log entry"""
         data = {
             'date': date,
@@ -324,6 +336,9 @@ class SupabaseDatabase:
             'wake_time': wake_time,
             'duration_hours': float(duration_hours)
         }
+        # Add phone_number if provided (for RLS policies)
+        if phone_number:
+            data['phone_number'] = phone_number
         result = self.supabase.table('sleep_logs').insert(data).execute()
         return result.data[0]['id']
     
@@ -346,13 +361,16 @@ class SupabaseDatabase:
         return None
     
     # Facts (information recall) methods
-    def insert_fact(self, key: str, value: str, context: Optional[str] = None) -> int:
+    def insert_fact(self, key: str, value: str, context: Optional[str] = None, phone_number: Optional[str] = None) -> int:
         """Insert a fact/information entry"""
         data = {
             'key': key,
             'value': value,
             'context': context
         }
+        # Add phone_number if provided (for RLS policies)
+        if phone_number:
+            data['phone_number'] = phone_number
         result = self.supabase.table('facts').insert(data).execute()
         return result.data[0]['id']
     
@@ -399,7 +417,7 @@ class SupabaseDatabase:
     # Assignments methods
     def insert_assignment(self, class_name: str, assignment_name: str, 
                          due_date: datetime, notes: Optional[str] = None,
-                         completed: bool = False) -> int:
+                         completed: bool = False, phone_number: Optional[str] = None) -> int:
         """Insert an assignment entry"""
         data = {
             'class_name': class_name,
@@ -408,6 +426,9 @@ class SupabaseDatabase:
             'notes': notes,
             'completed': completed
         }
+        # Add phone_number if provided (for RLS policies)
+        if phone_number:
+            data['phone_number'] = phone_number
         result = self.supabase.table('assignments').insert(data).execute()
         return result.data[0]['id']
     

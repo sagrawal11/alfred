@@ -637,17 +637,17 @@ class EnhancedMessageProcessor:
     def handle_intent(self, intent, message, entities, phone_number=None):
         """Handle specific intent using intelligent NLP"""
         if intent == 'water_logging':
-            return self.handle_water(message, entities)
+            return self.handle_water(message, entities, phone_number=phone_number)
         elif intent == 'food_logging':
-            return self.handle_food(message, entities)
+            return self.handle_food(message, entities, phone_number=phone_number)
         elif intent == 'gym_workout':
-            return self.handle_gym(message, entities)
+            return self.handle_gym(message, entities, phone_number=phone_number)
         elif intent == 'todo_add':
-            return self.handle_todo(message, entities)
+            return self.handle_todo(message, entities, phone_number=phone_number)
         elif intent == 'reminder_set':
-            return self.handle_reminder(message, entities)
+            return self.handle_reminder(message, entities, phone_number=phone_number)
         elif intent == 'assignment_add':
-            return self.handle_assignment(message, entities)
+            return self.handle_assignment(message, entities, phone_number=phone_number)
         elif intent == 'water_goal_set':
             return self.handle_water_goal(message, entities)
         elif intent == 'stats_query':
@@ -663,7 +663,7 @@ class EnhancedMessageProcessor:
         elif intent == 'undo_edit':
             return self.handle_undo_edit(message, entities)
         elif intent == 'sleep_logging':
-            return self.handle_sleep(message, entities)
+            return self.handle_sleep(message, entities, phone_number=phone_number)
         elif intent == 'fact_storage':
             return self.handle_fact_storage(message, entities, phone_number)
         elif intent == 'fact_query':
@@ -676,11 +676,11 @@ class EnhancedMessageProcessor:
         
         return None
     
-    def handle_water(self, message, entities):
+    def handle_water(self, message, entities, phone_number=None):
         """Handle water logging using enhanced NLP processor"""
         amount_ml = self.nlp_processor.parse_water_amount(message, entities)
         if amount_ml:
-            self.log_water(amount_ml)
+            self.log_water(amount_ml, phone_number=phone_number)
             
             # Get today's date
             today = datetime.now().date().isoformat()
@@ -714,11 +714,11 @@ class EnhancedMessageProcessor:
             return response
         return None
     
-    def log_water(self, amount_ml):
+    def log_water(self, amount_ml, phone_number=None):
         """Log water intake to database"""
-        db.insert_water_log(amount_ml)
+        db.insert_water_log(amount_ml, phone_number=phone_number)
     
-    def handle_food(self, message, entities):
+    def handle_food(self, message, entities, phone_number=None):
         """Handle food logging"""
         food_data = self.nlp_processor.parse_food(message)
         if food_data:
@@ -743,7 +743,8 @@ class EnhancedMessageProcessor:
                     carbs=carbs,
                     fat=fat,
                         restaurant=food_data.get('restaurant'),
-                    portion_multiplier=portion_mult
+                    portion_multiplier=portion_mult,
+                    phone_number=phone_number
                 )
                 
                 # Get today's date and totals
@@ -776,15 +777,15 @@ class EnhancedMessageProcessor:
                 }
         return None
     
-    def log_food(self, food_name, calories, protein, carbs, fat, restaurant=None, portion_multiplier=1.0):
+    def log_food(self, food_name, calories, protein, carbs, fat, restaurant=None, portion_multiplier=1.0, phone_number=None):
         """Log food to database"""
-        db.insert_food_log(food_name, calories, protein, carbs, fat, restaurant, portion_multiplier)
+        db.insert_food_log(food_name, calories, protein, carbs, fat, restaurant, portion_multiplier, phone_number=phone_number)
     
-    def log_unknown_food(self, food_name):
+    def log_unknown_food(self, food_name, phone_number=None):
         """Log unknown food"""
-        db.insert_food_log(food_name, 0, 0, 0, 0, None, 1.0)
+        db.insert_food_log(food_name, 0, 0, 0, 0, None, 1.0, phone_number=phone_number)
     
-    def schedule_food_reminder(self, food_name):
+    def schedule_food_reminder(self, food_name, phone_number=None):
         """Schedule evening reminder to add food to database"""
         reminder_time = datetime.now().replace(hour=config.EVENING_REMINDER_HOUR, minute=0, second=0, microsecond=0)
         if reminder_time <= datetime.now():
@@ -793,14 +794,15 @@ class EnhancedMessageProcessor:
         db.insert_reminder_todo(
             type='reminder',
             content=f"Add macros for '{food_name}' to food database",
-            due_date=reminder_time
+            due_date=reminder_time,
+            phone_number=phone_number
         )
     
-    def handle_gym(self, message, entities):
+    def handle_gym(self, message, entities, phone_number=None):
         """Handle gym workout logging using enhanced NLP processor"""
         workout_data = self.nlp_processor.parse_gym_workout(message)
         if workout_data:
-            self.log_gym_workout(workout_data)
+            self.log_gym_workout(workout_data, phone_number=phone_number)
             
             # Build response message
             exercises = workout_data['exercises']
@@ -848,7 +850,7 @@ class EnhancedMessageProcessor:
         
         return None
     
-    def log_gym_workout(self, workout_data):
+    def log_gym_workout(self, workout_data, phone_number=None):
         """Log gym workout to database"""
         exercises = workout_data.get('exercises', [])
         if exercises:
@@ -886,7 +888,8 @@ class EnhancedMessageProcessor:
                         sets=sets_count,
                         reps=reps,
                         weight=weight,
-                        notes=notes
+                        notes=notes,
+                        phone_number=phone_number
                     )
                 else:
                     # Fallback to old format
@@ -895,28 +898,29 @@ class EnhancedMessageProcessor:
                         sets=ex.get('sets', 1),
                         reps=ex.get('reps'),
                         weight=ex.get('weight'),
-                        notes=json.dumps(ex) if len(exercises) > 1 else ''
+                        notes=json.dumps(ex) if len(exercises) > 1 else '',
+                        phone_number=phone_number
                     )
     
-    def handle_todo(self, message, entities):
+    def handle_todo(self, message, entities, phone_number=None):
         """Handle todo creation using enhanced NLP processor"""
         tasks = entities.get('tasks', [])
         if tasks:
             task = tasks[0]
-            self.add_todo(task)
+            self.add_todo(task, phone_number=phone_number)
             return f"Added to todo list: {task}"
         return None
     
-    def add_todo(self, task):
+    def add_todo(self, task, phone_number=None):
         """Add todo to database"""
-        db.insert_reminder_todo(type='todo', content=task, due_date=None, completed=False)
+        db.insert_reminder_todo(type='todo', content=task, due_date=None, completed=False, phone_number=phone_number)
     
-    def handle_reminder(self, message, entities):
+    def handle_reminder(self, message, entities, phone_number=None):
         """Handle reminder creation using enhanced NLP processor"""
         reminder_data = self.nlp_processor.parse_reminder(message)
         if reminder_data:
             # Store reminder in database
-            self.schedule_reminder(reminder_data)
+            self.schedule_reminder(reminder_data, phone_number=phone_number)
             
             # Format response
             time_str = reminder_data['due_date'].strftime("%I:%M %p")
@@ -929,7 +933,7 @@ class EnhancedMessageProcessor:
         
         return None
     
-    def handle_assignment(self, message, entities):
+    def handle_assignment(self, message, entities, phone_number=None):
         """Handle assignment creation using enhanced NLP processor"""
         assignment_data = self.nlp_processor.parse_assignment(message)
         if assignment_data:
@@ -939,7 +943,8 @@ class EnhancedMessageProcessor:
                 assignment_name=assignment_data['assignment_name'],
                 due_date=assignment_data['due_date'],
                 notes=None,
-                completed=False
+                completed=False,
+                phone_number=phone_number
             )
             
             # Format response
@@ -952,13 +957,14 @@ class EnhancedMessageProcessor:
         
         return None
     
-    def schedule_reminder(self, reminder_data):
+    def schedule_reminder(self, reminder_data, phone_number=None):
         """Schedule reminder to database"""
         db.insert_reminder_todo(
             type='reminder',
             content=reminder_data['content'],
             due_date=reminder_data.get('due_date'),
-            completed=False
+            completed=False,
+            phone_number=phone_number
         )
     
     def handle_water_goal(self, message, entities):
@@ -1521,18 +1527,18 @@ class EnhancedMessageProcessor:
                 del self.pending_what_happened[phone_number]
                 
                 # Execute the selected action
-                return self._execute_completion_action(selected_option, pending['original_message'])
+                return self._execute_completion_action(selected_option, pending['original_message'], phone_number=phone_number)
         
         # If not a number, try to match by description
         for i, option in enumerate(options, 1):
             if any(word in message_lower for word in option['description'].lower().split()):
                 selected_option = option
                 del self.pending_what_happened[phone_number]
-                return self._execute_completion_action(selected_option, pending['original_message'])
+                return self._execute_completion_action(selected_option, pending['original_message'], phone_number=phone_number)
         
         return f"Please reply with a number (1-{len(options)})"
     
-    def _execute_completion_action(self, option, original_message):
+    def _execute_completion_action(self, option, original_message, phone_number=None):
         """Execute the action based on selected option"""
         action_type = option.get('action')
         
@@ -1557,15 +1563,15 @@ class EnhancedMessageProcessor:
         
         elif action_type == 'gym_workout':
             # Try to parse as gym workout
-            return self.handle_gym(original_message, {}) or "Logged as workout"
+            return self.handle_gym(original_message, {}, phone_number=phone_number) or "Logged as workout"
         
         elif action_type == 'food_logging':
             # Try to parse as food
-            return self.handle_food(original_message, {}) or "Logged as meal"
+            return self.handle_food(original_message, {}, phone_number=phone_number) or "Logged as meal"
         
         elif action_type == 'water_logging':
             # Try to parse as water
-            return self.handle_water(original_message, {}) or "Logged as water"
+            return self.handle_water(original_message, {}, phone_number=phone_number) or "Logged as water"
         
         return "Got it!"
     
@@ -1936,7 +1942,7 @@ class EnhancedMessageProcessor:
         
         return '\n'.join(response_parts)
     
-    def handle_sleep(self, message, entities):
+    def handle_sleep(self, message, entities, phone_number=None):
         """Handle sleep logging"""
         import re
         from datetime import datetime, timedelta
@@ -2026,7 +2032,7 @@ class EnhancedMessageProcessor:
                 duration = (wake_dt - sleep_dt).total_seconds() / 3600
                 today = datetime.now().date().isoformat()
                 
-                db.insert_sleep_log(today, sleep_time, wake_time, duration)
+                db.insert_sleep_log(today, sleep_time, wake_time, duration, phone_number=phone_number)
                 return f"Logged sleep: {sleep_time} to {wake_time} ({duration:.1f} hours)"
             except:
                 pass
@@ -2076,7 +2082,7 @@ class EnhancedMessageProcessor:
                         key = key.replace(ctx, '').strip()
                         break
                 
-                fact_id = db.insert_fact(key, value, context)
+                fact_id = db.insert_fact(key, value, context, phone_number=phone_number)
                 return f"Stored: {key} = {value}"
         
         # Look for "spot" pattern (e.g., "parking spot B17")
@@ -2086,7 +2092,7 @@ class EnhancedMessageProcessor:
                 key_prefix = parts[0].strip()
                 value = parts[1].strip()
                 key = f"{key_prefix} spot"
-                fact_id = db.insert_fact(key, value)
+                fact_id = db.insert_fact(key, value, phone_number=phone_number)
                 return f"Stored: {key} = {value}"
         
         # Look for number patterns (e.g., "locker code 4312")
@@ -2097,7 +2103,7 @@ class EnhancedMessageProcessor:
                 if word not in ['is', 'the', 'a', 'an', 'my', 'code', 'number']:
                     key = word
                     value = str(numbers[0])
-                    fact_id = db.insert_fact(key, value)
+                    fact_id = db.insert_fact(key, value, phone_number=phone_number)
                     return f"Stored: {key} = {value}"
         
         return "Couldn't parse fact. Try: 'WiFi password is duke-guest-2025' or 'locker code 4312'"
@@ -2527,7 +2533,7 @@ def sms_webhook():
     
     # Process message
     processor = EnhancedMessageProcessor()
-    response_text = processor.process_message(message_body)
+    response_text = processor.process_message(message_body, phone_number=from_number)
     
     # For legacy webhook, return response in webhook format
     return jsonify({
