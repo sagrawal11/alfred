@@ -476,7 +476,7 @@ Extract structured information from user messages. Be accurate and handle variat
         """Classify the intent of a message using Gemini"""
         prompt = f"""Classify this SMS message into one of these intents:
 - water_logging: User is logging water intake
-- food_logging: User is logging food consumption
+- food_logging: User is logging food consumption. This includes ANY message that mentions eating food, such as: "ate", "just ate", "eating", "had", "consumed", "finished eating", "just finished eating", "just had", or any mention of food items, meals, snacks, restaurants, or dishes. Examples: "just ate a quesadilla", "ate sprout falafel wrap", "had a burger", "just finished eating pizza"
 - gym_workout: User is logging a gym workout/exercise
 - sleep_logging: User is logging sleep (e.g., "slept at 1:30", "up at 8", "slept 1:30-8", "went to bed at 11", "woke up at 7")
 - reminder_set: User wants to set a reminder (if message contains a time/date like "at 5pm", "tomorrow", "in 1 hour", etc., classify as reminder_set even if it also sounds like a todo)

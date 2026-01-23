@@ -2472,19 +2472,40 @@ class EnhancedMessageProcessor:
             # #region agent log
             try:
                 with open(log_path, 'a') as f:
-                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2412', 'message': 'no pending confirmation found', 'data': {'phone_number': phone_number}, 'timestamp': time.time() * 1000}) + '\n')
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2471', 'message': 'no pending confirmation found in handle_confirmation', 'data': {'phone_number': phone_number, 'all_pending_keys': list(self.pending_confirmations.keys())}, 'timestamp': time.time() * 1000}) + '\n')
             except: pass
             # #endregion
             return None
         
         pending = self.pending_confirmations[phone_number]
         
+        # #region agent log
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2480', 'message': 'processing pending confirmation', 'data': {'pending_intent': pending.get('intent'), 'pending_message': pending.get('message'), 'current_message': message}, 'timestamp': time.time() * 1000}) + '\n')
+        except: pass
+        # #endregion
+        
         # Check if it's a positive confirmation
+        # Use word boundaries to match whole words, not substrings
         positive_confirmations = ['yes', 'yep', 'yeah', 'yup', 'correct', 'right', 'that\'s right', 'that\'s correct', 
-                                  'sure', 'ok', 'okay', 'confirm', 'confirmed', 'true', '1', 'yea']
+                                  'sure', 'ok', 'okay', 'confirm', 'confirmed', 'true', '1', 'yea', 'y', 'ye']
         negative_confirmations = ['no', 'nope', 'nah', 'incorrect', 'wrong', 'false', '0', 'cancel']
         
-        if any(confirm in message_lower for confirm in positive_confirmations):
+        # Check for exact word matches first (most common case: just "yes")
+        message_words = set(message_lower.split())
+        message_stripped = message_lower.strip()
+        is_positive = any(confirm in message_words for confirm in positive_confirmations) or any(confirm == message_stripped for confirm in positive_confirmations)
+        is_negative = any(confirm in message_words for confirm in negative_confirmations) or any(confirm == message_stripped for confirm in negative_confirmations)
+        
+        # #region agent log
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2493', 'message': 'confirmation check result', 'data': {'is_positive': is_positive, 'is_negative': is_negative, 'message_words': list(message_words), 'message_stripped': message_stripped}, 'timestamp': time.time() * 1000}) + '\n')
+        except: pass
+        # #endregion
+        
+        if is_positive:
             # #region agent log
             import json, time, os
             log_path = '/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log'
@@ -2527,7 +2548,7 @@ class EnhancedMessageProcessor:
                 # #endregion
                 return "Action completed, but I couldn't generate a response."
         
-        elif any(confirm in message_lower for confirm in negative_confirmations):
+        elif is_negative:
             # User declined, clear pending and ask what they meant
             del self.pending_confirmations[phone_number]
             return "Got it, I won't do that. What did you mean instead?"
