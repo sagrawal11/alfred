@@ -63,6 +63,17 @@ if not config.SUPABASE_URL or not config.SUPABASE_KEY:
     raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
 db = SupabaseDatabase(config.SUPABASE_URL, config.SUPABASE_KEY)
 
+# Initialize shared message processor (singleton pattern for state persistence)
+# This ensures pending_confirmations and other state persists across requests
+shared_message_processor = None
+
+def get_message_processor():
+    """Get or create the shared message processor instance"""
+    global shared_message_processor
+    if shared_message_processor is None:
+        shared_message_processor = EnhancedMessageProcessor()
+    return shared_message_processor
+
 # Validate configuration
 try:
     config.validate()
@@ -647,6 +658,33 @@ class EnhancedMessageProcessor:
                 # #endregion
                 return "I received your confirmation, but couldn't complete the action. Please try again."
         
+        # Pattern-based detection for common food logging phrases (BEFORE NLP classification)
+        # This catches cases where NLP might miss obvious food logging
+        message_lower = message_body.lower().strip()
+        food_patterns = ['just ate', 'ate a', 'ate an', 'eating a', 'eating an', 'had a', 'had an', 
+                        'just had', 'just finished eating', 'finished eating', 'consumed']
+        if any(pattern in message_lower for pattern in food_patterns):
+            # #region agent log
+            import json, time, os
+            log_path = '/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log'
+            try:
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                with open(log_path, 'a') as f:
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'D', 'location': 'app.py:650', 'message': 'pattern-based food detection triggered', 'data': {'message': message_body}, 'timestamp': time.time() * 1000}) + '\n')
+            except: pass
+            # #endregion
+            # Try to parse and log food directly
+            food_response = self.handle_food(message_body, {}, phone_number=phone_number)
+            if food_response:
+                # #region agent log
+                try:
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'D', 'location': 'app.py:656', 'message': 'food logged via pattern detection', 'data': {'response_preview': food_response[:100]}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
+                return food_response
+            # If pattern matched but food parsing failed, continue to NLP classification
+        
         # Use intelligent NLP processor to classify intent and extract entities
         intent = self.nlp_processor.classify_intent(message_body)
         entities = self.nlp_processor.extract_entities(message_body)
@@ -662,7 +700,7 @@ class EnhancedMessageProcessor:
         try:
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
             with open(log_path, 'a') as f:
-                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:631', 'message': 'processing intent', 'data': {'intent': intent, 'message': message_body, 'has_pending_confirmation': phone_number in self.pending_confirmations if phone_number else False}, 'timestamp': time.time() * 1000}) + '\n')
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:670', 'message': 'processing intent', 'data': {'intent': intent, 'message': message_body, 'has_pending_confirmation': phone_number in self.pending_confirmations if phone_number else False}, 'timestamp': time.time() * 1000}) + '\n')
         except: pass
         # #endregion
         response = self.handle_intent(intent, message_body, entities, phone_number)
@@ -670,7 +708,7 @@ class EnhancedMessageProcessor:
             # #region agent log
             try:
                 with open(log_path, 'a') as f:
-                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:636', 'message': 'intent handler returned response', 'data': {'response_preview': response[:100] if response else None}, 'timestamp': time.time() * 1000}) + '\n')
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:675', 'message': 'intent handler returned response', 'data': {'response_preview': response[:100] if response else None}, 'timestamp': time.time() * 1000}) + '\n')
             except: pass
             # #endregion
             return response
@@ -678,7 +716,7 @@ class EnhancedMessageProcessor:
         # #region agent log
         try:
             with open(log_path, 'a') as f:
-                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:642', 'message': 'falling back to fallback_response', 'data': {'message': message_body}, 'timestamp': time.time() * 1000}) + '\n')
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:681', 'message': 'falling back to fallback_response', 'data': {'message': message_body}, 'timestamp': time.time() * 1000}) + '\n')
         except: pass
         # #endregion
         return self.fallback_response(message_body, phone_number)
@@ -2611,7 +2649,7 @@ def twilio_webhook():
         
         # Process the message
         print(f"Processing message...")
-        processor = EnhancedMessageProcessor()
+        processor = get_message_processor()
         response_text = processor.process_message(message_body, phone_number=from_number)
         
         print(f"NLP processing complete:")
@@ -2655,7 +2693,7 @@ def sms_webhook():
     print("===========================")
     
     # Process message
-    processor = EnhancedMessageProcessor()
+    processor = get_message_processor()
     response_text = processor.process_message(message_body, phone_number=from_number)
     
     # For legacy webhook, return response in webhook format
@@ -2796,7 +2834,8 @@ def dashboard_api_chat():
         test_phone_number = 'test_user_dashboard'
         
         # Process the message using the same logic as SMS
-        processor = EnhancedMessageProcessor()
+        # Use shared processor to maintain state across chat messages
+        processor = get_message_processor()
         response_text = processor.process_message(message, phone_number=test_phone_number)
         
         if not response_text:
