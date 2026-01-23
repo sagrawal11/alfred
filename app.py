@@ -613,11 +613,39 @@ class EnhancedMessageProcessor:
             if fact_deletion_response:
                 return fact_deletion_response
         
-        # Check if this is a confirmation response first
+        # Check if this is a confirmation response first (BEFORE NLP classification)
+        # This ensures "yes" responses are handled immediately without being re-classified
         if phone_number and phone_number in self.pending_confirmations:
+            # #region agent log
+            import json, time, os
+            log_path = '/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log'
+            try:
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                with open(log_path, 'a') as f:
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:617', 'message': 'pending confirmation found', 'data': {'phone_number': phone_number, 'pending_intent': self.pending_confirmations[phone_number].get('intent'), 'message': message_body}, 'timestamp': time.time() * 1000}) + '\n')
+            except: pass
+            # #endregion
             confirmation_response = self.handle_confirmation(message_body, phone_number)
+            # Always return the confirmation response (even if None) to prevent further processing
+            # This ensures "yes" doesn't get re-classified and processed again
             if confirmation_response:
+                # #region agent log
+                try:
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:628', 'message': 'confirmation response returned - stopping processing', 'data': {'response_preview': confirmation_response[:100] if confirmation_response else None}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
                 return confirmation_response
+            else:
+                # Even if handle_confirmation returns None, return a message to stop processing
+                # This prevents "yes" from being processed as a new message
+                # #region agent log
+                try:
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:635', 'message': 'confirmation returned None - returning fallback', 'data': {}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
+                return "I received your confirmation, but couldn't complete the action. Please try again."
         
         # Use intelligent NLP processor to classify intent and extract entities
         intent = self.nlp_processor.classify_intent(message_body)
@@ -628,10 +656,31 @@ class EnhancedMessageProcessor:
         print(f"Entities: {entities}")
         
         # Process based on intent
+        # #region agent log
+        import json, time, os
+        log_path = '/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log'
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:631', 'message': 'processing intent', 'data': {'intent': intent, 'message': message_body, 'has_pending_confirmation': phone_number in self.pending_confirmations if phone_number else False}, 'timestamp': time.time() * 1000}) + '\n')
+        except: pass
+        # #endregion
         response = self.handle_intent(intent, message_body, entities, phone_number)
         if response:
+            # #region agent log
+            try:
+                with open(log_path, 'a') as f:
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:636', 'message': 'intent handler returned response', 'data': {'response_preview': response[:100] if response else None}, 'timestamp': time.time() * 1000}) + '\n')
+            except: pass
+            # #endregion
             return response
         
+        # #region agent log
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:642', 'message': 'falling back to fallback_response', 'data': {'message': message_body}, 'timestamp': time.time() * 1000}) + '\n')
+        except: pass
+        # #endregion
         return self.fallback_response(message_body, phone_number)
     
     def handle_intent(self, intent, message, entities, phone_number=None):
@@ -670,7 +719,11 @@ class EnhancedMessageProcessor:
             return self.handle_fact_query(message, entities, phone_number)
         elif intent == 'confirmation':
             # Handle explicit confirmations (yes, yep, correct, etc.)
-            return self.handle_confirmation(message, phone_number)
+            # Only process if we have a pending confirmation - otherwise it's just a standalone "yes"
+            if phone_number and phone_number in self.pending_confirmations:
+                return self.handle_confirmation(message, phone_number)
+            # If no pending confirmation, treat as unknown to avoid confusing responses
+            return None
         elif intent == 'unknown':
             return self.fallback_response(message, phone_number)
         
@@ -2397,6 +2450,16 @@ class EnhancedMessageProcessor:
         """Handle confirmation responses (yes, yep, correct, no, etc.)"""
         message_lower = message.lower().strip()
         
+        # #region agent log
+        import json, time, os
+        log_path = '/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log'
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2396', 'message': 'handle_confirmation called', 'data': {'phone_number': phone_number, 'message': message, 'pending_keys': list(self.pending_confirmations.keys())}, 'timestamp': time.time() * 1000}) + '\n')
+        except: pass
+        # #endregion
+        
         # Determine which phone number to use
         if phone_number is None:
             # Try to find phone number from pending confirmations
@@ -2406,6 +2469,12 @@ class EnhancedMessageProcessor:
                 break
         
         if not phone_number or phone_number not in self.pending_confirmations:
+            # #region agent log
+            try:
+                with open(log_path, 'a') as f:
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2412', 'message': 'no pending confirmation found', 'data': {'phone_number': phone_number}, 'timestamp': time.time() * 1000}) + '\n')
+            except: pass
+            # #endregion
             return None
         
         pending = self.pending_confirmations[phone_number]
@@ -2416,6 +2485,15 @@ class EnhancedMessageProcessor:
         negative_confirmations = ['no', 'nope', 'nah', 'incorrect', 'wrong', 'false', '0', 'cancel']
         
         if any(confirm in message_lower for confirm in positive_confirmations):
+            # #region agent log
+            import json, time, os
+            log_path = '/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log'
+            try:
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                with open(log_path, 'a') as f:
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2418', 'message': 'positive confirmation detected', 'data': {'intent': pending['intent'], 'original_message': pending['message']}, 'timestamp': time.time() * 1000}) + '\n')
+            except: pass
+            # #endregion
             # User confirmed, execute the pending action
             intent = pending['intent']
             original_message = pending['message']
@@ -2424,11 +2502,29 @@ class EnhancedMessageProcessor:
             # Remove from pending
             del self.pending_confirmations[phone_number]
             
-            # Execute the action
-            response = self.handle_intent(intent, original_message, entities)
+            # Execute the action - IMPORTANT: pass phone_number to maintain state
+            response = self.handle_intent(intent, original_message, entities, phone_number=phone_number)
+            # #region agent log
+            try:
+                with open(log_path, 'a') as f:
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2430', 'message': 'action executed after confirmation', 'data': {'response_preview': response[:100] if response else None}, 'timestamp': time.time() * 1000}) + '\n')
+            except: pass
+            # #endregion
             if response:
+                # #region agent log
+                try:
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2482', 'message': 'returning confirmed action response', 'data': {'response_length': len(response) if response else 0}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
                 return response
             else:
+                # #region agent log
+                try:
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2486', 'message': 'action executed but no response generated', 'data': {'intent': intent}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
                 return "Action completed, but I couldn't generate a response."
         
         elif any(confirm in message_lower for confirm in negative_confirmations):
@@ -2437,6 +2533,12 @@ class EnhancedMessageProcessor:
             return "Got it, I won't do that. What did you mean instead?"
         
         # If unclear, ask for clarification
+        # #region agent log
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'C', 'location': 'app.py:2495', 'message': 'unclear confirmation response', 'data': {'message': message}, 'timestamp': time.time() * 1000}) + '\n')
+        except: pass
+        # #endregion
         return "Please respond with 'yes' or 'no' to confirm or cancel."
     
     def _generate_suggestions(self, message):
