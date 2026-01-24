@@ -68,6 +68,30 @@ class Config:
     # Dashboard Configuration
     DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', '')
     
+    # Flask Security Configuration
+    FLASK_SECRET_KEY = os.getenv('FLASK_SECRET_KEY', '')
+    
+    # Token Encryption (for OAuth tokens)
+    ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', '')
+    
+    # Integration OAuth Configuration
+    FITBIT_CLIENT_ID = os.getenv('FITBIT_CLIENT_ID', '')
+    FITBIT_CLIENT_SECRET = os.getenv('FITBIT_CLIENT_SECRET', '')
+    
+    # Redis Configuration (optional - for caching)
+    REDIS_URL = os.getenv('REDIS_URL', '')
+    
+    # Email Configuration (for password reset)
+    SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.gmail.com')
+    SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
+    SMTP_USER = os.getenv('SMTP_USER', '')
+    SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+    FROM_EMAIL = os.getenv('FROM_EMAIL', '')
+    
+    # Environment Configuration
+    ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')  # 'development' or 'production'
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')  # 'DEBUG', 'INFO', 'WARNING', 'ERROR'
+    
     # Database (CSV files) - kept for backward compatibility if needed
     # config.py is in project root, so just use dirname once
     DATABASE_DIR = os.path.join(

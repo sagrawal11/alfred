@@ -4,10 +4,10 @@ overview: "Rebuild the SMS assistant chatbot with a clean, modular architecture 
 todos:
   - id: "1"
     content: Create new directory structure (core/, handlers/, data/, nlp/, learning/, services/, responses/, utils/, tests/)
-    status: pending
+    status: completed
   - id: "2"
     content: Create complete database schema SQL file - drop existing tables, create all tables fresh with user_id, indexes, and RLS policies
-    status: pending
+    status: completed
   - id: "3"
     content: Extract data layer - create BaseRepository and entity-specific repositories
     status: pending
