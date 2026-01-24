@@ -644,6 +644,16 @@ Respond with ONLY valid JSON, no other text."""
                 food_name = food_data.get('food_name', '').lower().strip()
                 restaurant = food_data.get('restaurant', '').lower().strip()
                 
+                # #region agent log
+                import json, time, os
+                log_path = '/Users/sarthak/Desktop/App Projects/sms_assistant/.cursor/debug.log'
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'E', 'location': 'gemini_nlp.py:644', 'message': 'parse_food extracted data', 'data': {'food_name': food_name, 'restaurant': restaurant, 'raw_food_data': food_data}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
+                
                 # Build search terms prioritizing "restaurant food" order (user always says restaurant first)
                 search_terms = []
                 
@@ -690,6 +700,13 @@ Respond with ONLY valid JSON, no other text."""
                     if food_name_spaces != food_name:
                         search_terms.append(food_name_spaces)
                 
+                # #region agent log
+                try:
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'E', 'location': 'gemini_nlp.py:692', 'message': 'search terms generated', 'data': {'search_terms': search_terms[:10], 'total_terms': len(search_terms)}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
+                
                 # Look for best match with priority scoring
                 best_match = None
                 best_score = 0
@@ -702,6 +719,13 @@ Respond with ONLY valid JSON, no other text."""
                     restaurant_variations_for_matching.append(restaurant)
                     # Add lowercase versions
                     restaurant_variations_for_matching.extend([r.lower() for r in restaurant_variations_for_matching])
+                
+                # #region agent log
+                try:
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'E', 'location': 'gemini_nlp.py:705', 'message': 'restaurant variations for matching', 'data': {'restaurant_variations': restaurant_variations_for_matching[:5], 'food_db_size': len(self.food_db)}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
                 
                 for key, value in self.food_db.items():
                     key_lower = key.lower().strip()
@@ -750,6 +774,13 @@ Respond with ONLY valid JSON, no other text."""
                         if score > best_score:
                             best_score = score
                             best_match = (key, value)
+                
+                # #region agent log
+                try:
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'E', 'location': 'gemini_nlp.py:752', 'message': 'best match found', 'data': {'best_match_key': best_match[0] if best_match else None, 'best_score': best_score, 'matched': bool(best_match)}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
                 
                 # Get portion multiplier with fallback
                 portion_multiplier = food_data.get('portion_multiplier')
@@ -855,12 +886,24 @@ Respond with ONLY valid JSON, no other text."""
                     }
                 
                 # If not found and no macros provided, return basic structure (will log as unknown)
+                # #region agent log
+                try:
+                    with open(log_path, 'a') as f:
+                        f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'E', 'location': 'gemini_nlp.py:867', 'message': 'food not found in database - returning with 0 macros', 'data': {'food_name': food_data.get('food_name'), 'restaurant': food_data.get('restaurant')}, 'timestamp': time.time() * 1000}) + '\n')
+                except: pass
+                # #endregion
                 return {
                     'food_name': food_data.get('food_name', ''),
                     'food_data': {'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0},
                     'portion_multiplier': portion_multiplier,
                     'restaurant': food_data.get('restaurant')
                 }
+            # #region agent log
+            try:
+                with open(log_path, 'a') as f:
+                    f.write(json.dumps({'sessionId': 'debug-session', 'runId': 'run1', 'hypothesisId': 'E', 'location': 'gemini_nlp.py:875', 'message': 'parse_food JSON extraction failed', 'data': {'message': message}, 'timestamp': time.time() * 1000}) + '\n')
+            except: pass
+            # #endregion
             return None
         except Exception as e:
             print(f" Error parsing food: {e}")
