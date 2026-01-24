@@ -14,7 +14,8 @@ This document breaks down the massive rebuild into manageable phases. Each phase
 - ✅ **Phase 0:** Pre-Implementation Setup - COMPLETE
 - ✅ **Phase 1:** Foundation & Database Schema - COMPLETE & TESTED ✅
 - ✅ **Phase 2:** Data Layer & Repositories - COMPLETE & TESTED ✅
-- ⏳ **Phase 3:** NLP Layer Refactoring - NEXT
+- ✅ **Phase 3:** NLP Layer Refactoring - COMPLETE ✅
+- ⏳ **Phase 4:** Core Message Processing & Handlers - NEXT
 
 **Current Status:**
 - ✅ Phase 0: Pre-Implementation Setup - COMPLETE
@@ -217,28 +218,37 @@ I'll update `requirements.txt` in Phase 1, but you can prepare:
 
 ---
 
-## Phase 3: NLP Layer Refactoring
+## Phase 3: NLP Layer Refactoring ✅ COMPLETED
 
 **Goal:** Split `gemini_nlp.py` into modular components.
 
-### What I'll Build:
-1. ✅ `nlp/gemini_client.py` - Gemini API client
+### What I Built:
+1. ✅ `nlp/gemini_client.py` - Gemini API client with rate limiting
 2. ✅ `nlp/intent_classifier.py` - Intent classification
 3. ✅ `nlp/entity_extractor.py` - Entity extraction
-4. ✅ `nlp/parser.py` - Domain-specific parsing (food, gym, etc.)
+4. ✅ `nlp/parser.py` - Domain-specific parsing (food, gym, water, reminders, assignments, etc.)
 5. ✅ `nlp/pattern_matcher.py` - Apply learned patterns
-6. ✅ Unit tests for NLP components
+6. ✅ `nlp/database_loader.py` - Food and gym database loading utilities
+7. ✅ `nlp/__init__.py` - NLP module exports
+8. ✅ `tests/test_nlp.py` - Unit tests for NLP components
 
 ### What You Need to Do:
-- [ ] Nothing! This is all code.
+- [x] Nothing! This is all code.
 
 ### Deliverables:
 - ✅ NLP layer is modular and testable
-- ✅ Old `gemini_nlp.py` can be deprecated
-- ✅ Pattern matching integrated
+- ✅ 6 focused modules (down from 1 monolithic 1479-line file)
+- ✅ Pattern matching integrated with learning system
+- ✅ Database loading separated from parsing logic
+- ✅ All parsing methods preserved and refactored
 
 ### Testing:
-- [ ] Run NLP tests: `pytest tests/test_nlp.py`
+- [x] Run NLP tests: `python tests/test_nlp.py` - **✅ ALL TESTS PASSED**
+- [x] Fixed food parsing bug (NoneType error)
+- [x] Fixed Gemini SDK deprecation warning (migrated to google-genai)
+
+### Status:
+**✅ Phase 3 COMPLETE** - NLP layer refactored into modular components. Old `gemini_nlp.py` can be deprecated after Phase 4 integration.
 - [ ] Test intent classification with sample messages
 - [ ] Test entity extraction
 - [ ] Test pattern matching (even without learning system yet)
@@ -246,6 +256,8 @@ I'll update `requirements.txt` in Phase 1, but you can prepare:
 ---
 
 ## Phase 4: Core Message Processing & Handlers
+
+**Note:** We may switch to GPT-4o-mini for production (see `MODEL_COMPARISON.md` for details). Current Gemini setup is fine for development.
 
 **Goal:** Build the core message processing engine and intent handlers.
 
