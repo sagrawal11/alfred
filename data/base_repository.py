@@ -89,9 +89,13 @@ class BaseRepository:
         Returns:
             Updated record as dictionary or None if not found
         """
-        # Add updated_at timestamp if not provided
+        # Add updated_at timestamp if not provided (only for tables that have this column)
+        # Note: Not all tables have updated_at (e.g., users, food_logs, etc. don't)
+        # Only add for tables that explicitly have updated_at column
         if "updated_at" not in data:
-            data["updated_at"] = datetime.now().isoformat()
+            tables_with_updated_at = ['user_knowledge', 'user_integrations', 'user_preferences']
+            if self.table_name in tables_with_updated_at:
+                data["updated_at"] = datetime.now().isoformat()
         
         result = self.client.table(self.table_name).update(data).eq("id", record_id).execute()
         if result.data:
