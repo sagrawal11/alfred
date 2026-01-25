@@ -9,6 +9,7 @@ from .water_handler import WaterHandler
 from .gym_handler import GymHandler
 from .todo_handler import TodoHandler
 from .query_handler import QueryHandler
+from .integration_handler import IntegrationHandler
 
 __all__ = [
     'BaseHandler',
@@ -17,4 +18,5 @@ __all__ = [
     'GymHandler',
     'TodoHandler',
     'QueryHandler',
+    'IntegrationHandler',
 ]

@@ -22,7 +22,10 @@ from handlers.water_handler import WaterHandler
 from handlers.gym_handler import GymHandler
 from handlers.todo_handler import TodoHandler
 from handlers.query_handler import QueryHandler
+from handlers.integration_handler import IntegrationHandler
 from responses.formatter import ResponseFormatter
+from integrations import IntegrationAuthManager, SyncManager
+from data import IntegrationRepository
 
 
 class MessageProcessor:
@@ -48,6 +51,11 @@ class MessageProcessor:
         self.user_repo = UserRepository(supabase)
         self.knowledge_repo = KnowledgeRepository(supabase)
         
+        # Initialize integration components
+        self.integration_repo = IntegrationRepository(supabase)
+        self.integration_auth = IntegrationAuthManager(supabase, self.integration_repo)
+        self.sync_manager = SyncManager(supabase, self.integration_repo, self.integration_auth)
+        
         # Initialize pattern matcher (for learning system)
         self.pattern_matcher = PatternMatcher(self.knowledge_repo)
         
@@ -71,6 +79,9 @@ class MessageProcessor:
             'stats_query': QueryHandler(supabase, self.parser, self.formatter),
             'fact_storage': QueryHandler(supabase, self.parser, self.formatter),  # Same handler
             'fact_query': QueryHandler(supabase, self.parser, self.formatter),  # Same handler
+            'integration_manage': IntegrationHandler(supabase, self.integration_repo, 
+                                                   self.integration_auth, self.sync_manager, 
+                                                   self.formatter),
         }
     
     def process_message(self, message: str, phone_number: str) -> str:

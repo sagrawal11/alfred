@@ -16,7 +16,7 @@ class IntentClassifier:
         'reminder_set', 'todo_add', 'assignment_add', 'water_goal_set',
         'stats_query', 'fact_storage', 'fact_query', 'task_complete',
         'vague_completion', 'what_should_i_do', 'food_suggestion',
-        'undo_edit', 'confirmation', 'unknown'
+        'undo_edit', 'confirmation', 'integration_manage', 'unknown'
     ]
     
     def __init__(self, gemini_client: GeminiClient):
@@ -55,6 +55,7 @@ class IntentClassifier:
 - what_should_i_do: User is asking what they should do now (e.g., "what should I do now", "what's next", "what do I do", "suggest something", "I'm bored, what should I do?")
 - food_suggestion: User is asking for food suggestions (e.g., "what should I eat", "something high in protein", "high protein and low calories", "suggest food")
 - undo_edit: User wants to undo or edit a previous action (e.g., "undo last", "delete last food", "edit last water", "remove last reminder", "undo that")
+- integration_manage: User wants to manage integrations (e.g., "connect fitbit", "sync my calendar", "disconnect fitbit", "what integrations do I have", "list integrations")
 - confirmation: User is confirming or denying something (e.g., "yes", "yep", "correct", "no", "nope", "that's right")
 - unknown: Doesn't match any category
 

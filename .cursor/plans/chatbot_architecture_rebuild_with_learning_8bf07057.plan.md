@@ -158,9 +158,9 @@ todos:
 
 ## Implementation Progress
 
-**Current Phase:** Phase 7 - Third-Party Integrations  
-**Last Updated:** Phase 6 Complete  
-**Note:** UI overhaul deferred until after Phase 7. Current dashboard/auth UI is functional and acceptable.
+**Current Phase:** Phase 8 - Background Jobs & Services - COMPLETE  
+**Last Updated:** Phase 8 Complete  
+**Note:** UI overhaul deferred until after Phase 7. Current dashboard/auth UI is functional and acceptable. Phase 7 testing deferred (user will test integrations later when they have access to a Fitbit device).
 
 ### Phase Status:
 - ✅ **Phase 0:** Pre-Implementation Setup - COMPLETE
@@ -209,8 +209,23 @@ todos:
   - Schema additions for phone verification and password reset
   - Integrated into app_new.py
   - **Note:** UI overhaul deferred until after Phase 7 (current UI is functional)
-- ⏳ **Phase 7:** Third-Party Integrations - NEXT
-- ⏳ **Phase 8:** Background Jobs & Services - PENDING
+- ✅ **Phase 7:** Third-Party Integrations - COMPLETE ✅
+  - BaseIntegration interface, IntegrationAuthManager, SyncManager created
+  - Fitbit integration (OAuth + workouts/sleep sync)
+  - Google Calendar integration (OAuth + events for context)
+  - IntegrationRepository for connections and sync history
+  - Web integration management UI (`/dashboard/integrations`)
+  - SMS integration commands ("connect fitbit", "sync calendar", etc.)
+  - Webhook handlers for real-time updates
+  - Token encryption using Fernet
+  - **Note:** Testing deferred - user will test integrations later when they have access to a Fitbit device
+- ✅ **Phase 8:** Background Jobs & Services - COMPLETE ✅
+  - JobScheduler with APScheduler integration
+  - ReminderService for follow-ups and task decay
+  - SyncService for periodic integration syncs
+  - NotificationService for nudges and weekly digests
+  - Health check endpoints (/health, /health/ready, /health/live)
+  - All scheduled jobs configured and running
 - 📝 **Future:** UI Overhaul - Deferred until after Phase 7
 
 ### Cleanup Completed:

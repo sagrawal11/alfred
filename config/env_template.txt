@@ -101,6 +101,23 @@ SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_KEY=your_supabase_service_role_key_here
 
 # =============================================================================
+# INTEGRATION CONFIGURATION (Phase 7)
+# =============================================================================
+# Base URL for OAuth redirects (use your deployment URL in production)
+BASE_URL=http://localhost:5001
+
+# Encryption key for OAuth tokens (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+ENCRYPTION_KEY=your_encryption_key_here
+
+# Fitbit OAuth (get from https://dev.fitbit.com)
+FITBIT_CLIENT_ID=your_fitbit_client_id_here
+FITBIT_CLIENT_SECRET=your_fitbit_client_secret_here
+
+# Google OAuth (get from Google Cloud Console)
+# Note: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are already defined above for Calendar
+# These are used for both Calendar and Fit integrations
+
+# =============================================================================
 # DASHBOARD CONFIGURATION
 # =============================================================================
 # Password for accessing the web dashboard

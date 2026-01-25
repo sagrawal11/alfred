@@ -237,6 +237,17 @@ body {
     text-decoration: underline;
 }
 
+.status-connected {
+    color: #00b478;
+    font-weight: 600;
+    margin-right: 1rem;
+}
+
+.status-disabled {
+    color: #888;
+    font-style: italic;
+}
+
 .btn-primary {
     width: 100%;
     padding: 0.875rem 1.5rem;

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integrations - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>Integrations</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('dashboard_index') }}" class="btn-secondary">← Back to Dashboard</a>
+                <a href="{{ url_for('dashboard_logout') }}" class="btn-logout">Logout</a>
+            </div>
+        </header>
+        
+        <div class="dashboard-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, msg in messages %}
+                        <div class="flash flash-{{ category }}">{{ msg }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <div class="settings-section">
+                <h2>Available Integrations</h2>
+                
+                <!-- Fitbit -->
+                <div class="settings-card">
+                    <div class="setting-item">
+                        <div>
+                            <h3>Fitbit</h3>
+                            <p>Sync workouts and sleep data from your Fitbit device</p>
+                        </div>
+                        <div>
+                            {% if connections.get('fitbit') %}
+                                <span class="status-connected">✓ Connected</span>
+                                <form method="POST" action="{{ url_for('dashboard_integration_disconnect', connection_id=connections['fitbit'][0]['id']) }}" style="display: inline;">
+                                    <button type="submit" class="btn-danger" style="margin-left: 1rem;">Disconnect</button>
+                                </form>
+                                <button onclick="syncIntegration({{ connections['fitbit'][0]['id'] }})" class="btn-secondary" style="margin-left: 0.5rem;">Sync Now</button>
+                            {% else %}
+                                <a href="{{ url_for('dashboard_integration_connect', provider='fitbit') }}" class="btn-primary">Connect Fitbit</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Google Calendar -->
+                <div class="settings-card">
+                    <div class="setting-item">
+                        <div>
+                            <h3>Google Calendar</h3>
+                            <p>View your calendar events in queries and suggestions</p>
+                        </div>
+                        <div>
+                            {% if connections.get('google_calendar') %}
+                                <span class="status-connected">✓ Connected</span>
+                                <form method="POST" action="{{ url_for('dashboard_integration_disconnect', connection_id=connections['google_calendar'][0]['id']) }}" style="display: inline;">
+                                    <button type="submit" class="btn-danger" style="margin-left: 1rem;">Disconnect</button>
+                                </form>
+                                <button onclick="syncIntegration({{ connections['google_calendar'][0]['id'] }})" class="btn-secondary" style="margin-left: 0.5rem;">Sync Now</button>
+                            {% else %}
+                                <a href="{{ url_for('dashboard_integration_connect', provider='google_calendar') }}" class="btn-primary">Connect Google Calendar</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Google Fit (placeholder) -->
+                <div class="settings-card">
+                    <div class="setting-item">
+                        <div>
+                            <h3>Google Fit</h3>
+                            <p>Sync workouts and activity data from Google Fit</p>
+                        </div>
+                        <div>
+                            <span class="status-disabled">Coming Soon</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        async function syncIntegration(connectionId) {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Syncing...';
+            
+            try {
+                const response = await fetch(`/dashboard/integrations/${connectionId}/sync`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    alert(`Sync complete! ${data.items_synced} items synced.`);
+                } else {
+                    alert(`Sync failed: ${data.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -13,6 +13,7 @@ from .knowledge_repository import KnowledgeRepository
 from .sleep_repository import SleepRepository
 from .assignment_repository import AssignmentRepository
 from .fact_repository import FactRepository
+from .integration_repository import IntegrationRepository
 
 __all__ = [
     'BaseRepository',
@@ -25,4 +26,5 @@ __all__ = [
     'SleepRepository',
     'AssignmentRepository',
     'FactRepository',
+    'IntegrationRepository',
 ]

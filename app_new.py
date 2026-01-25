@@ -8,13 +8,18 @@ import sys
 from datetime import datetime
 from flask import Flask, request, jsonify
 from twilio.twiml.messaging_response import MessagingResponse
-from apscheduler.schedulers.background import BackgroundScheduler
 from supabase import create_client, Client
 
 from config import Config
 from core.processor import MessageProcessor
 from communication_service import CommunicationService
 from web import AuthManager, DashboardData, register_web_routes
+from web.integrations import register_integration_routes
+from integrations import IntegrationAuthManager, SyncManager, WebhookHandler
+from data import IntegrationRepository
+from services import JobScheduler, ReminderService, SyncService, NotificationService
+from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -46,8 +51,26 @@ def get_message_processor() -> MessageProcessor:
 auth_manager = AuthManager(supabase)
 dashboard_data = DashboardData(supabase)
 
+# Initialize integration components
+integration_repo = IntegrationRepository(supabase)
+integration_auth = IntegrationAuthManager(supabase, integration_repo)
+sync_manager = SyncManager(supabase, integration_repo, integration_auth)
+
 # Register web routes
 register_web_routes(app, supabase, auth_manager, dashboard_data)
+
+# Register integration routes
+register_integration_routes(app, supabase, auth_manager, integration_repo,
+                           integration_auth, sync_manager)
+
+# Initialize webhook handler
+webhook_handler = WebhookHandler(integration_repo, sync_manager)
+
+# Initialize background services
+job_scheduler = JobScheduler(config)
+reminder_service = ReminderService(supabase, config, communication_service)
+sync_service = SyncService(supabase, config, sync_manager)
+notification_service = NotificationService(supabase, config, communication_service)
 
 
 # ============================================================================
@@ -125,7 +148,7 @@ def sms_webhook():
 
 @app.route('/health')
 def health_check():
-    """Health check endpoint"""
+    """Health check endpoint (basic)"""
     try:
         # Test database connection
         result = supabase.table('users').select('id').limit(1).execute()
@@ -133,7 +156,8 @@ def health_check():
         return jsonify({
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "database": "connected"
+            "database": "connected",
+            "scheduler": "running" if job_scheduler.is_running() else "stopped"
         }), 200
     except Exception as e:
         return jsonify({
@@ -142,32 +166,117 @@ def health_check():
             "timestamp": datetime.now().isoformat()
         }), 500
 
+@app.route('/health/ready')
+def health_ready():
+    """Readiness check endpoint (for Kubernetes/load balancers)"""
+    try:
+        # Check database connection
+        supabase.table('users').select('id').limit(1).execute()
+        
+        # Check scheduler is running
+        if not job_scheduler.is_running():
+            return jsonify({
+                "status": "not_ready",
+                "reason": "scheduler_not_running",
+                "timestamp": datetime.now().isoformat()
+            }), 503
+        
+        return jsonify({
+            "status": "ready",
+            "timestamp": datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "not_ready",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 503
+
+@app.route('/health/live')
+def health_live():
+    """Liveness check endpoint (for Kubernetes)"""
+    # Simple check - if Flask is responding, we're alive
+    return jsonify({
+        "status": "alive",
+        "timestamp": datetime.now().isoformat()
+    }), 200
+
 
 # ============================================================================
-# Scheduler (for reminders, nudges, etc.)
+# Integration Webhook Routes
 # ============================================================================
 
-def check_reminders():
-    """Check and send reminders (placeholder - to be implemented in Phase 5)"""
-    # TODO: Implement reminder checking
-    pass
+@app.route('/webhook/fitbit', methods=['GET', 'POST'])
+def fitbit_webhook():
+    """Handle Fitbit webhooks"""
+    result = webhook_handler.handle_fitbit_webhook(request)
+    if isinstance(result, tuple):
+        return jsonify(result[0]), result[1]
+    return jsonify(result), 200
 
-def check_gentle_nudges():
-    """Check and send gentle nudges (placeholder - to be implemented in Phase 5)"""
-    # TODO: Implement gentle nudges
-    pass
+@app.route('/webhook/google/<provider>', methods=['POST'])
+def google_webhook(provider: str):
+    """Handle Google webhooks (Calendar, Fit, etc.)"""
+    result = webhook_handler.handle_google_webhook(request, provider)
+    if isinstance(result, tuple):
+        return jsonify(result[0]), result[1]
+    return jsonify(result), 200
 
-# Initialize scheduler
-scheduler = BackgroundScheduler()
-scheduler.start()
 
-# Schedule tasks (to be configured in Phase 5)
-# scheduler.add_job(check_reminders, 'interval', minutes=5)
-# scheduler.add_job(check_gentle_nudges, 'cron', hour=20)  # 8 PM daily
+# ============================================================================
+# Background Job Scheduler
+# ============================================================================
+
+def setup_scheduled_jobs():
+    """Configure all scheduled background jobs"""
+    # Start scheduler
+    job_scheduler.start()
+    
+    # Reminder follow-ups - check every 5 minutes
+    job_scheduler.add_job(
+        func=reminder_service.check_reminder_followups,
+        trigger=IntervalTrigger(minutes=5),
+        id='reminder_followups'
+    )
+    
+    # Task decay checks - check every 6 hours
+    job_scheduler.add_job(
+        func=reminder_service.check_task_decay,
+        trigger=IntervalTrigger(hours=6),
+        id='task_decay'
+    )
+    
+    # Gentle nudges - check every 2 hours
+    if config.GENTLE_NUDGES_ENABLED:
+        job_scheduler.add_job(
+            func=notification_service.check_gentle_nudges,
+            trigger=IntervalTrigger(hours=config.GENTLE_NUDGE_CHECK_INTERVAL_HOURS),
+            id='gentle_nudges'
+        )
+    
+    # Weekly digest - send on Monday at configured hour
+    if config.WEEKLY_DIGEST_ENABLED:
+        job_scheduler.add_job(
+            func=notification_service.send_weekly_digest,
+            trigger=CronTrigger(day_of_week=config.WEEKLY_DIGEST_DAY, hour=config.WEEKLY_DIGEST_HOUR),
+            id='weekly_digest'
+        )
+    
+    # Integration syncs - sync every 4 hours
+    job_scheduler.add_job(
+        func=sync_service.sync_all_integrations,
+        trigger=IntervalTrigger(hours=4),
+        id='integration_sync'
+    )
+    
+    print("✅ Background jobs scheduled")
+
+# Setup scheduled jobs
+setup_scheduled_jobs()
 
 # Cleanup on exit
 import atexit
-atexit.register(lambda: scheduler.shutdown())
+atexit.register(lambda: job_scheduler.shutdown(wait=True))
 
 
 # ============================================================================
