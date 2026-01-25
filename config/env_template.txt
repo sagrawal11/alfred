@@ -19,10 +19,11 @@ NLP_ENGINE=gemini
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # Optional: Gemini Model Selection
-# Default: gemini-2.5-flash
-# Gemma models (higher quotas): gemma-3-12b-it, gemma-3-4b-it, gemma-3-1b-it
-# Gemini models: gemini-2.5-flash, gemini-2.5-pro, gemini-2.5-flash-lite
-GEMINI_MODEL=gemini-2.5-flash
+# Default: gemini-3-flash-preview (separate quota from 2.5, good for testing)
+# Gemini 3: gemini-3-flash-preview
+# Gemini 2.5: gemini-2.5-flash, gemini-2.5-pro, gemini-2.5-flash-lite
+# Gemma (higher free quotas): gemma-3-12b-it, gemma-3-4b-it, gemma-3-1b-it
+GEMINI_MODEL=gemini-3-flash-preview
 
 # =============================================================================
 # TWILIO CONFIGURATION (for SMS)

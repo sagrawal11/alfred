@@ -107,11 +107,11 @@ Respond with ONLY valid JSON, no other text."""
             if json_match:
                 food_data = json.loads(json_match.group())
                 
-                # Look up in food database
-                food_name = food_data.get('food_name') or ''
-                food_name = food_name.lower().strip() if food_name else ''
-                restaurant = food_data.get('restaurant') or ''
-                restaurant = restaurant.lower().strip() if restaurant else ''
+                # Look up in food database (guard against None / non-str)
+                raw_food = food_data.get('food_name')
+                food_name = (str(raw_food).lower().strip() if raw_food is not None else '') or ''
+                raw_rest = food_data.get('restaurant')
+                restaurant = (str(raw_rest).lower().strip() if raw_rest is not None else '') or ''
                 
                 # Normalize restaurant name
                 if restaurant:
@@ -140,32 +140,36 @@ Respond with ONLY valid JSON, no other text."""
                 matched_food = None
                 
                 for search_term in search_terms:
-                    search_term_lower = search_term.lower().strip()
-                    if search_term_lower in food_db:
+                    st = search_term if search_term is not None else ''
+                    search_term_lower = (st.lower().strip() if isinstance(st, str) else '')
+                    if search_term_lower and search_term_lower in food_db:
                         matched_food = food_db[search_term_lower]
                         break
                 
                 # Merge database data with extracted data (extracted data takes priority)
+                def safe_str(v):
+                    return (str(v).strip() if v is not None else '') or ''
+
                 if matched_food:
-                    # Use database values as defaults, but user-provided values override
+                    fn = safe_str(matched_food.get('food_name') or food_name) or 'unknown food'
+                    rest = restaurant or safe_str(matched_food.get('restaurant'))
                     result = {
-                        'food_name': matched_food.get('food_name', food_name),
+                        'food_name': fn,
                         'calories': food_data.get('calories') or matched_food.get('calories', 0),
                         'protein': food_data.get('protein_g') or matched_food.get('protein', 0),
                         'carbs': food_data.get('carbs_g') or matched_food.get('carbs', 0),
                         'fat': food_data.get('fat_g') or matched_food.get('fat', 0),
-                        'restaurant': restaurant or matched_food.get('restaurant'),
+                        'restaurant': rest or None,
                         'portion_multiplier': food_data.get('portion_multiplier', 1.0)
                     }
                 else:
-                    # No database match, use extracted data only
                     result = {
-                        'food_name': food_name,
+                        'food_name': food_name or 'unknown food',
                         'calories': food_data.get('calories', 0),
                         'protein': food_data.get('protein_g', 0),
                         'carbs': food_data.get('carbs_g', 0),
                         'fat': food_data.get('fat_g', 0),
-                        'restaurant': restaurant,
+                        'restaurant': restaurant or None,
                         'portion_multiplier': food_data.get('portion_multiplier', 1.0)
                     }
                 

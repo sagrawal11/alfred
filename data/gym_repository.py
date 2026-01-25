@@ -53,8 +53,11 @@ class GymRepository(BaseRepository):
         Returns:
             List of gym logs for that date
         """
+        # Query by date range
+        # Supabase timestamps may or may not have timezone info
+        # Use date string format that works with both: YYYY-MM-DDTHH:MM:SS
         start = f"{date_str}T00:00:00"
-        end = f"{date_str}T23:59:59"
+        end = f"{date_str}T23:59:59.999999"
         
         result = self.client.table(self.table_name)\
             .select("*")\

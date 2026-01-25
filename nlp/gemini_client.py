@@ -39,13 +39,13 @@ class GeminiClient:
         
         Args:
             api_key: Gemini API key (defaults to GEMINI_API_KEY env var)
-            model_name: Model to use (defaults to GEMINI_MODEL env var or 'gemini-2.5-flash')
+            model_name: Model to use (defaults to GEMINI_MODEL env var or 'gemini-3-flash-preview')
         """
         api_key = api_key or os.getenv('GEMINI_API_KEY', '')
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         
-        self.model_name = model_name or os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+        self.model_name = model_name or os.getenv('GEMINI_MODEL', 'gemini-3-flash-preview')
         
         if NEW_SDK:
             self.client = google_genai.Client(api_key=api_key)
@@ -61,6 +61,12 @@ class GeminiClient:
         if 'gemma' in self.model_name.lower():
             self.min_request_interval = 2
             print(f"Using Gemma rate limits: 30 req/min, 14.4k req/day")
+        elif 'gemini-3' in self.model_name.lower():
+            self.min_request_interval = 3
+            print(f"Using Gemini 3 rate limits (paid tier, higher quotas)")
+        elif 'flash-lite' in self.model_name.lower():
+            self.min_request_interval = 2
+            print(f"Using Gemini Flash Lite rate limits (higher free-tier quotas)")
         else:
             self.min_request_interval = 12
             print(f"Using Gemini rate limits: 5 req/min, 20 req/day (free tier)")
