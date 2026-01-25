@@ -17,13 +17,19 @@ This document breaks down the massive rebuild into manageable phases. Each phase
 - ✅ **Phase 3:** NLP Layer Refactoring - COMPLETE & TESTED ✅
 - ✅ **Phase 4:** Core Message Processing & Handlers - COMPLETE & TESTED ✅
 - ✅ **Phase 5:** Learning System - COMPLETE ✅
-- ⏳ **Phase 6:** Web Dashboard & Authentication - NEXT
+- ✅ **Phase 6:** Web Dashboard & Authentication - COMPLETE ✅
+- ⏳ **Phase 7:** Third-Party Integrations - NEXT
+- 📝 **Future:** UI Overhaul - Deferred until after Phase 7 (current UI is functional and acceptable)
 
 **Current Status:**
 - ✅ Phase 0: Pre-Implementation Setup - COMPLETE
 - ✅ Phase 1: Foundation & Database Schema - COMPLETE & TESTED
 - ✅ Phase 2: Data Layer & Repositories - COMPLETE & TESTED
-- ⏳ Phase 3: NLP Layer Refactoring - NEXT
+- ✅ Phase 3: NLP Layer Refactoring - COMPLETE & TESTED
+- ✅ Phase 4: Core Message Processing & Handlers - COMPLETE & TESTED
+- ✅ Phase 5: Learning System - COMPLETE
+- ✅ Phase 6: Web Dashboard & Authentication - COMPLETE
+- ⏳ Phase 7: Third-Party Integrations - NEXT
 
 ---
 
@@ -350,27 +356,71 @@ I'll update `requirements.txt` in Phase 1, but you can prepare:
 
 ---
 
-## Phase 6: Web Dashboard & Authentication
+## Phase 6: Web Dashboard & Authentication ✅ COMPLETED
 
 **Goal:** Build web dashboard for account management and data visualization.
 
-### What I'll Build:
-1. ✅ `web/auth.py` - Authentication (login, register, password reset)
-2. ✅ `web/routes.py` - Dashboard routes
-3. ✅ `web/dashboard.py` - Dashboard data endpoints
-4. ✅ `templates/dashboard/index.html` - Main dashboard
-5. ✅ `templates/dashboard/login.html` - Login page
-6. ✅ `templates/dashboard/register.html` - Registration page
-7. ✅ `templates/dashboard/settings.html` - Settings page
-8. ✅ Updated CSS for dashboard
-9. ✅ User registration flow
-10. ✅ Phone verification flow
+### What I Built:
+1. ✅ `web/auth.py` - Authentication (login, register, password reset, phone verification)
+2. ✅ `web/routes.py` - Dashboard routes (login, register, settings, API endpoints)
+3. ✅ `web/dashboard.py` - Dashboard data endpoints (stats, trends, calendar)
+4. ✅ `templates/dashboard/index.html` - Main dashboard (already existed)
+5. ✅ `templates/dashboard/login.html` - Login page (updated with email/password)
+6. ✅ `templates/dashboard/register.html` - Registration page (new)
+7. ✅ `templates/dashboard/settings.html` - Settings page (new)
+8. ✅ `templates/dashboard/verify_phone.html` - Phone verification (new)
+9. ✅ `templates/dashboard/forgot_password.html` - Password reset request (new)
+10. ✅ `templates/dashboard/reset_password.html` - Password reset form (new)
+11. ✅ Updated CSS for dashboard styling (settings, forms, etc.)
+12. ✅ User registration flow (email + password)
+13. ✅ Phone verification flow (SMS code)
+14. ✅ Password reset flow (token-based)
+15. ✅ Schema additions (`supabase_schema_phase6_additions.sql`)
 
-### What You Need to Do:
+### What You Need to Do (Finish Phase 6 & Test)
 
-#### 1. Email Setup (for password reset)
-- [ ] Set up email service (Gmail App Password, SendGrid, etc.)
-- [ ] Add to `.env`:
+#### Step 1: Run schema migration
+1. Open [Supabase](https://supabase.com) → your project → **SQL Editor**.
+2. Open `supabase_schema_phase6_additions.sql` in your project.
+3. Copy its contents, paste into the SQL Editor, and **Run**.
+4. Confirm: adds `phone_verified`, `phone_verification_code`, `phone_verification_expires_at`, `password_reset_token`, `password_reset_expires_at` to `users`.
+
+#### Step 2: Run the app
+```bash
+cd /Users/sarthak/Desktop/App\ Projects/sms_assistant
+source venv/bin/activate   # or: . venv/bin/activate
+python app_new.py
+```
+App runs at `http://localhost:5000`.
+
+#### Step 3: Test registration & login
+1. Open **http://localhost:5001/dashboard/login** (or the port shown when you start the app).
+2. Click **Register**.
+3. Fill in:
+   - **Email**: e.g. `you@example.com`
+   - **Password**: at least 8 characters
+   - **Confirm password**: same
+   - **Name** (optional)
+   - **Phone** (optional): leave blank for web-only, or use e.g. `+15551234567` for SMS verification.
+4. Submit. You should be redirected to the dashboard (or verify-phone if you added a phone).
+5. If you added a phone: verification code is shown in the **flash message** (and sent via SMS if Twilio is configured). Enter it and verify.
+6. Log out, then **log in** again with the same email/password.
+
+#### Step 4: Test dashboard
+1. Go to **http://localhost:5001/dashboard** (or click through from login).
+2. Open **Settings** (⚙️) and confirm your account info.
+3. Click a **date** on the calendar → stats for that date should load (food, water, gym, todos, etc.).
+4. Click **7 Days** / **30 Days** / **90 Days** → trends should load.
+
+#### Step 5: Test password reset (optional)
+1. Log out.
+2. On login page, click **Forgot Password**.
+3. Enter your email and submit. Check the **terminal** where `app_new.py` runs for the reset token.
+4. Visit `http://localhost:5001/dashboard/reset-password?token=PASTE_TOKEN_HERE`.
+5. Set a new password, confirm, then log in with it.
+
+#### Email setup (optional, for real password-reset emails)
+- Configure SMTP (e.g. Gmail App Password, SendGrid) and add to `.env`:
   ```bash
   SMTP_HOST=smtp.gmail.com
   SMTP_PORT=587
@@ -378,26 +428,29 @@ I'll update `requirements.txt` in Phase 1, but you can prepare:
   SMTP_PASSWORD=your_app_password
   FROM_EMAIL=your_email@gmail.com
   ```
-
-#### 2. Test Web Dashboard
-- [ ] Visit `http://localhost:5000/dashboard`
-- [ ] Create test account
-- [ ] Verify phone verification SMS
-- [ ] Log in and view dashboard
-- [ ] Test password reset flow
+- Until then, reset tokens are **printed in the console**.
 
 ### Deliverables:
-- ✅ Users can register accounts
-- ✅ Users can log in
-- ✅ Dashboard shows user data
+- ✅ Users can register accounts (email + password)
+- ✅ Users can log in (email + password)
+- ✅ Phone verification via SMS
+- ✅ Password reset (token-based)
+- ✅ Dashboard shows user data (via existing index.html)
 - ✅ Settings page works
+- ✅ All routes integrated into `app_new.py`
 
 ### Testing:
+- [ ] Run schema migration
 - [ ] Create new user account
-- [ ] Verify phone number
+- [ ] Verify phone number (code shown in flash message)
 - [ ] Log in
 - [ ] View dashboard with data
-- [ ] Test password reset
+- [ ] Test password reset (token printed to console)
+
+### Status:
+**✅ Phase 6 COMPLETE** - Web dashboard and authentication system built. Ready for testing.
+
+**Note:** UI overhaul deferred until after Phase 7. Current dashboard/auth UI is functional and acceptable for now. Full UI redesign will be done as a dedicated phase once core features are complete.
 
 ---
 

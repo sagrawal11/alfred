@@ -14,6 +14,7 @@ from supabase import create_client, Client
 from config import Config
 from core.processor import MessageProcessor
 from communication_service import CommunicationService
+from web import AuthManager, DashboardData, register_web_routes
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -40,6 +41,13 @@ def get_message_processor() -> MessageProcessor:
     if message_processor is None:
         message_processor = MessageProcessor(supabase)
     return message_processor
+
+# Initialize web components
+auth_manager = AuthManager(supabase)
+dashboard_data = DashboardData(supabase)
+
+# Register web routes
+register_web_routes(app, supabase, auth_manager, dashboard_data)
 
 
 # ============================================================================
@@ -167,12 +175,14 @@ atexit.register(lambda: scheduler.shutdown())
 # ============================================================================
 
 if __name__ == '__main__':
+    port = int(os.getenv('PORT', 5001))
     print("=" * 60)
     print("SMS Assistant - Starting...")
     print("=" * 60)
     print(f"Supabase URL: {config.SUPABASE_URL[:30]}...")
     print(f"Twilio configured: {bool(config.TWILIO_ACCOUNT_SID)}")
+    print(f"Dashboard: http://localhost:{port}/dashboard/login")
     print("=" * 60)
     
-    # Run Flask app
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Run Flask app (default 5001 to avoid port 5000 / AirPlay on macOS)
+    app.run(host='0.0.0.0', port=port, debug=True)

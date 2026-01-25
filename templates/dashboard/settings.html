@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>Settings</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('dashboard_index') }}" class="btn-secondary">← Back to Dashboard</a>
+                <a href="{{ url_for('dashboard_logout') }}" class="btn-logout">Logout</a>
+            </div>
+        </header>
+        
+        <div class="dashboard-content">
+            <div class="settings-section">
+                <h2>Account Information</h2>
+                <div class="settings-card">
+                    <div class="setting-item">
+                        <label>Email:</label>
+                        <span>{{ user.email or 'Not set' }}</span>
+                    </div>
+                    <div class="setting-item">
+                        <label>Phone Number:</label>
+                        <span>{{ user.phone_number or 'Not set' }}</span>
+                        {% if user.phone_number and not user.get('phone_verified') %}
+                            <a href="{{ url_for('dashboard_verify_phone') }}" class="btn-link">Verify Phone</a>
+                        {% endif %}
+                    </div>
+                    <div class="setting-item">
+                        <label>Name:</label>
+                        <span>{{ user.name or 'Not set' }}</span>
+                    </div>
+                    <div class="setting-item">
+                        <label>Timezone:</label>
+                        <span>{{ user.timezone or 'UTC' }}</span>
+                    </div>
+                    <div class="setting-item">
+                        <label>Account Created:</label>
+                        <span>{{ user.created_at[:10] if user.created_at else 'Unknown' }}</span>
+                    </div>
+                </div>
+                
+                <h2>Password</h2>
+                <div class="settings-card">
+                    <a href="{{ url_for('dashboard_forgot_password') }}" class="btn-primary">Change Password</a>
+                </div>
+                
+                <h2>Danger Zone</h2>
+                <div class="settings-card danger-zone">
+                    <p class="warning-text">⚠️ Deleting your account will permanently remove all your data.</p>
+                    <button class="btn-danger" onclick="alert('Account deletion not yet implemented')">Delete Account</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

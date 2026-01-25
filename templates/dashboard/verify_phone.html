@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Phone - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h1>Verify Phone Number</h1>
+            {% if error %}
+                <div class="error-message">{{ error }}</div>
+            {% endif %}
+            {% if phone_number %}
+                <p class="info-message">A verification code has been sent to {{ phone_number }}</p>
+            {% endif %}
+            <form method="POST" action="{{ url_for('dashboard_verify_phone') }}">
+                <div class="form-group">
+                    <label for="code">Verification Code:</label>
+                    <input type="text" id="code" name="code" required autofocus maxlength="6" pattern="[0-9]{6}">
+                    <small>Enter the 6-digit code sent to your phone</small>
+                </div>
+                <button type="submit" class="btn-primary">Verify</button>
+            </form>
+            <div class="login-footer">
+                <p><a href="{{ url_for('dashboard_index') }}">Skip for now</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

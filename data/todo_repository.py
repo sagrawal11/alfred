@@ -147,6 +147,28 @@ class TodoRepository(BaseRepository):
             'follow_up_sent': False
         })
     
+    def get_by_date(self, user_id: int, date_str: str) -> List[Dict[str, Any]]:
+        """
+        Get todos/reminders due on a specific date.
+        
+        Args:
+            user_id: User ID
+            date_str: Date in YYYY-MM-DD format
+            
+        Returns:
+            List of todos/reminders due on that date
+        """
+        start = f"{date_str}T00:00:00"
+        end = f"{date_str}T23:59:59.999999"
+        result = self.client.table(self.table_name)\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .gte("due_date", start)\
+            .lte("due_date", end)\
+            .order("due_date", desc=False)\
+            .execute()
+        return result.data if result.data else []
+    
     def get_stale_todos(self, user_id: int, days: int = 7) -> List[Dict[str, Any]]:
         """
         Get todos that haven't been touched in specified days

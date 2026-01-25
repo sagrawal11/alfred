@@ -56,6 +56,28 @@ class AssignmentRepository(BaseRepository):
             order_desc=False
         )
     
+    def get_by_date(self, user_id: int, date_str: str) -> List[Dict[str, Any]]:
+        """
+        Get assignments due on a specific date.
+        
+        Args:
+            user_id: User ID
+            date_str: Date in YYYY-MM-DD format
+            
+        Returns:
+            List of assignments due on that date
+        """
+        start = f"{date_str}T00:00:00"
+        end = f"{date_str}T23:59:59.999999"
+        result = self.client.table(self.table_name)\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .gte("due_date", start)\
+            .lte("due_date", end)\
+            .order("due_date", desc=False)\
+            .execute()
+        return result.data if result.data else []
+    
     def get_by_class(self, user_id: int, class_name: str) -> List[Dict[str, Any]]:
         """
         Get assignments for a specific class
