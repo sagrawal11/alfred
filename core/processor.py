@@ -15,6 +15,7 @@ from data import (
 )
 from core.context import ConversationContext
 from core.session import SessionManager
+from learning import LearningOrchestrator
 from handlers.base_handler import BaseHandler
 from handlers.food_handler import FoodHandler
 from handlers.water_handler import WaterHandler
@@ -49,6 +50,9 @@ class MessageProcessor:
         
         # Initialize pattern matcher (for learning system)
         self.pattern_matcher = PatternMatcher(self.knowledge_repo)
+        
+        # Initialize learning orchestrator
+        self.learning_orchestrator = LearningOrchestrator(self.knowledge_repo)
         
         # Initialize session manager
         self.session_manager = SessionManager(supabase)
@@ -98,22 +102,20 @@ class MessageProcessor:
                 if response:
                     return response
             
-            # Apply learned patterns
-            pattern_result = self.pattern_matcher.apply_patterns(
-                message, user_id, intent=None
+            # Step 1: Apply learned patterns BEFORE NLP (to enhance classification)
+            suggested_intent, suggested_entities = self.learning_orchestrator.apply_learned_patterns(
+                user_id, message
             )
             
-            # Classify intent
-            intent = pattern_result.get('suggested_intent')
-            if not intent:
-                intent = self.intent_classifier.classify(message)
+            # Step 2: Classify intent (use learned pattern if high confidence, otherwise use NLP)
+            intent = suggested_intent if suggested_intent else self.intent_classifier.classify(message)
             
-            # Extract entities
+            # Step 3: Extract entities
             entities = self.entity_extractor.extract(message)
             
-            # Merge pattern-suggested entities
-            if pattern_result.get('suggested_entities'):
-                for key, values in pattern_result['suggested_entities'].items():
+            # Step 4: Merge learned pattern entities
+            if suggested_entities:
+                for key, values in suggested_entities.items():
                     if key not in entities:
                         entities[key] = []
                     entities[key].extend([v['value'] for v in values])
@@ -136,11 +138,43 @@ class MessageProcessor:
                 assignment_repo=AssignmentRepository(self.supabase)
             )
             
-            # Route to appropriate handler
+            # Step 5: Route to appropriate handler
             handler = self.handlers.get(intent)
+            processing_result = None
+            response = None
+            
             if handler:
                 response = handler.handle(message, intent, entities, user_id, context)
                 if response:
+                    # Mark as successful processing
+                    processing_result = {'success': True, 'intent': intent}
+                    
+                    # Step 6: Learn from successful processing
+                    learned_patterns = self.learning_orchestrator.process_message_for_learning(
+                        user_id=user_id,
+                        message=message,
+                        intent=intent,
+                        entities=entities,
+                        result=processing_result
+                    )
+                    
+                    # Record pattern usage if we used a learned pattern
+                    if suggested_intent:
+                        # Extract key terms from message
+                        from learning.pattern_extractor import PatternExtractor
+                        extractor = PatternExtractor()
+                        key_terms = extractor._extract_key_terms(message)
+                        
+                        for term in key_terms:
+                            if len(term) > 3:
+                                self.learning_orchestrator.record_pattern_usage(
+                                    user_id=user_id,
+                                    pattern_term=term,
+                                    pattern_type='intent',
+                                    associated_value=intent,
+                                    success=True
+                                )
+                    
                     # Update session
                     session['conversation_history'].append({
                         'message': message,
