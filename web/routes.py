@@ -11,7 +11,8 @@ from .auth import AuthManager
 from .dashboard import DashboardData
 
 
-def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboard_data: DashboardData):
+def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboard_data: DashboardData,
+                        job_scheduler=None, reminder_service=None, sync_service=None, notification_service=None):
     """
     Register all web routes with the Flask app
     
@@ -31,6 +32,15 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 return redirect(url_for('dashboard_login'))
             return f(*args, **kwargs)
         return decorated_function
+    
+    # ============================================================================
+    # Landing Page Route
+    # ============================================================================
+    
+    @app.route('/')
+    def landing_page():
+        """Landing page"""
+        return render_template('index.html')
     
     # ============================================================================
     # Authentication Routes
@@ -205,6 +215,47 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         """Chat test page"""
         return render_template('dashboard/chat.html')
     
+    @app.route('/dashboard/api/chat', methods=['POST'])
+    @require_login
+    def dashboard_api_chat():
+        """Process chat messages (same as SMS processing)"""
+        user = auth_manager.get_current_user()
+        data = request.get_json()
+        message = data.get('message', '').strip()
+        
+        if not message:
+            return jsonify({'success': False, 'error': 'Message required'}), 400
+        
+        try:
+            # Import MessageProcessor here to avoid circular imports
+            from core.processor import MessageProcessor
+            
+            # Create message processor with the supabase client
+            processor = MessageProcessor(supabase)
+            
+            # Get user's phone number
+            # Web users have a placeholder phone_number like "web-{uuid}" from registration
+            phone_number = user.get('phone_number')
+            if not phone_number:
+                # Fallback: use user_id as identifier (processor will create user if needed)
+                phone_number = f"web-user-{user['id']}"
+            
+            # Process message
+            response_text = processor.process_message(message, phone_number=phone_number)
+            
+            return jsonify({
+                'success': True,
+                'response': response_text or "I didn't understand that. Try sending 'help' for available commands."
+            })
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'error': str(e),
+                'error_type': type(e).__name__
+            }), 500
+    
     # ============================================================================
     # Dashboard API Routes (JSON endpoints)
     # ============================================================================
@@ -279,12 +330,91 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     # Legacy Routes (for existing templates)
     # ============================================================================
     
+    @app.route('/dashboard/optin')
+    def dashboard_optin():
+        """Opt-in page"""
+        return render_template('dashboard/optin.html')
+    
     @app.route('/dashboard/privacy')
-    def privacy_policy():
+    def dashboard_privacy():
         """Privacy policy page"""
         return render_template('dashboard/privacy.html')
     
-    @app.route('/dashboard/optin')
-    def opt_in():
-        """Opt-in page"""
-        return render_template('dashboard/optin.html')
+    @app.route('/dashboard/terms')
+    def dashboard_terms():
+        """Terms and conditions page"""
+        return render_template('dashboard/terms.html')
+    
+    # ============================================================================
+    # Testing/Admin Routes (for Phase 8 background job testing)
+    # ============================================================================
+    
+    @app.route('/dashboard/test')
+    @require_login
+    def dashboard_test():
+        """Testing page for background jobs"""
+        return render_template('dashboard/test.html')
+    
+    @app.route('/dashboard/api/test/jobs', methods=['GET'])
+    @require_login
+    def api_test_jobs():
+        """Get status of all scheduled jobs"""
+        if not job_scheduler:
+            return jsonify({'error': 'Job scheduler not available'}), 500
+        
+        jobs = []
+        for job in job_scheduler.get_jobs():
+            jobs.append({
+                'id': job.id,
+                'name': job.name,
+                'next_run_time': job.next_run_time.isoformat() if job.next_run_time else None,
+                'trigger': str(job.trigger)
+            })
+        
+        return jsonify({
+            'scheduler_running': job_scheduler.is_running(),
+            'jobs': jobs
+        })
+    
+    @app.route('/dashboard/api/test/trigger/<job_name>', methods=['POST'])
+    @require_login
+    def api_test_trigger_job(job_name):
+        """Manually trigger a background job for testing"""
+        try:
+            if job_name == 'reminder_followups':
+                if not reminder_service:
+                    return jsonify({'error': 'Reminder service not available'}), 500
+                reminder_service.check_reminder_followups()
+                return jsonify({'success': True, 'message': 'Reminder follow-ups check triggered'})
+            
+            elif job_name == 'task_decay':
+                if not reminder_service:
+                    return jsonify({'error': 'Reminder service not available'}), 500
+                reminder_service.check_task_decay()
+                return jsonify({'success': True, 'message': 'Task decay check triggered'})
+            
+            elif job_name == 'gentle_nudges':
+                if not notification_service:
+                    return jsonify({'error': 'Notification service not available'}), 500
+                notification_service.check_gentle_nudges()
+                return jsonify({'success': True, 'message': 'Gentle nudges check triggered'})
+            
+            elif job_name == 'weekly_digest':
+                if not notification_service:
+                    return jsonify({'error': 'Notification service not available'}), 500
+                notification_service.send_weekly_digest()
+                return jsonify({'success': True, 'message': 'Weekly digest triggered'})
+            
+            elif job_name == 'integration_sync':
+                if not sync_service:
+                    return jsonify({'error': 'Sync service not available'}), 500
+                sync_service.sync_all_integrations()
+                return jsonify({'success': True, 'message': 'Integration sync triggered'})
+            
+            else:
+                return jsonify({'error': f'Unknown job: {job_name}'}), 400
+        
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': str(e)}), 500

@@ -56,8 +56,15 @@ integration_repo = IntegrationRepository(supabase)
 integration_auth = IntegrationAuthManager(supabase, integration_repo)
 sync_manager = SyncManager(supabase, integration_repo, integration_auth)
 
+# Initialize background services (before registering routes that need them)
+job_scheduler = JobScheduler(config)
+reminder_service = ReminderService(supabase, config, communication_service)
+sync_service = SyncService(supabase, config, sync_manager)
+notification_service = NotificationService(supabase, config, communication_service)
+
 # Register web routes
-register_web_routes(app, supabase, auth_manager, dashboard_data)
+register_web_routes(app, supabase, auth_manager, dashboard_data,
+                    job_scheduler, reminder_service, sync_service, notification_service)
 
 # Register integration routes
 register_integration_routes(app, supabase, auth_manager, integration_repo,
@@ -65,12 +72,6 @@ register_integration_routes(app, supabase, auth_manager, integration_repo,
 
 # Initialize webhook handler
 webhook_handler = WebhookHandler(integration_repo, sync_manager)
-
-# Initialize background services
-job_scheduler = JobScheduler(config)
-reminder_service = ReminderService(supabase, config, communication_service)
-sync_service = SyncService(supabase, config, sync_manager)
-notification_service = NotificationService(supabase, config, communication_service)
 
 
 # ============================================================================

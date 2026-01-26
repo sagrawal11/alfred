@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Assistant - Your Personal Butler</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='landing.css') }}">
+</head>
+<body>
+    <!-- Header -->
+    <header class="landing-header">
+        <div class="header-content">
+            <div class="logo-container">
+                <img src="{{ url_for('static', filename='Alfred.png') }}" alt="Butler Logo" class="butler-logo">
+            </div>
+            <div class="header-actions">
+                <a href="{{ url_for('dashboard_login') }}" class="btn-auth">Login</a>
+                <a href="{{ url_for('dashboard_register') }}" class="btn-auth">Sign Up</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <main class="hero-section">
+        <div class="hero-content">
+            <div class="hero-video-container">
+                <!-- Video will be embedded here -->
+                <video id="hero-video" class="hero-video" autoplay muted loop playsinline>
+                    <source src="" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="landing-footer">
+        <div class="footer-content">
+            <a href="{{ url_for('dashboard_optin') }}" class="footer-link">Opt-In Policy</a>
+            <span class="footer-separator">|</span>
+            <a href="{{ url_for('dashboard_privacy') }}" class="footer-link">Privacy Policy</a>
+            <span class="footer-separator">|</span>
+            <a href="{{ url_for('dashboard_terms') }}" class="footer-link">Terms and Conditions</a>
+        </div>
+    </footer>
+
+</body>
+</html>

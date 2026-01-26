@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Background Jobs Test - SMS Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+    <style>
+        .test-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .job-list {
+            list-style: none;
+            padding: 0;
+        }
+        .job-item {
+            padding: 12px;
+            margin: 8px 0;
+            background: #f5f5f5;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .job-info {
+            flex: 1;
+        }
+        .job-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .job-next-run {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 4px;
+        }
+        .btn-trigger {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .btn-trigger:hover {
+            background: #0056b3;
+        }
+        .btn-trigger:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        .status-running {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-stopped {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .test-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .test-button {
+            padding: 12px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .test-button:hover {
+            background: #218838;
+        }
+        .test-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result-message {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 4px;
+            display: none;
+        }
+        .result-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .result-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>Background Jobs Testing</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('dashboard_index') }}" class="btn-secondary">← Back to Dashboard</a>
+                <a href="{{ url_for('dashboard_chat') }}" class="btn-secondary">Chat Interface</a>
+                <a href="{{ url_for('dashboard_logout') }}" class="btn-logout">Logout</a>
+            </div>
+        </header>
+        
+        <div class="test-section">
+            <h2>Scheduler Status</h2>
+            <div id="scheduler-status">
+                <p>Loading...</p>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Scheduled Jobs</h2>
+            <ul id="jobs-list" class="job-list">
+                <li>Loading...</li>
+            </ul>
+        </div>
+        
+        <div class="test-section">
+            <h2>Manual Job Triggers</h2>
+            <p>Click a button below to manually trigger a background job for testing:</p>
+            <div class="test-buttons">
+                <button class="test-button" onclick="triggerJob('reminder_followups')">
+                    Check Reminder Follow-ups
+                </button>
+                <button class="test-button" onclick="triggerJob('task_decay')">
+                    Check Task Decay
+                </button>
+                <button class="test-button" onclick="triggerJob('gentle_nudges')">
+                    Check Gentle Nudges
+                </button>
+                <button class="test-button" onclick="triggerJob('weekly_digest')">
+                    Send Weekly Digest
+                </button>
+                <button class="test-button" onclick="triggerJob('integration_sync')">
+                    Sync Integrations
+                </button>
+            </div>
+            <div id="trigger-result" class="result-message"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Testing Instructions</h2>
+            <ol>
+                <li><strong>Check Scheduler Status:</strong> Verify the scheduler is running</li>
+                <li><strong>View Scheduled Jobs:</strong> See all configured background jobs and their next run times</li>
+                <li><strong>Test Reminder Follow-ups:</strong> 
+                    <ul>
+                        <li>First, create a reminder via chat: "remind me to test in 1 minute"</li>
+                        <li>Wait for the reminder to be sent</li>
+                        <li>Don't respond to it</li>
+                        <li>Click "Check Reminder Follow-ups" - you should see a follow-up message in chat</li>
+                    </ul>
+                </li>
+                <li><strong>Test Task Decay:</strong> 
+                    <ul>
+                        <li>Create an old todo (or modify database to make it 7+ days old)</li>
+                        <li>Click "Check Task Decay" - you should see a message asking if you still want the task</li>
+                    </ul>
+                </li>
+                <li><strong>Test Gentle Nudges:</strong> Click to check if you need water/gym nudges</li>
+                <li><strong>Test Weekly Digest:</strong> Click to send yourself a weekly summary</li>
+                <li><strong>Test Integration Sync:</strong> Click to sync all active integrations</li>
+            </ol>
+            <p><strong>Note:</strong> For jobs that send messages, check the <a href="{{ url_for('dashboard_chat') }}">Chat Interface</a> to see responses (instead of SMS).</p>
+        </div>
+    </div>
+    
+    <script>
+        // Load scheduler status and jobs
+        async function loadJobStatus() {
+            try {
+                const response = await fetch('/dashboard/api/test/jobs');
+                const data = await response.json();
+                
+                // Update scheduler status
+                const statusDiv = document.getElementById('scheduler-status');
+                const statusClass = data.scheduler_running ? 'status-running' : 'status-stopped';
+                const statusText = data.scheduler_running ? 'Running' : 'Stopped';
+                statusDiv.innerHTML = `<span class="status-badge ${statusClass}">${statusText}</span>`;
+                
+                // Update jobs list
+                const jobsList = document.getElementById('jobs-list');
+                if (data.jobs.length === 0) {
+                    jobsList.innerHTML = '<li>No jobs scheduled</li>';
+                } else {
+                    jobsList.innerHTML = data.jobs.map(job => `
+                        <li class="job-item">
+                            <div class="job-info">
+                                <div class="job-name">${job.name || job.id}</div>
+                                <div class="job-next-run">
+                                    Next run: ${job.next_run_time ? new Date(job.next_run_time).toLocaleString() : 'Not scheduled'}
+                                </div>
+                            </div>
+                            <button class="btn-trigger" onclick="triggerJob('${job.id}')">Trigger Now</button>
+                        </li>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading job status:', error);
+                document.getElementById('scheduler-status').innerHTML = '<p style="color: red;">Error loading status</p>';
+            }
+        }
+        
+        // Trigger a job manually
+        async function triggerJob(jobName) {
+            const resultDiv = document.getElementById('trigger-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result-message';
+            resultDiv.textContent = 'Triggering job...';
+            
+            // Disable all buttons
+            document.querySelectorAll('.test-button').forEach(btn => btn.disabled = true);
+            
+            try {
+                const response = await fetch(`/dashboard/api/test/trigger/${jobName}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.className = 'result-message result-success';
+                    resultDiv.textContent = `✅ ${data.message || 'Job triggered successfully'}`;
+                } else {
+                    resultDiv.className = 'result-message result-error';
+                    resultDiv.textContent = `❌ Error: ${data.error || 'Unknown error'}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result-message result-error';
+                resultDiv.textContent = `❌ Error: ${error.message}`;
+            } finally {
+                // Re-enable buttons
+                document.querySelectorAll('.test-button').forEach(btn => btn.disabled = false);
+                
+                // Reload job status
+                setTimeout(loadJobStatus, 1000);
+            }
+        }
+        
+        // Load status on page load
+        loadJobStatus();
+        
+        // Refresh every 30 seconds
+        setInterval(loadJobStatus, 30000);
+    </script>
+</body>
+</html>
