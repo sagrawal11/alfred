@@ -4,35 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMS Opt-In & Messaging Disclosure - SMS Assistant</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Butler:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='policy.css') }}">
 </head>
 <body>
-    <div class="optin-container">
-        <div class="optin-content">
+    <div class="policy-container">
+        <div class="policy-content">
             <h1>SMS Opt-In & Messaging Disclosure</h1>
             
-            <div class="optin-meta">
+            <div class="policy-meta">
                 <p><strong>Business Name:</strong> Sarthak Agrawal</p>
                 <p><strong>Service Type:</strong> Personal SMS Assistant (Single User)</p>
             </div>
             
-            <div class="optin-section">
+            <div class="policy-section">
                 <h2>SMS Opt-In</h2>
                 <p>This service uses <strong>SMS text messaging</strong> to provide a personal assistant experience.</p>
                 <p>By opting in, you agree to receive text messages from <strong>Sarthak Agrawal</strong>.</p>
                 
-                <div class="optin-box">
+                <div class="policy-box">
                     <h3>How to Opt In</h3>
                     <p>To opt in, send the following keyword via SMS to the Toll-Free phone number associated with this service:</p>
                     <div class="keyword-box">
                         <code>START</code>
                     </div>
                     <p>By sending <code>START</code>, you explicitly consent to receive SMS text messages from <strong>Sarthak Agrawal</strong>.</p>
-                    <p class="optin-note">No messages are sent unless and until you complete this opt-in step.</p>
+                    <p class="policy-note">No messages are sent unless and until you complete this opt-in step.</p>
                 </div>
             </div>
             
-            <div class="optin-section">
+            <div class="policy-section">
                 <h2>Opt-In Confirmation Message</h2>
                 <p>After opting in, you will receive the following confirmation message:</p>
                 <div class="message-box">
@@ -40,10 +43,10 @@
                 </div>
             </div>
             
-            <div class="optin-section">
+            <div class="policy-section">
                 <h2>Types of Messages You May Receive</h2>
                 <p>After opting in, you may receive SMS messages including:</p>
-                <ul class="optin-list">
+                <ul class="policy-list">
                     <li><strong>Account notifications</strong> (confirmations, summaries, reminders)</li>
                     <li><strong>Event-related messages</strong> (scheduled reminders, deadlines)</li>
                     <li><strong>Higher education–related messages</strong> (assignments, academic planning)</li>
@@ -52,7 +55,7 @@
                 <p>Messages are <strong>informational and user-initiated</strong> in nature.</p>
             </div>
             
-            <div class="optin-section">
+            <div class="policy-section">
                 <h2>Opt-Out Instructions</h2>
                 <p>You may opt out at any time by replying:</p>
                 <div class="keyword-box">
@@ -65,7 +68,7 @@
                 <p class="optin-note">No further messages will be sent unless you opt back in.</p>
             </div>
             
-            <div class="optin-section">
+            <div class="policy-section">
                 <h2>Help Instructions</h2>
                 <p>For help at any time, reply:</p>
                 <div class="keyword-box">
@@ -77,25 +80,25 @@
                 </div>
             </div>
             
-            <div class="optin-section">
+            <div class="policy-section">
                 <h2>User Scope</h2>
                 <p>This service is currently intended for <strong>a single user (the owner)</strong> and is not offered to the general public. Messages are only sent following explicit opt-in and user-initiated interaction.</p>
             </div>
             
-            <div class="optin-section">
+            <div class="policy-section">
                 <h2>Privacy</h2>
                 <p>Message content and data are used solely to operate this personal SMS assistant.</p>
                 <p>No data is sold or shared with third parties except as required to deliver SMS messages through messaging providers.</p>
             </div>
             
-            <div class="optin-section">
+            <div class="policy-section">
                 <h2>Contact</h2>
                 <p>If you have questions about this service or messaging consent, reply <strong>HELP</strong> via SMS.</p>
             </div>
             
-            <div class="optin-footer">
+            <div class="policy-footer">
                 <p class="last-updated">Last updated: <span id="last-updated-date"></span></p>
-                <a href="{{ url_for('dashboard_login') }}" class="btn-back">← Back to Login</a>
+                <a href="{{ url_for('landing_page') }}" class="btn-back" id="back-home-btn">← Back to Home</a>
             </div>
         </div>
     </div>
@@ -106,6 +109,21 @@
             year: 'numeric', 
             month: 'long', 
             day: 'numeric' 
+        });
+        
+        // Smooth page transition on back button click
+        document.getElementById('back-home-btn').addEventListener('click', function(e) {
+            e.preventDefault();
+            const link = this.href;
+            
+            // Fade out animation
+            document.body.style.transition = 'opacity 0.3s ease-out';
+            document.body.style.opacity = '0';
+            
+            // Navigate after animation
+            setTimeout(() => {
+                window.location.href = link;
+            }, 300);
         });
     </script>
 </body>

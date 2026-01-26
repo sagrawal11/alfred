@@ -1,228 +1,272 @@
 """
 Authentication Manager
 Handles user authentication, registration, password reset, and phone verification
+Uses Supabase Auth for authentication with hybrid approach (links to custom users table)
 """
 
 import os
-import secrets
-import hashlib
 from typing import Dict, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask import session
-import bcrypt
-from supabase import Client
+from supabase import Client, create_client
 
 from data import UserRepository
-from communication_service import CommunicationService
+from config import Config
 
 
 class AuthManager:
-    """Manages user authentication and registration"""
+    """Manages user authentication and registration using Supabase Auth"""
     
     def __init__(self, supabase: Client):
         """
         Initialize authentication manager
         
         Args:
-            supabase: Supabase client
+            supabase: Supabase client (should use service role key for admin operations)
         """
         self.supabase = supabase
         self.user_repo = UserRepository(supabase)
-        self.communication_service = CommunicationService()
-    
-    def hash_password(self, password: str) -> str:
-        """
-        Hash a password using bcrypt
+        self.config = Config()
         
-        Args:
-            password: Plain text password
-            
-        Returns:
-            Bcrypt hash
-        """
-        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        # Create Supabase client for auth operations
+        # Use anon key for standard auth operations (sign_up, sign_in)
+        # Service role key would be needed for admin operations only
+        self.auth_client = create_client(
+            self.config.SUPABASE_URL,
+            self.config.SUPABASE_KEY  # Anon key works for sign_up/sign_in
+        )
     
-    def verify_password(self, password: str, password_hash: str) -> bool:
+    def register_with_email_password(self, email: str, password: str, name: str,
+                                     phone_number: str) -> Tuple[bool, Optional[Dict], Optional[str]]:
         """
-        Verify a password against a hash
-        
-        Args:
-            password: Plain text password
-            password_hash: Bcrypt hash
-            
-        Returns:
-            True if password matches
-        """
-        return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
-    
-    def login(self, email: str, password: str) -> Tuple[bool, Optional[Dict], Optional[str]]:
-        """
-        Authenticate a user
+        Register a new user with email and password using Supabase Auth
         
         Args:
             email: User email
             password: User password
+            name: User's name (required)
+            phone_number: Phone number in E.164 format (required)
             
         Returns:
             Tuple of (success, user_dict, error_message)
         """
-        user = self.user_repo.get_by_email(email)
+        # Validate required fields
+        if not name or not name.strip():
+            return False, None, "Name is required"
         
-        if not user:
-            return False, None, "Invalid email or password"
+        if not phone_number or not phone_number.strip():
+            return False, None, "Phone number is required"
         
-        if not user.get('password_hash'):
-            return False, None, "Account not set up. Please register first."
+        # Validate phone number format (E.164)
+        import re
+        phone_regex = re.compile(r'^\+[1-9]\d{1,14}$')
+        if not phone_regex.match(phone_number.strip()):
+            return False, None, "Phone number must be in E.164 format (e.g., +1234567890)"
         
-        if not self.verify_password(password, user['password_hash']):
-            # Increment failed login attempts
-            self.user_repo.increment_failed_login(user['id'])
-            return False, None, "Invalid email or password"
+        phone_number = phone_number.strip()
+        name = name.strip()
         
-        # Check if account is locked
-        if user.get('failed_login_attempts', 0) >= 5:
-            return False, None, "Account locked due to too many failed login attempts"
-        
-        # Reset failed login attempts on successful login
-        self.user_repo.reset_failed_login(user['id'])
-        self.user_repo.update_last_login(user['id'])
-        
-        # Store user in session
-        session['user_id'] = user['id']
-        session['user_email'] = user['email']
-        session['user_name'] = user.get('name')
-        
-        return True, user, None
-    
-    def register(self, email: str, password: str, name: Optional[str] = None,
-                phone_number: Optional[str] = None) -> Tuple[bool, Optional[Dict], Optional[str]]:
-        """
-        Register a new user
-        
-        Args:
-            email: User email
-            password: User password
-            name: User's name (optional)
-            phone_number: Phone number (optional)
-            
-        Returns:
-            Tuple of (success, user_dict, error_message)
-        """
-        # Check if email already exists
+        # Check if email already exists in custom users table
         existing = self.user_repo.get_by_email(email)
         if existing:
             return False, None, "Email already registered"
         
-        # Check if phone number already exists (if provided)
-        if phone_number:
-            existing_phone = self.user_repo.get_by_phone(phone_number)
-            if existing_phone:
-                return False, None, "Phone number already registered"
+        # Check if phone number already exists
+        existing_phone = self.user_repo.get_by_phone(phone_number)
+        if existing_phone:
+            return False, None, "Phone number already registered"
         
-        # Hash password
-        password_hash = self.hash_password(password)
-        
-        # Schema requires unique non-null phone_number. Use placeholder for web-only signup.
-        import uuid
-        effective_phone = (phone_number or '').strip()
-        if not effective_phone:
-            effective_phone = f"web-{uuid.uuid4().hex[:12]}"
-        
-        # Create user
         try:
+            # Create user in Supabase Auth with email and password
+            # Include phone and name in metadata
+            auth_response = self.auth_client.auth.sign_up({
+                "email": email,
+                "password": password,
+                "options": {
+                    "data": {
+                        "name": name,
+                        "phone_number": phone_number
+                    }
+                }
+            })
+            
+            if not auth_response.user:
+                return False, None, "Failed to create user in Supabase Auth"
+            
+            auth_user_id = auth_response.user.id
+            
+            # Create corresponding record in custom users table
             user = self.user_repo.create_user(
-                phone_number=effective_phone,
+                phone_number=phone_number,
                 email=email,
-                password_hash=password_hash,
-                name=name
+                password_hash=None,  # No longer needed - Supabase Auth handles passwords
+                name=name,
+                auth_user_id=auth_user_id
             )
+            
+            # Store user in session (using custom user_id for compatibility)
+            session['user_id'] = user['id']
+            session['user_email'] = user['email']
+            session['user_name'] = user.get('name')
+            session['auth_user_id'] = auth_user_id
+            if auth_response.session:
+                session['access_token'] = auth_response.session.access_token
+                session['refresh_token'] = auth_response.session.refresh_token
+            
+            return True, user, None
+            
+        except Exception as e:
+            error_msg = str(e)
+            # Handle Supabase Auth specific errors
+            if "User already registered" in error_msg or "already exists" in error_msg.lower() or "duplicate" in error_msg.lower():
+                return False, None, "Email or phone number already registered"
+            return False, None, f"Registration failed: {error_msg}"
+    
+    def send_phone_otp(self, phone_number: str) -> Tuple[bool, Optional[str]]:
+        """
+        Send phone verification OTP via Supabase Auth
+        
+        Args:
+            phone_number: Phone number in E.164 format
+            
+        Returns:
+            Tuple of (success, error_message)
+        """
+        try:
+            # Validate phone number format
+            import re
+            phone_regex = re.compile(r'^\+[1-9]\d{1,14}$')
+            if not phone_regex.match(phone_number.strip()):
+                return False, "Phone number must be in E.164 format (e.g., +1234567890)"
+            
+            # Send OTP via Supabase Auth
+            response = self.auth_client.auth.sign_in_with_otp({
+                "phone": phone_number.strip()
+            })
+            
+            return True, None
+            
+        except Exception as e:
+            error_msg = str(e)
+            if "rate limit" in error_msg.lower():
+                return False, "Too many requests. Please wait before requesting another code."
+            return False, f"Failed to send verification code: {error_msg}"
+    
+    def verify_phone_otp(self, phone_number: str, token: str) -> Tuple[bool, Optional[Dict], Optional[str]]:
+        """
+        Verify phone OTP and sign in user
+        
+        Args:
+            phone_number: Phone number in E.164 format
+            token: OTP code received via SMS
+            
+        Returns:
+            Tuple of (success, user_dict, error_message)
+        """
+        try:
+            # Verify OTP with Supabase Auth
+            response = self.auth_client.auth.verify_otp({
+                "phone": phone_number.strip(),
+                "token": token.strip()
+            })
+            
+            if not response.user:
+                return False, None, "Invalid verification code"
+            
+            auth_user_id = response.user.id
+            
+            # Get or create user in custom users table
+            user = self.user_repo.get_by_auth_user_id(auth_user_id)
+            
+            if not user:
+                # Create user record if it doesn't exist
+                # This can happen if user was created via phone OTP directly
+                user = self.user_repo.create_user(
+                    phone_number=phone_number.strip(),
+                    email=response.user.email,
+                    password_hash=None,
+                    name=response.user.user_metadata.get('name', ''),
+                    auth_user_id=auth_user_id
+                )
+            
+            # Store user in session
+            session['user_id'] = user['id']
+            session['user_email'] = user.get('email')
+            session['user_name'] = user.get('name')
+            session['auth_user_id'] = auth_user_id
+            if response.session:
+                session['access_token'] = response.session.access_token
+                session['refresh_token'] = response.session.refresh_token
+            
+            # Update last login
+            self.user_repo.update_last_login(user['id'])
+            
+            return True, user, None
+            
+        except Exception as e:
+            error_msg = str(e)
+            if "invalid" in error_msg.lower() or "expired" in error_msg.lower():
+                return False, None, "Invalid or expired verification code"
+            return False, None, f"Verification failed: {error_msg}"
+    
+    def login_with_email_password(self, email: str, password: str) -> Tuple[bool, Optional[Dict], Optional[str]]:
+        """
+        Authenticate a user with email and password using Supabase Auth
+        
+        Args:
+            email: User email
+            password: User password
+            
+        Returns:
+            Tuple of (success, user_dict, error_message)
+        """
+        try:
+            # Sign in with Supabase Auth
+            response = self.auth_client.auth.sign_in_with_password({
+                "email": email.strip(),
+                "password": password
+            })
+            
+            if not response.user:
+                return False, None, "Invalid email or password"
+            
+            auth_user_id = response.user.id
+            
+            # Get user from custom users table
+            user = self.user_repo.get_by_auth_user_id(auth_user_id)
+            
+            if not user:
+                # User exists in Supabase Auth but not in custom table
+                # This shouldn't happen, but handle it gracefully
+                return False, None, "User account not properly set up. Please contact support."
+            
+            # Check if account is active
+            if not user.get('is_active', True):
+                return False, None, "Account is deactivated"
             
             # Store user in session
             session['user_id'] = user['id']
             session['user_email'] = user['email']
             session['user_name'] = user.get('name')
+            session['auth_user_id'] = auth_user_id
+            if response.session:
+                session['access_token'] = response.session.access_token
+                session['refresh_token'] = response.session.refresh_token
+            
+            # Update last login
+            self.user_repo.update_last_login(user['id'])
             
             return True, user, None
+            
         except Exception as e:
-            return False, None, f"Registration failed: {str(e)}"
-    
-    def send_phone_verification_code(self, user_id: int, phone_number: str) -> Tuple[bool, Optional[str], Optional[str]]:
-        """
-        Send phone verification code via SMS
-        
-        Args:
-            user_id: User ID
-            phone_number: Phone number to verify
-            
-        Returns:
-            Tuple of (success, verification_code, error_message)
-            Returns code for testing purposes
-        """
-        # Generate 6-digit code
-        code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
-        
-        # Store verification code in database (with expiration)
-        expires_at = (datetime.now() + timedelta(minutes=10)).isoformat()
-        
-        try:
-            # Update user with verification code
-            self.user_repo.update(user_id, {
-                'phone_verification_code': code,
-                'phone_verification_expires_at': expires_at
-            })
-            
-            # Send SMS
-            message = f"Your verification code is: {code}. It expires in 10 minutes."
-            result = self.communication_service.send_response(message, phone_number)
-            
-            if result.get('success'):
-                return True, code, None  # Return code for testing
-            else:
-                return False, code, "Failed to send SMS. Code generated but not sent."
-        except Exception as e:
-            return False, None, f"Failed to send verification code: {str(e)}"
-    
-    def verify_phone_code(self, user_id: int, code: str) -> Tuple[bool, Optional[str]]:
-        """
-        Verify phone verification code
-        
-        Args:
-            user_id: User ID
-            code: Verification code
-            
-        Returns:
-            Tuple of (success, error_message)
-        """
-        user = self.user_repo.get_by_id(user_id)
-        if not user:
-            return False, "User not found"
-        
-        stored_code = user.get('phone_verification_code')
-        expires_at_str = user.get('phone_verification_expires_at')
-        
-        if not stored_code:
-            return False, "No verification code found. Please request a new one."
-        
-        if expires_at_str:
-            expires_at = datetime.fromisoformat(expires_at_str)
-            if datetime.now() > expires_at:
-                return False, "Verification code expired. Please request a new one."
-        
-        if stored_code != code:
-            return False, "Invalid verification code"
-        
-        # Mark phone as verified
-        self.user_repo.update(user_id, {
-            'phone_verified': True,
-            'phone_verification_code': None,
-            'phone_verification_expires_at': None
-        })
-        
-        return True, None
+            error_msg = str(e)
+            if "Invalid login credentials" in error_msg or "invalid" in error_msg.lower():
+                return False, None, "Invalid email or password"
+            return False, None, f"Login failed: {error_msg}"
     
     def request_password_reset(self, email: str) -> Tuple[bool, Optional[str]]:
         """
-        Request password reset (sends email with reset link)
+        Request password reset via Supabase Auth
         
         Args:
             email: User email
@@ -230,70 +274,45 @@ class AuthManager:
         Returns:
             Tuple of (success, error_message)
         """
-        user = self.user_repo.get_by_email(email)
-        if not user:
-            # Don't reveal if email exists
+        try:
+            # Use Supabase Auth password reset
+            self.auth_client.auth.reset_password_for_email(email.strip())
+            # Always return success (don't reveal if email exists)
             return True, None
-        
-        # Generate reset token
-        token = secrets.token_urlsafe(32)
-        expires_at = (datetime.now() + timedelta(hours=1)).isoformat()
-        
-        # Store reset token
-        self.user_repo.update(user['id'], {
-            'password_reset_token': token,
-            'password_reset_expires_at': expires_at
-        })
-        
-        # TODO: Send email with reset link
-        # For now, return token for testing
-        reset_url = f"/dashboard/reset-password?token={token}"
-        print(f"Password reset token for {email}: {token}")
-        print(f"Reset URL: {reset_url}")
-        
-        return True, None
+        except Exception as e:
+            # Still return success to avoid revealing if email exists
+            return True, None
     
     def reset_password(self, token: str, new_password: str) -> Tuple[bool, Optional[str]]:
         """
-        Reset password using token
+        Reset password using token from Supabase Auth
         
         Args:
-            token: Password reset token
+            token: Password reset token (from email link)
             new_password: New password
             
         Returns:
             Tuple of (success, error_message)
         """
-        # Find user by reset token
-        result = self.supabase.table('users')\
-            .select('*')\
-            .eq('password_reset_token', token)\
-            .execute()
-        
-        if not result.data:
-            return False, "Invalid or expired reset token"
-        
-        user = result.data[0]
-        expires_at_str = user.get('password_reset_expires_at')
-        
-        if expires_at_str:
-            expires_at = datetime.fromisoformat(expires_at_str)
-            if datetime.now() > expires_at:
-                return False, "Reset token expired"
-        
-        # Update password
-        password_hash = self.hash_password(new_password)
-        self.user_repo.update(user['id'], {
-            'password_hash': password_hash,
-            'password_reset_token': None,
-            'password_reset_expires_at': None
-        })
-        
-        return True, None
+        try:
+            # Supabase Auth handles password reset via update_user
+            # The token is typically handled via a callback URL
+            # For now, we'll need to handle this via the frontend
+            # This method may need to be updated based on your reset flow
+            return False, "Password reset via token not yet implemented. Please use the email link."
+        except Exception as e:
+            return False, f"Password reset failed: {str(e)}"
     
     def logout(self):
         """Log out current user"""
-        session.clear()
+        try:
+            # Sign out from Supabase Auth
+            self.auth_client.auth.sign_out()
+        except:
+            pass
+        finally:
+            # Clear Flask session
+            session.clear()
     
     def get_current_user(self) -> Optional[Dict]:
         """
@@ -306,7 +325,16 @@ class AuthManager:
         if not user_id:
             return None
         
-        return self.user_repo.get_by_id(user_id)
+        # For now, trust Flask session (can add token verification later if needed)
+        # In production, you might want to verify the Supabase JWT token
+        user = self.user_repo.get_by_id(user_id)
+        
+        # Check if account is still active
+        if user and not user.get('is_active', True):
+            session.clear()
+            return None
+        
+        return user
     
     def require_auth(self) -> Optional[Dict]:
         """
@@ -316,3 +344,47 @@ class AuthManager:
             User dict if authenticated, None otherwise
         """
         return self.get_current_user()
+    
+    # Legacy methods for backward compatibility
+    def register(self, email: str, password: str, name: str, phone_number: str) -> Tuple[bool, Optional[Dict], Optional[str]]:
+        """Legacy method - redirects to new registration method"""
+        return self.register_with_email_password(email, password, name, phone_number)
+    
+    def login(self, email: str, password: str) -> Tuple[bool, Optional[Dict], Optional[str]]:
+        """Legacy method - redirects to new login method"""
+        return self.login_with_email_password(email, password)
+    
+    def send_phone_verification_code(self, user_id: int, phone_number: str) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Legacy method - Send phone verification code
+        Now uses Supabase Auth OTP
+        
+        Args:
+            user_id: User ID (not used, kept for compatibility)
+            phone_number: Phone number to verify
+            
+        Returns:
+            Tuple of (success, verification_code, error_message)
+            Note: Code is None since Supabase handles it
+        """
+        success, error = self.send_phone_otp(phone_number)
+        return success, None, error
+    
+    def verify_phone_code(self, user_id: int, code: str) -> Tuple[bool, Optional[str]]:
+        """
+        Legacy method - Verify phone code
+        Now uses Supabase Auth OTP verification
+        
+        Note: This method needs phone_number, not just user_id and code
+        For backward compatibility, we'll get phone from user_id first
+        """
+        user = self.user_repo.get_by_id(user_id)
+        if not user:
+            return False, "User not found"
+        
+        phone_number = user.get('phone_number')
+        if not phone_number:
+            return False, "Phone number not found for user"
+        
+        success, user_dict, error = self.verify_phone_otp(phone_number, code)
+        return success, error

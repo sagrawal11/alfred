@@ -48,27 +48,30 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     
     @app.route('/dashboard/login', methods=['GET', 'POST'])
     def dashboard_login():
-        """Login page"""
+        """Login endpoint (handles form submissions from modal)"""
         if request.method == 'POST':
             email = request.form.get('email', '').strip()
             password = request.form.get('password', '')
             
             if not email or not password:
-                return render_template('dashboard/login.html', error='Email and password required')
+                return jsonify({'error': 'Email and password required'}), 400
             
-            success, user, error = auth_manager.login(email, password)
+            success, user, error = auth_manager.login_with_email_password(email, password)
             
             if success:
-                return redirect(url_for('dashboard_index'))
+                return jsonify({
+                    'success': True,
+                    'redirect': url_for('dashboard_index')
+                }), 200
             else:
-                return render_template('dashboard/login.html', error=error or 'Login failed')
+                return jsonify({'error': error or 'Login failed'}), 400
         
-        # GET request - show login form
-        return render_template('dashboard/login.html')
+        # GET request - redirect to landing page (modals are there)
+        return redirect(url_for('landing_page'))
     
     @app.route('/dashboard/register', methods=['GET', 'POST'])
     def dashboard_register():
-        """Registration page"""
+        """Registration endpoint (handles form submissions from modal)"""
         if request.method == 'POST':
             email = request.form.get('email', '').strip()
             password = request.form.get('password', '')
@@ -78,34 +81,52 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             
             # Validation
             if not email or not password:
-                return render_template('dashboard/register.html', error='Email and password required')
+                return jsonify({'error': 'Email and password required'}), 400
+            
+            if not name:
+                return jsonify({'error': 'Name is required'}), 400
+            
+            if not phone_number:
+                return jsonify({'error': 'Phone number is required'}), 400
+            
+            # Validate phone number format (E.164)
+            import re
+            phone_regex = re.compile(r'^\+[1-9]\d{1,14}$')
+            if not phone_regex.match(phone_number):
+                return jsonify({'error': 'Phone number must be in E.164 format (e.g., +1234567890)'}), 400
             
             if password != password_confirm:
-                return render_template('dashboard/register.html', error='Passwords do not match')
+                return jsonify({'error': 'Passwords do not match'}), 400
             
             if len(password) < 8:
-                return render_template('dashboard/register.html', error='Password must be at least 8 characters')
+                return jsonify({'error': 'Password must be at least 8 characters'}), 400
             
-            # Register user
-            success, user, error = auth_manager.register(email, password, name, phone_number)
+            # Register user with Supabase Auth
+            success, user, error = auth_manager.register_with_email_password(email, password, name, phone_number)
             
             if success:
-                # If phone number provided, send verification code
-                if phone_number:
-                    code_sent, code, error_msg = auth_manager.send_phone_verification_code(user['id'], phone_number)
-                    if code_sent:
-                        flash(f'Registration successful! Verification code sent to {phone_number}. Code: {code} (for testing)', 'success')
-                        return redirect(url_for('dashboard_verify_phone'))
-                    else:
-                        flash(f'Registration successful, but failed to send verification code: {error_msg}', 'warning')
+                # After registration, send phone OTP for verification
+                # Supabase Auth handles the OTP sending automatically
+                otp_sent, otp_error = auth_manager.send_phone_otp(phone_number)
+                if otp_sent:
+                    # Redirect to phone verification page
+                    return jsonify({
+                        'success': True,
+                        'message': 'Registration successful! Please check your phone for verification code.',
+                        'redirect': url_for('dashboard_verify_phone')
+                    }), 200
                 else:
-                    flash('Registration successful!', 'success')
-                return redirect(url_for('dashboard_index'))
+                    # Registration succeeded but OTP failed - still allow login
+                    return jsonify({
+                        'success': True,
+                        'message': 'Registration successful! You can verify your phone later.',
+                        'redirect': url_for('dashboard_index')
+                    }), 200
             else:
-                return render_template('dashboard/register.html', error=error or 'Registration failed')
+                return jsonify({'error': error or 'Registration failed'}), 400
         
-        # GET request - show registration form
-        return render_template('dashboard/register.html')
+        # GET request - redirect to landing page (modals are there)
+        return redirect(url_for('landing_page'))
     
     @app.route('/dashboard/verify-phone', methods=['GET', 'POST'])
     @require_login
@@ -119,7 +140,12 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             if not code:
                 return render_template('dashboard/verify_phone.html', error='Verification code required')
             
-            success, error = auth_manager.verify_phone_code(user['id'], code)
+            phone_number = user.get('phone_number', '')
+            if not phone_number:
+                return render_template('dashboard/verify_phone.html', error='No phone number found')
+            
+            # Verify OTP with Supabase Auth
+            success, user_dict, error = auth_manager.verify_phone_otp(phone_number, code)
             
             if success:
                 flash('Phone number verified successfully!', 'success')

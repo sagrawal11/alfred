@@ -45,18 +45,34 @@ class UserRepository(BaseRepository):
             return result.data[0]
         return None
     
+    def get_by_auth_user_id(self, auth_user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user by Supabase Auth user ID
+        
+        Args:
+            auth_user_id: Supabase Auth user UUID
+            
+        Returns:
+            User record or None if not found
+        """
+        result = self.client.table(self.table_name).select("*").eq("auth_user_id", auth_user_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    
     def create_user(self, phone_number: str, email: Optional[str] = None, 
                    password_hash: Optional[str] = None, name: Optional[str] = None,
-                   timezone: str = 'UTC') -> Dict[str, Any]:
+                   timezone: str = 'UTC', auth_user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new user
         
         Args:
             phone_number: Phone number in E.164 format
             email: Email address (optional)
-            password_hash: Bcrypt password hash (optional)
+            password_hash: Bcrypt password hash (optional, deprecated - use Supabase Auth)
             name: User's name (optional)
             timezone: User's timezone (default: UTC)
+            auth_user_id: Supabase Auth user UUID (optional, for hybrid auth)
             
         Returns:
             Created user record
@@ -64,11 +80,15 @@ class UserRepository(BaseRepository):
         data = {
             'phone_number': phone_number,
             'email': email,
-            'password_hash': password_hash,
+            'password_hash': password_hash,  # Deprecated but kept for backward compatibility
             'name': name,
             'timezone': timezone,
             'is_active': True
         }
+        
+        if auth_user_id:
+            data['auth_user_id'] = auth_user_id
+        
         return self.create(data)
     
     def update_last_login(self, user_id: int):

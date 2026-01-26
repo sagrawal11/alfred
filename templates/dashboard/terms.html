@@ -4,22 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Terms and Conditions - SMS Assistant</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Butler:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='policy.css') }}">
 </head>
 <body>
-    <div class="privacy-container">
-        <div class="privacy-content">
+    <div class="policy-container">
+        <div class="policy-content">
             <h1>Terms and Conditions</h1>
-            <div class="privacy-meta">
+            <div class="policy-meta">
                 <p><strong>Last Updated:</strong> January 26, 2026</p>
             </div>
-            <div class="privacy-section">
+            <div class="policy-section">
                 <p>Terms and conditions content will be added here.</p>
             </div>
-            <div class="privacy-footer">
-                <a href="{{ url_for('landing_page') }}" class="btn-back">← Back to Home</a>
+            <div class="policy-footer">
+                <a href="{{ url_for('landing_page') }}" class="btn-back" id="back-home-btn">← Back to Home</a>
             </div>
         </div>
     </div>
+    
+    <script>
+        // Smooth page transition on back button click
+        document.getElementById('back-home-btn').addEventListener('click', function(e) {
+            e.preventDefault();
+            const link = this.href;
+            
+            // Fade out animation
+            document.body.style.transition = 'opacity 0.3s ease-out';
+            document.body.style.opacity = '0';
+            
+            // Navigate after animation
+            setTimeout(() => {
+                window.location.href = link;
+            }, 300);
+        });
+    </script>
 </body>
 </html>
