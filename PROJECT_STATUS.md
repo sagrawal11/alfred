@@ -7,12 +7,11 @@
 
 ## Executive Summary
 
-The SMS Assistant project has undergone a complete architectural rebuild with a modular, scalable design. **All 8 implementation phases are marked as COMPLETE**, with the new architecture fully implemented in `app_new.py`. However, there are several important items remaining:
+The SMS Assistant project has a modular, scalable design. **All 8 implementation phases are marked as COMPLETE**, with the architecture implemented in `app.py`. Remaining focus:
 
-1. **Migration from old to new**: The old monolithic `app.py` still exists and needs to be replaced
-2. **Testing**: Many features are implemented but need real-world testing
-3. **Phase 7 Integration Testing**: Deferred until you have access to a Fitbit device
-4. **Production Readiness**: Security review, monitoring setup, and production configuration needed
+1. **Testing**: Many features need real-world testing
+2. **Phase 7 Integration Testing**: Deferred until you have access to a Fitbit device
+3. **Production Readiness**: Security review, monitoring setup, and production configuration as needed
 
 ---
 
@@ -51,7 +50,7 @@ The SMS Assistant project has undergone a complete architectural rebuild with a 
 - ✅ 5 intent handlers implemented:
   - FoodHandler, WaterHandler, GymHandler, TodoHandler, QueryHandler
 - ✅ `ResponseFormatter` - SMS-friendly formatting
-- ✅ `app_new.py` - Refactored entry point (~150 lines vs 3769)
+- ✅ `app.py` - Main entry point (modular architecture)
 - ✅ All test cases passed
 
 ### Phase 5: Learning System ✅
@@ -99,20 +98,7 @@ The SMS Assistant project has undergone a complete architectural rebuild with a 
 
 ## ⚠️ What Needs Attention
 
-### 1. Migration from Old to New Architecture
-
-**Current State:**
-- `app_new.py` - New modular architecture (✅ Complete)
-- `app.py` - Old monolithic architecture (⚠️ Still exists, 3769 lines)
-
-**Action Items:**
-- [ ] Test `app_new.py` thoroughly in production-like environment
-- [ ] Verify all features work with `app_new.py`
-- [ ] Update Twilio webhook to point to `app_new.py` (if different)
-- [ ] Replace `app.py` with `app_new.py` or rename appropriately
-- [ ] Archive/backup old `app.py` for reference
-
-### 2. Testing & Validation
+### 1. Testing & Validation
 
 **Phase-Specific Testing:**
 - [ ] **Phase 4**: Test SMS flow end-to-end with real messages
@@ -142,7 +128,7 @@ The SMS Assistant project has undergone a complete architectural rebuild with a 
 - [ ] Load testing (if applicable)
 - [ ] Security testing (authentication, authorization, input validation)
 
-### 3. Production Readiness
+### 2. Production Readiness
 
 **Security:**
 - [ ] Review security checklist (see IMPLEMENTATION_PHASES.md line 626)
@@ -166,7 +152,7 @@ The SMS Assistant project has undergone a complete architectural rebuild with a 
 - [ ] Test health check endpoints
 - [ ] Set up backup strategy
 
-### 4. Documentation
+### 3. Documentation
 
 **Current Documentation:**
 - ✅ IMPLEMENTATION_PHASES.md - Detailed phase-by-phase guide
@@ -180,12 +166,11 @@ The SMS Assistant project has undergone a complete architectural rebuild with a 
 - [ ] Deployment runbook
 - [ ] Troubleshooting guide
 
-### 5. Code Cleanup
+### 4. Code Cleanup
 
 **Files to Review:**
-- [ ] `app.py` - Old monolithic file (consider archiving)
-- [ ] `gemini_nlp.py` - Old NLP file (may be deprecated if fully replaced)
-- [ ] `supabase_database.py` - Old database file (may be deprecated)
+- [ ] `gemini_nlp.py` - Legacy NLP file (may be deprecated if fully replaced by `nlp/`)
+- [ ] `supabase_database.py` - Legacy database file (may be deprecated; repos use Supabase client)
 - [ ] Any other legacy files
 
 **Test Files:**
@@ -198,7 +183,7 @@ The SMS Assistant project has undergone a complete architectural rebuild with a 
 ## 📋 Immediate Next Steps (Priority Order)
 
 ### High Priority
-1. **Test `app_new.py` thoroughly**
+1. **Test `app.py` thoroughly**
    - Send test SMS messages
    - Verify all handlers work
    - Check database persistence
@@ -225,7 +210,7 @@ The SMS Assistant project has undergone a complete architectural rebuild with a 
    - Test reminder follow-ups
 
 6. **Code cleanup**
-   - Archive old `app.py`
+   - Review legacy files (`gemini_nlp.py`, `supabase_database.py`)
    - Remove deprecated files
    - Update documentation
 
@@ -244,8 +229,7 @@ The SMS Assistant project has undergone a complete architectural rebuild with a 
 ## 🔍 Key Files Reference
 
 ### Main Application
-- `app_new.py` - **Main entry point** (new architecture)
-- `app.py` - Old monolithic version (to be replaced)
+- `app.py` - **Main entry point**
 
 ### Core Components
 - `core/processor.py` - Message processing engine
@@ -304,22 +288,22 @@ The project will be considered "production-ready" when:
 
 1. ✅ All 8 phases implemented
 2. ⚠️ All critical features tested and verified
-3. ⚠️ `app_new.py` replaces `app.py` in production
+3. ✅ Single `app.py` entry point
 4. ⚠️ Production environment configured
 5. ⚠️ Monitoring/alerting set up (optional)
 6. ⚠️ Security review completed
 7. ⚠️ Documentation complete
 
-**Current Status:** ~80% complete (implementation done, testing/migration pending)
+**Current Status:** ~80% complete (implementation done, testing pending)
 
 ---
 
 ## 💡 Recommendations
 
-1. **Start with testing `app_new.py`** - This is the most critical next step
+1. **Start with testing `app.py`** - Verify SMS, dashboard, and integrations
 2. **Test one phase at a time** - Don't try to test everything at once
 3. **Use the test page** - `/dashboard/test` has manual job triggers
-4. **Keep old `app.py` as backup** - Don't delete until `app_new.py` is fully verified
+4. **Deploy** - Use `python app.py`; point Twilio webhook to `/webhook/twilio`
 5. **Document any issues** - Keep track of bugs or missing features
 6. **Consider staging environment** - Test in staging before production
 
@@ -327,7 +311,7 @@ The project will be considered "production-ready" when:
 
 ## 📝 Notes
 
-- The old `app.py` still contains background job logic that may conflict with `app_new.py` if both are running
+- Run only one instance of `app.py` (background jobs use APScheduler)
 - Phase 7 testing is intentionally deferred - code is ready when you have Fitbit access
 - UI overhaul is deferred - current UI is functional for now
 - All background jobs are configured but need real-world testing

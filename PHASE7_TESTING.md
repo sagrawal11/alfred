@@ -72,8 +72,8 @@ BASE_URL=http://localhost:5001
 ### Step 5: Test the Integration System
 
 #### Test 1: Web Dashboard Integration Page
-1. Start the app: `python app_new.py`
-2. Log in to dashboard: `http://localhost:5001/dashboard/login`
+1. Start the app: `python app.py`
+2. Log in to dashboard: `http://localhost:5001/` (homepage) or `http://localhost:5001/dashboard/login`
 3. Click **🔗 Integrations** in the header
 4. You should see:
    - Fitbit (with "Connect Fitbit" button)

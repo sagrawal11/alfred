@@ -555,7 +555,7 @@ Configuration is validated on startup to ensure required values are present.
 
 ### Application Structure
 
-- **Single Entry Point**: `app_new.py` as main Flask application
+- **Single Entry Point**: `app.py` as main Flask application
 - **Modular Imports**: Clean import structure for deployment
 - **Environment Configuration**: All config via environment variables
 - **Health Checks**: Kubernetes-ready health endpoints

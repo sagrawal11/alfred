@@ -4,6 +4,9 @@
 
 **Current Deployment**: Working on Koyeb at `https://objective-almeria-sarthakagrawal-a8b1c327.koyeb.app`
 
+**Homepage (landing + login):** `https://objective-almeria-sarthakagrawal-a8b1c327.koyeb.app/`  
+`/dashboard/login` redirects to the homepage.
+
 ### Quick Steps:
 
 1. **Push code to GitHub**

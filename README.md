@@ -150,7 +150,9 @@ Track school assignments with class names and due dates. Text "CS101 homework 3 
 - **Google Calendar API** - Calendar integration
 
 ## Viewing Stats
-Go to https://objective-almeria-sarthakagrawal-a8b1c327.koyeb.app/dashboard/login and use the correct password to view daily stats as well as 7, 30, and 90 day trends
+**Homepage:** https://objective-almeria-sarthakagrawal-a8b1c327.koyeb.app/
+
+Go to the homepage above (or `/dashboard/login`, which redirects there), then log in to view daily stats and 7, 30, and 90 day trends.
 
 ## License
 

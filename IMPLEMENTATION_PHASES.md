@@ -281,7 +281,7 @@ I'll update `requirements.txt` in Phase 1, but you can prepare:
 8. ✅ `handlers/todo_handler.py` - Todo/reminder management
 9. ✅ `handlers/query_handler.py` - Data queries
 10. ✅ `responses/formatter.py` - Response formatting
-11. ✅ `app_new.py` - Refactored Flask entry point (ready to replace app.py)
+11. ✅ `app.py` - Flask entry point (modular architecture)
 
 ### What You Need to Do:
 
@@ -297,17 +297,17 @@ I'll update `requirements.txt` in Phase 1, but you can prepare:
 ### Deliverables:
 - ✅ Core chatbot works with new architecture
 - ✅ All basic intents work (food, water, gym, todos, queries)
-- ✅ `app_new.py` is ~150 lines (down from 3769)
+- ✅ `app.py` is ~300 lines (modular architecture)
 - ✅ Modular architecture with clear separation of concerns
 - ✅ Old `app.py` can be replaced after testing
 
 ### Testing:
 - [x] Run test script: `python tests/test_message_processing.py` - **✅ ALL TESTS PASSED**
-- [ ] Test `app_new.py` with sample SMS messages (if you have Twilio set up)
+- [ ] Test `app.py` with sample SMS messages (if you have Twilio set up)
 - [x] Verify data is saved correctly - **✅ VERIFIED**
 - [x] Verify responses are formatted well - **✅ VERIFIED**
 - [x] Check logs for errors - **✅ NO ERRORS**
-- [ ] Once tested, replace `app.py` with `app_new.py`
+- [ ] Once tested, verify Twilio webhook points to `/webhook/twilio`
 
 **Note:** You can test Phase 4 without a phone number using the test script!
 
@@ -390,12 +390,12 @@ I'll update `requirements.txt` in Phase 1, but you can prepare:
 ```bash
 cd /Users/sarthak/Desktop/App\ Projects/sms_assistant
 source venv/bin/activate   # or: . venv/bin/activate
-python app_new.py
+python app.py
 ```
-App runs at `http://localhost:5000`.
+App runs at `http://localhost:5001` (or the port in `PORT`).
 
 #### Step 3: Test registration & login
-1. Open **http://localhost:5001/dashboard/login** (or the port shown when you start the app).
+1. Open **http://localhost:5001/** (homepage) or **http://localhost:5001/dashboard/login** (redirects to homepage).
 2. Click **Register**.
 3. Fill in:
    - **Email**: e.g. `you@example.com`
@@ -416,7 +416,7 @@ App runs at `http://localhost:5000`.
 #### Step 5: Test password reset (optional)
 1. Log out.
 2. On login page, click **Forgot Password**.
-3. Enter your email and submit. Check the **terminal** where `app_new.py` runs for the reset token.
+3. Enter your email and submit. Check the **terminal** where `app.py` runs for the reset token.
 4. Visit `http://localhost:5001/dashboard/reset-password?token=PASTE_TOKEN_HERE`.
 5. Set a new password, confirm, then log in with it.
 
@@ -438,7 +438,7 @@ App runs at `http://localhost:5000`.
 - ✅ Password reset (token-based)
 - ✅ Dashboard shows user data (via existing index.html)
 - ✅ Settings page works
-- ✅ All routes integrated into `app_new.py`
+- ✅ All routes integrated into `app.py`
 
 ### Testing:
 - [ ] Run schema migration
@@ -470,7 +470,7 @@ App runs at `http://localhost:5000`.
 8. ✅ `templates/dashboard/integrations.html` - Integration management page
 9. ✅ `integrations/webhooks.py` - Webhook handlers for real-time updates
 10. ✅ `handlers/integration_handler.py` - SMS commands for integrations
-11. ✅ Integration routes registered in `app_new.py`
+11. ✅ Integration routes registered in `app.py`
 12. ✅ Integration handler added to `MessageProcessor`
 
 ### What You Need to Do:
@@ -560,7 +560,7 @@ Quick checklist:
 - [ ] Set up Google Cloud project (get Client ID & Secret)
 - [ ] Generate encryption key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 - [ ] Add all credentials to `.env` (FITBIT_CLIENT_ID, FITBIT_CLIENT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ENCRYPTION_KEY, BASE_URL)
-- [ ] Restart app: `python app_new.py`
+- [ ] Restart app: `python app.py`
 - [ ] Visit `http://localhost:5001/dashboard/integrations`
 - [ ] Connect Fitbit account (test OAuth flow)
 - [ ] Click "Sync Now" and verify workouts/sleep appear in database
