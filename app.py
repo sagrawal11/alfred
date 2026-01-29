@@ -19,7 +19,7 @@ from integrations import IntegrationAuthManager, SyncManager, WebhookHandler
 from data import IntegrationRepository
 from services import JobScheduler, ReminderService, SyncService, NotificationService
 from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.cron import CronTrigger
+ 
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -254,13 +254,20 @@ def setup_scheduled_jobs():
             trigger=IntervalTrigger(hours=config.GENTLE_NUDGE_CHECK_INTERVAL_HOURS),
             id='gentle_nudges'
         )
+
+    # Morning check-in - evaluate due users periodically (per-user hour + timezone)
+    job_scheduler.add_job(
+        func=notification_service.send_morning_checkins_due,
+        trigger=IntervalTrigger(minutes=15),
+        id='morning_checkins'
+    )
     
-    # Weekly digest - send on Monday at configured hour
+    # Weekly digest - evaluate due users periodically (per-user day/hour + timezone)
     if config.WEEKLY_DIGEST_ENABLED:
         job_scheduler.add_job(
-            func=notification_service.send_weekly_digest,
-            trigger=CronTrigger(day_of_week=config.WEEKLY_DIGEST_DAY, hour=config.WEEKLY_DIGEST_HOUR),
-            id='weekly_digest'
+            func=notification_service.send_weekly_digest_due,
+            trigger=IntervalTrigger(minutes=30),
+            id='weekly_digest_due'
         )
     
     # Integration syncs - sync every 4 hours

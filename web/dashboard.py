@@ -60,6 +60,15 @@ class DashboardData:
             water_logs = self.water_repo.get_by_date(user_id, date_iso)
             total_water_ml = sum(log.get('amount_ml', 0) or 0 for log in water_logs)
             total_water_liters = round(total_water_ml / 1000, 2)
+
+            # User's bottle size (fallback 500ml for display)
+            bottle_ml = 500
+            try:
+                u = self.supabase.table('users').select('water_bottle_ml').eq('id', user_id).limit(1).execute()
+                if u.data and u.data[0].get('water_bottle_ml'):
+                    bottle_ml = int(u.data[0].get('water_bottle_ml'))
+            except Exception:
+                bottle_ml = 500
             
             # Get gym logs
             gym_logs = self.gym_repo.get_by_date(user_id, date_iso)
@@ -91,7 +100,7 @@ class DashboardData:
                 'water': {
                     'total_ml': total_water_ml,
                     'total_liters': total_water_liters,
-                    'bottles': round(total_water_ml / 500, 1)  # Assuming 500ml bottles
+                    'bottles': round(total_water_ml / bottle_ml, 1) if bottle_ml else 0
                 },
                 'gym': {
                     'workout_count': workout_count,

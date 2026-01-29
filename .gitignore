@@ -20,6 +20,8 @@ sms_venv/
 
 # Environment variables and secrets
 .env
+.env.*
+.envrc
 .env.local
 .env.development.local
 .env.test.local
@@ -29,10 +31,22 @@ sms_venv/
 *.p12
 *.pfx
 
+# Cursor / local IDE metadata (avoid accidental leaks)
+.cursor/*
+!.cursor/plans/
+!.cursor/plans/**
+
 # Google API credentials - Not used (we use Gemini API key instead)
 # credentials.json
 # token.json
 # service_account.json
+
+# Common credential / token files (ignore even if you later add integrations)
+credentials*.json
+token*.json
+service_account*.json
+client_secret*.json
+client_secrets*.json
 
 # Logs
 *.log
@@ -99,4 +113,11 @@ Thumbs.db
 *.bak
 *.backup
 *~
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
 

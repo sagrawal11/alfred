@@ -14,6 +14,9 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
+# Suppress APScheduler "missed job" warnings on startup (normal when app restarts)
+logging.getLogger('apscheduler.executors.default').setLevel(logging.ERROR)
+
 
 class JobScheduler:
     """Manages background job scheduling"""
@@ -37,7 +40,7 @@ class JobScheduler:
         job_defaults = {
             'coalesce': True,  # Combine multiple pending executions into one
             'max_instances': 1,  # Only one instance of each job at a time
-            'misfire_grace_time': 300  # 5 minutes grace period
+            'misfire_grace_time': 3600  # 1 hour grace period (suppresses warnings on restart)
         }
         
         # Create scheduler

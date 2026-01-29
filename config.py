@@ -16,10 +16,15 @@ class Config:
     # Communication Mode (using TwiML, so SMS is automatic)
     COMMUNICATION_MODE = os.getenv('COMMUNICATION_MODE', 'sms')  # 'sms' only
     
-    # NLP Engine Selection (Gemini only)
-    NLP_ENGINE = os.getenv('NLP_ENGINE', 'gemini')  # Always 'gemini'
+    # NLP Engine Selection
+    # Default: openai (Gemini remains available as fallback)
+    NLP_ENGINE = os.getenv('NLP_ENGINE', 'openai')  # 'openai' or 'gemini'
     
-    # Google Gemini Configuration
+    # OpenAI Configuration (primary)
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
+    
+    # Google Gemini Configuration (fallback)
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
     
     # App Settings

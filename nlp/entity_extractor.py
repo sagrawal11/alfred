@@ -6,20 +6,20 @@ Extracts structured entities from user messages
 import json
 import re
 from typing import Dict
-from .gemini_client import GeminiClient
+from .llm_types import LLMClient
 
 
 class EntityExtractor:
     """Extracts entities (people, times, dates, numbers, etc.) from messages"""
     
-    def __init__(self, gemini_client: GeminiClient):
+    def __init__(self, llm_client: LLMClient):
         """
         Initialize entity extractor
         
         Args:
-            gemini_client: GeminiClient instance
+            llm_client: LLM client instance
         """
-        self.client = gemini_client
+        self.client = llm_client
     
     def extract(self, message: str) -> Dict:
         """

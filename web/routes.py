@@ -78,6 +78,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             password_confirm = request.form.get('password_confirm', '')
             name = request.form.get('name', '').strip()
             phone_number = request.form.get('phone_number', '').strip()
+            timezone = request.form.get('timezone', '').strip()
             
             # Validation
             if not email or not password:
@@ -102,7 +103,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 return jsonify({'error': 'Password must be at least 8 characters'}), 400
             
             # Register user with Supabase Auth
-            success, user, error = auth_manager.register_with_email_password(email, password, name, phone_number)
+            success, user, error = auth_manager.register_with_email_password(email, password, name, phone_number, timezone=timezone or None)
             
             if success:
                 # After registration, send phone OTP for verification
@@ -233,7 +234,105 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     def dashboard_settings():
         """Settings page"""
         user = auth_manager.get_current_user()
-        return render_template('dashboard/settings.html', user=user)
+        try:
+            from data import UserPreferencesRepository
+            prefs_repo = UserPreferencesRepository(supabase)
+            prefs = prefs_repo.ensure(user['id']) if user else {}
+        except Exception:
+            prefs = {}
+        return render_template('dashboard/settings.html', user=user, prefs=prefs)
+
+    @app.route('/dashboard/api/settings/profile', methods=['POST'])
+    @require_login
+    def dashboard_api_settings_profile():
+        """Update user profile fields (timezone, location, etc.)"""
+        user = auth_manager.get_current_user()
+        data = request.get_json(silent=True) or {}
+        if not user:
+            return jsonify({'success': False, 'error': 'Not logged in'}), 401
+
+        updates = {}
+        for key in ['name', 'timezone', 'location_name', 'location_lat', 'location_lon', 'morning_checkin_hour']:
+            if key in data and data[key] is not None:
+                updates[key] = data[key]
+
+        # Basic coercions
+        if 'morning_checkin_hour' in updates:
+            try:
+                updates['morning_checkin_hour'] = int(updates['morning_checkin_hour'])
+            except Exception:
+                return jsonify({'success': False, 'error': 'morning_checkin_hour must be 0-23'}), 400
+
+        if 'location_lat' in updates:
+            try:
+                updates['location_lat'] = float(updates['location_lat'])
+            except Exception:
+                updates.pop('location_lat', None)
+        if 'location_lon' in updates:
+            try:
+                updates['location_lon'] = float(updates['location_lon'])
+            except Exception:
+                updates.pop('location_lon', None)
+
+        try:
+            from data import UserRepository
+            repo = UserRepository(supabase)
+            repo.update(user['id'], updates)
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/dashboard/api/settings/preferences', methods=['POST'])
+    @require_login
+    def dashboard_api_settings_preferences():
+        """Update user preference fields (quiet hours, units, goals, toggles, digest schedule)."""
+        user = auth_manager.get_current_user()
+        data = request.get_json(silent=True) or {}
+        if not user:
+            return jsonify({'success': False, 'error': 'Not logged in'}), 401
+
+        allowed = {
+            'units',
+            'quiet_hours_start', 'quiet_hours_end', 'do_not_disturb',
+            'weekly_digest_day', 'weekly_digest_hour',
+            'default_water_goal_ml',
+            'default_calories_goal', 'default_protein_goal', 'default_carbs_goal', 'default_fat_goal',
+            'morning_include_reminders', 'morning_include_weather', 'morning_include_quote',
+        }
+        updates = {k: v for k, v in data.items() if k in allowed}
+
+        # Basic coercions
+        for k in ['quiet_hours_start', 'quiet_hours_end', 'weekly_digest_day', 'weekly_digest_hour']:
+            if k in updates and updates[k] is not None:
+                try:
+                    updates[k] = int(updates[k])
+                except Exception:
+                    return jsonify({'success': False, 'error': f'{k} must be an integer'}), 400
+
+        for k in ['default_water_goal_ml', 'default_calories_goal', 'default_protein_goal', 'default_carbs_goal', 'default_fat_goal']:
+            if k in updates and updates[k] not in (None, ''):
+                try:
+                    updates[k] = int(float(updates[k]))
+                except Exception:
+                    return jsonify({'success': False, 'error': f'{k} must be a number'}), 400
+            elif k in updates and updates[k] in (None, ''):
+                updates[k] = None
+
+        for k in ['do_not_disturb', 'morning_include_reminders', 'morning_include_weather', 'morning_include_quote']:
+            if k in updates:
+                updates[k] = bool(updates[k])
+
+        if 'units' in updates and updates['units'] not in ('metric', 'imperial'):
+            return jsonify({'success': False, 'error': 'units must be metric or imperial'}), 400
+
+        try:
+            from data import UserPreferencesRepository
+            repo = UserPreferencesRepository(supabase)
+            repo.ensure(user['id'])
+            repo.update(user['id'], updates)
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
     
     @app.route('/dashboard/chat')
     @require_login
@@ -267,7 +366,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 phone_number = f"web-user-{user['id']}"
             
             # Process message
-            response_text = processor.process_message(message, phone_number=phone_number)
+            response_text = processor.process_message(message, phone_number=phone_number, user_id=user['id'])
             
             return jsonify({
                 'success': True,
@@ -430,6 +529,18 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                     return jsonify({'error': 'Notification service not available'}), 500
                 notification_service.send_weekly_digest()
                 return jsonify({'success': True, 'message': 'Weekly digest triggered'})
+
+            elif job_name == 'weekly_digest_due':
+                if not notification_service:
+                    return jsonify({'error': 'Notification service not available'}), 500
+                notification_service.send_weekly_digest_due()
+                return jsonify({'success': True, 'message': 'Weekly digest (due check) triggered'})
+
+            elif job_name == 'morning_checkins':
+                if not notification_service:
+                    return jsonify({'error': 'Notification service not available'}), 500
+                notification_service.send_morning_checkins_due()
+                return jsonify({'success': True, 'message': 'Morning check-in (due check) triggered'})
             
             elif job_name == 'integration_sync':
                 if not sync_service:

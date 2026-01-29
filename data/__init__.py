@@ -14,6 +14,7 @@ from .sleep_repository import SleepRepository
 from .assignment_repository import AssignmentRepository
 from .fact_repository import FactRepository
 from .integration_repository import IntegrationRepository
+from .user_preferences_repository import UserPreferencesRepository
 
 __all__ = [
     'BaseRepository',
@@ -27,4 +28,5 @@ __all__ = [
     'AssignmentRepository',
     'FactRepository',
     'IntegrationRepository',
+    'UserPreferencesRepository',
 ]

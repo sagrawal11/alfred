@@ -3,18 +3,21 @@ Message Processor
 Main message processing engine that coordinates NLP, handlers, and responses
 """
 
+import os
+import re
 from typing import Dict, Optional, Any
 from datetime import datetime
 
 from nlp import (
-    GeminiClient, IntentClassifier, EntityExtractor,
+    create_llm_client, IntentClassifier, EntityExtractor,
     Parser, PatternMatcher, DatabaseLoader
 )
 from data import (
-    UserRepository, KnowledgeRepository
+    UserRepository, KnowledgeRepository, UserPreferencesRepository
 )
 from core.context import ConversationContext
 from core.session import SessionManager
+from core.onboarding import handle_onboarding
 from learning import LearningOrchestrator
 from handlers.base_handler import BaseHandler
 from handlers.food_handler import FoodHandler
@@ -41,15 +44,16 @@ class MessageProcessor:
         self.supabase = supabase
         
         # Initialize NLP components
-        self.gemini_client = GeminiClient()
+        self.llm_client = create_llm_client()
         self.db_loader = DatabaseLoader()
-        self.intent_classifier = IntentClassifier(self.gemini_client)
-        self.entity_extractor = EntityExtractor(self.gemini_client)
-        self.parser = Parser(self.gemini_client, self.db_loader)
+        self.intent_classifier = IntentClassifier(self.llm_client)
+        self.entity_extractor = EntityExtractor(self.llm_client)
+        self.parser = Parser(self.llm_client, self.db_loader)
         
         # Initialize repositories
         self.user_repo = UserRepository(supabase)
         self.knowledge_repo = KnowledgeRepository(supabase)
+        self.user_prefs_repo = UserPreferencesRepository(supabase)
         
         # Initialize integration components
         self.integration_repo = IntegrationRepository(supabase)
@@ -84,7 +88,7 @@ class MessageProcessor:
                                                    self.formatter),
         }
     
-    def process_message(self, message: str, phone_number: str) -> str:
+    def process_message(self, message: str, phone_number: str, user_id: Optional[int] = None) -> str:
         """
         Process an incoming message
         
@@ -96,16 +100,96 @@ class MessageProcessor:
             Response text
         """
         try:
-            # Get or create user
-            user = self.user_repo.get_by_phone(phone_number)
+            message_clean = (message or "").strip()
+            message_lower = message_clean.lower()
+
+            # Dashboard chat can pass a placeholder phone; support deriving user_id from it
+            if user_id is None and phone_number and phone_number.startswith("web-user-"):
+                try:
+                    user_id = int(phone_number.split("web-user-", 1)[1])
+                except Exception:
+                    user_id = None
+
+            # Look up user (NO auto-creation for unknown phone numbers)
+            user: Optional[Dict[str, Any]] = None
+            if user_id is not None:
+                user = self.user_repo.get_by_id(user_id)
+            if user is None:
+                user = self.user_repo.get_by_phone(phone_number)
+
+            # STOP/HELP should work even if user doesn't exist yet
+            if message_lower in ["help", "info"]:
+                return (
+                    "This is a personal SMS assistant operated by Sarthak Agrawal. "
+                    "It sends reminders, notifications, and assistant responses after you opt in. "
+                    "Reply STOP to opt out at any time."
+                )
+
+            if message_lower == "stop":
+                if user:
+                    self.user_repo.deactivate_user(user["id"])
+                return (
+                    "You have been unsubscribed from messages from Sarthak Agrawal. "
+                    "You will no longer receive SMS messages. Reply START to re-subscribe."
+                )
+
+            if message_lower == "start":
+                if user and not user.get("is_active", True):
+                    self.user_repo.activate_user(user["id"])
+                    return "You're re-subscribed. Text me anything to get started."
+                # If they're not in DB yet, treat as text-first and send signup link below.
+
+            # If no account exists yet for this phone number, guide them to signup
             if not user:
-                # Create new user
-                user = self.user_repo.create_user(phone_number=phone_number)
+                base_url = os.getenv("BASE_URL") or os.getenv("PUBLIC_BASE_URL") or "http://localhost:5001"
+                signup_link = base_url.rstrip("/") + "/"
+                return (
+                    "Hey! You're not signed up yet. Alfred works best when we're connected—"
+                    f"create an account at {signup_link}, then text this number again and we'll get you set up."
+                )
+
+            # Respect opt-out / deactivated accounts
+            if not user.get("is_active", True):
+                return "You're unsubscribed. Reply START to re-subscribe, or HELP for more info."
             
             user_id = user['id']
+
+            # Ensure preferences row exists (safe no-op if present)
+            try:
+                self.user_prefs_repo.ensure(user_id)
+            except Exception:
+                # Don't fail processing if prefs can't be created (RLS/migration issues)
+                pass
             
             # Get session
             session = self.session_manager.get_session(user_id)
+
+            # Onboarding (account-first): run before confirmations/NLP
+            if not user.get("onboarding_complete", False):
+                result, user_updates, prefs_updates = handle_onboarding(
+                    message=message_clean,
+                    user=user,
+                    session=session,
+                    config_default_bottle_ml=int(self.db_loader.water_bottle_size_ml),
+                )
+                if user_updates:
+                    try:
+                        self.user_repo.update(user_id, user_updates)
+                        # reflect latest fields locally for subsequent checks this request
+                        user.update(user_updates)
+                    except Exception as e:
+                        print(f"Error persisting onboarding user updates: {e}")
+                if prefs_updates:
+                    try:
+                        self.user_prefs_repo.update(user_id, prefs_updates)
+                    except Exception as e:
+                        print(f"Error persisting onboarding prefs updates: {e}")
+                return result.reply
+
+            # Lightweight preference commands (avoid expensive NLP when possible)
+            pref_response = self._handle_preference_commands(message_clean, message_lower, user_id, user)
+            if pref_response:
+                return pref_response
             
             # Check for pending confirmations/selections first
             if 'pending_confirmations' in session and session['pending_confirmations']:
@@ -231,4 +315,177 @@ class MessageProcessor:
             session['pending_confirmations'] = {}
             return "Okay, cancelled."
         
+        return None
+
+    def _handle_preference_commands(
+        self,
+        message: str,
+        message_lower: str,
+        user_id: int,
+        user: Dict[str, Any],
+    ) -> Optional[str]:
+        """
+        Handle simple preference updates without running Gemini.
+        Returns a reply string if handled, else None.
+        """
+        # Morning message toggles
+        if "morning" in message_lower and ("text" in message_lower or "message" in message_lower):
+            updates: Dict[str, Any] = {}
+            ack_parts: list[str] = []
+
+            def wants_disable() -> bool:
+                return any(k in message_lower for k in ["don't", "dont", "no ", "remove", "stop", "without"])
+
+            disable = wants_disable()
+
+            if "weather" in message_lower:
+                updates["morning_include_weather"] = not disable
+                ack_parts.append(("stop" if disable else "start") + " including weather")
+            if "quote" in message_lower:
+                updates["morning_include_quote"] = not disable
+                ack_parts.append(("stop" if disable else "start") + " including the quote")
+            if "reminder" in message_lower or "todo" in message_lower or "tasks" in message_lower:
+                updates["morning_include_reminders"] = not disable
+                ack_parts.append(("stop" if disable else "start") + " including reminders/todos")
+
+            if updates:
+                try:
+                    self.user_prefs_repo.update(user_id, updates)
+                except Exception as e:
+                    print(f"Error updating morning toggles: {e}")
+                    return self.formatter.format_error("Couldn't update morning message settings yet")
+
+                return "Got it — I'll " + ", and I'll ".join(ack_parts) + " in your morning text."
+
+        # Units (metric/imperial)
+        if "units" in message_lower or "metric" in message_lower or "imperial" in message_lower:
+            units = None
+            if "imperial" in message_lower or "us units" in message_lower or "oz" in message_lower:
+                units = "imperial"
+            if "metric" in message_lower or "ml" in message_lower:
+                units = "metric"
+            if units:
+                try:
+                    self.user_prefs_repo.update(user_id, {"units": units})
+                except Exception as e:
+                    print(f"Error updating units: {e}")
+                    return self.formatter.format_error("Couldn't update units yet")
+                return f"Done — I'll use {units} units in messages."
+
+        # Quiet hours / do not disturb (e.g. "quiet hours 10pm-7am")
+        if "quiet hours" in message_lower or "do not disturb" in message_lower or "dnd" in message_lower:
+            from core.onboarding import parse_hour_0_23
+            # crude parse: take first two time-like tokens
+            tokens = [t.strip() for t in re.split(r"[\s,]+", message_lower) if t.strip()]
+            hours: list[int] = []
+            for tok in tokens:
+                h = parse_hour_0_23(tok)
+                if h is not None:
+                    hours.append(int(h))
+                if len(hours) >= 2:
+                    break
+            if len(hours) >= 2:
+                start, end = hours[0], hours[1]
+                try:
+                    self.user_prefs_repo.update(user_id, {"quiet_hours_start": start, "quiet_hours_end": end, "do_not_disturb": False})
+                except Exception as e:
+                    print(f"Error updating quiet hours: {e}")
+                    return self.formatter.format_error("Couldn't update quiet hours yet")
+                return f"Got it — I'll stay quiet from {start:02d}:00 to {end:02d}:00 (your local time)."
+            if "on" in message_lower and ("dnd" in message_lower or "do not disturb" in message_lower):
+                try:
+                    self.user_prefs_repo.update(user_id, {"do_not_disturb": True})
+                except Exception as e:
+                    print(f"Error enabling DND: {e}")
+                    return self.formatter.format_error("Couldn't enable do-not-disturb yet")
+                return "Okay — do-not-disturb is on. Reply 'dnd off' to re-enable messages."
+            if "off" in message_lower and ("dnd" in message_lower or "do not disturb" in message_lower):
+                try:
+                    self.user_prefs_repo.update(user_id, {"do_not_disturb": False})
+                except Exception as e:
+                    print(f"Error disabling DND: {e}")
+                    return self.formatter.format_error("Couldn't disable do-not-disturb yet")
+                return "Okay — do-not-disturb is off."
+
+            return "What quiet hours should I use? Example: 'quiet hours 10pm-7am'."
+
+        # Weekly digest schedule (e.g. "weekly digest monday 8pm")
+        if "weekly digest" in message_lower:
+            from core.onboarding import parse_hour_0_23
+            day_map = {
+                "monday": 0,
+                "mon": 0,
+                "tuesday": 1,
+                "tue": 1,
+                "wednesday": 2,
+                "wed": 2,
+                "thursday": 3,
+                "thu": 3,
+                "friday": 4,
+                "fri": 4,
+                "saturday": 5,
+                "sat": 5,
+                "sunday": 6,
+                "sun": 6,
+            }
+            wd = None
+            for k, v in day_map.items():
+                if re.search(rf"\\b{k}\\b", message_lower):
+                    wd = v
+                    break
+            wh = parse_hour_0_23(message_lower)
+            if wd is not None and wh is not None:
+                try:
+                    self.user_prefs_repo.update(user_id, {"weekly_digest_day": wd, "weekly_digest_hour": int(wh)})
+                except Exception as e:
+                    print(f"Error updating weekly digest schedule: {e}")
+                    return self.formatter.format_error("Couldn't update weekly digest settings yet")
+                return f"Perfect — weekly digest set for day {wd} at {int(wh):02d}:00 (local time)."
+            return "When do you want it? Example: 'weekly digest Monday 8pm'."
+
+        # Default daily goals (water + macros)
+        if "goal" in message_lower and any(k in message_lower for k in ["water", "calorie", "calories", "protein", "carb", "fat", "macros"]):
+            updates: Dict[str, Any] = {}
+
+            # Water goal like "3L" or "3000ml" or "100 oz"
+            m = re.search(r"(\\d+(?:\\.\\d+)?)\\s*(l|liter|litre|liters|litres)\\b", message_lower)
+            if m:
+                updates["default_water_goal_ml"] = int(float(m.group(1)) * 1000)
+            m = re.search(r"(\\d+(?:\\.\\d+)?)\\s*ml\\b", message_lower)
+            if m:
+                updates["default_water_goal_ml"] = int(float(m.group(1)))
+            m = re.search(r"(\\d+(?:\\.\\d+)?)\\s*oz\\b", message_lower)
+            if m:
+                updates["default_water_goal_ml"] = int(float(m.group(1)) * 29.5735)
+
+            def find_g(field: str) -> Optional[int]:
+                mm = re.search(rf"(\\d+(?:\\.\\d+)?)\\s*g\\s*(?:{field})\\b", message_lower)
+                if mm:
+                    return int(float(mm.group(1)))
+                return None
+
+            # calories like "2000 cal"
+            m = re.search(r"(\\d{3,5})\\s*(cal|cals|calories)\\b", message_lower)
+            if m:
+                updates["default_calories_goal"] = int(m.group(1))
+
+            p = find_g("protein|p")
+            if p is not None:
+                updates["default_protein_goal"] = p
+            c = find_g("carbs|carb|c")
+            if c is not None:
+                updates["default_carbs_goal"] = c
+            f = find_g("fat|f")
+            if f is not None:
+                updates["default_fat_goal"] = f
+
+            if updates:
+                try:
+                    self.user_prefs_repo.update(user_id, updates)
+                except Exception as e:
+                    print(f"Error updating goals: {e}")
+                    return self.formatter.format_error("Couldn't update goals yet")
+
+                return "Locked in — updated your daily goals. You can tweak them anytime."
+
         return None

@@ -101,6 +101,7 @@
                     <input type="tel" id="signup-phone" name="phone_number" placeholder="+1234567890" required>
                     <small>E.164 format (e.g., +1234567890)</small>
                 </div>
+                <input type="hidden" id="signup-timezone" name="timezone" value="">
                 <button type="submit" class="btn-modal">Register</button>
             </form>
             <div class="modal-footer">
@@ -196,6 +197,13 @@
                 errorDiv.style.display = 'block';
             }
         });
+
+        // Set timezone on signup (best-effort)
+        try {
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const tzInput = document.getElementById('signup-timezone');
+            if (tzInput && tz) tzInput.value = tz;
+        } catch (e) {}
 
         document.getElementById('signup-form').addEventListener('submit', async (e) => {
             e.preventDefault();

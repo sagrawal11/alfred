@@ -6,11 +6,12 @@ Handles reminder follow-ups and task decay checks
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
+from zoneinfo import ZoneInfo
 from supabase import Client
 
 from config import Config
 from communication_service import CommunicationService
-from data import TodoRepository, UserRepository
+from data import TodoRepository, UserRepository, UserPreferencesRepository
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class ReminderService:
         self.communication_service = communication_service
         self.todo_repo = TodoRepository(supabase)
         self.user_repo = UserRepository(supabase)
+        self.user_prefs_repo = UserPreferencesRepository(supabase)
         
         # Store pending reschedules and task decay responses
         self.pending_reschedules: Dict[int, List[Dict[str, Any]]] = {}
@@ -70,6 +72,28 @@ class ReminderService:
                         continue
                     
                     user_phone = user['phone_number']
+
+                    # Respect quiet hours / do-not-disturb (best effort)
+                    try:
+                        prefs = self.user_prefs_repo.get(user_id) or {}
+                        tz_name = (user.get('timezone') or 'UTC').strip() or 'UTC'
+                        try:
+                            user_tz = ZoneInfo(tz_name)
+                        except Exception:
+                            user_tz = ZoneInfo('UTC')
+                        now_utc = datetime.now(tz=ZoneInfo('UTC'))
+                        if prefs.get('do_not_disturb'):
+                            continue
+                        qs = prefs.get('quiet_hours_start')
+                        qe = prefs.get('quiet_hours_end')
+                        if qs is not None and qe is not None:
+                            qs = int(qs); qe = int(qe)
+                            local_hour = now_utc.astimezone(user_tz).hour
+                            in_quiet = (qs < qe and qs <= local_hour < qe) or (qs > qe and (local_hour >= qs or local_hour < qe))
+                            if in_quiet:
+                                continue
+                    except Exception:
+                        pass
                     
                     # Parse sent_at timestamp
                     try:

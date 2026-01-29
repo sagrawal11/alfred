@@ -9,36 +9,37 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 from dateutil import parser as date_parser
 
-from .gemini_client import GeminiClient
+from .llm_types import LLMClient
 from .database_loader import DatabaseLoader
 
 
 class Parser:
     """Parses user messages into structured data"""
     
-    def __init__(self, gemini_client: GeminiClient, database_loader: DatabaseLoader):
+    def __init__(self, llm_client: LLMClient, database_loader: DatabaseLoader):
         """
         Initialize parser
         
         Args:
-            gemini_client: GeminiClient instance
+            llm_client: LLM client instance
             database_loader: DatabaseLoader instance
         """
-        self.client = gemini_client
+        self.client = llm_client
         self.db_loader = database_loader
         self.water_bottle_size_ml = database_loader.water_bottle_size_ml
     
-    def parse_water_amount(self, message: str, entities: Dict) -> Optional[float]:
+    def parse_water_amount(self, message: str, entities: Dict, water_bottle_size_ml: Optional[int] = None) -> Optional[float]:
         """Parse water amount from message"""
+        bottle_ml = int(water_bottle_size_ml) if water_bottle_size_ml else int(self.water_bottle_size_ml)
         prompt = f"""Extract the water amount in milliliters (ml) from this message.
 Handle these formats:
-- "drank a bottle" = {self.water_bottle_size_ml}ml
+- "drank a bottle" = {bottle_ml}ml
 - "drank 16oz" = 473ml (16 * 29.5735)
 - "drank 500ml" = 500ml
 - "drank 1 liter" = 1000ml
-- "drank half a bottle" = {self.water_bottle_size_ml // 2}ml
-- "drank 2 bottles" = {self.water_bottle_size_ml * 2}ml
-- "drank 3 bottles" = {self.water_bottle_size_ml * 3}ml
+- "drank half a bottle" = {bottle_ml // 2}ml
+- "drank 2 bottles" = {bottle_ml * 2}ml
+- "drank 3 bottles" = {bottle_ml * 3}ml
 
 Message: "{message}"
 

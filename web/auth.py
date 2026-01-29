@@ -10,7 +10,7 @@ from datetime import datetime
 from flask import session
 from supabase import Client, create_client
 
-from data import UserRepository
+from data import UserRepository, UserPreferencesRepository
 from config import Config
 
 
@@ -26,6 +26,7 @@ class AuthManager:
         """
         self.supabase = supabase
         self.user_repo = UserRepository(supabase)
+        self.user_prefs_repo = UserPreferencesRepository(supabase)
         self.config = Config()
         
         # Create Supabase client for auth operations
@@ -37,7 +38,7 @@ class AuthManager:
         )
     
     def register_with_email_password(self, email: str, password: str, name: str,
-                                     phone_number: str) -> Tuple[bool, Optional[Dict], Optional[str]]:
+                                     phone_number: str, timezone: Optional[str] = None) -> Tuple[bool, Optional[Dict], Optional[str]]:
         """
         Register a new user with email and password using Supabase Auth
         
@@ -101,8 +102,12 @@ class AuthManager:
                 email=email,
                 password_hash=None,  # No longer needed - Supabase Auth handles passwords
                 name=name,
+                timezone=timezone or 'UTC',
                 auth_user_id=auth_user_id
             )
+
+            # Ensure user preferences row exists
+            self.user_prefs_repo.ensure(user['id'])
             
             # Store user in session (using custom user_id for compatibility)
             session['user_id'] = user['id']
@@ -188,6 +193,9 @@ class AuthManager:
                     name=response.user.user_metadata.get('name', ''),
                     auth_user_id=auth_user_id
                 )
+
+            # Ensure user preferences row exists
+            self.user_prefs_repo.ensure(user['id'])
             
             # Store user in session
             session['user_id'] = user['id']

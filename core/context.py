@@ -78,6 +78,10 @@ class ConversationContext:
                             for log in food_logs)
         total_protein = sum(log.get('protein', 0) * log.get('portion_multiplier', 1.0) 
                            for log in food_logs)
+        total_carbs = sum(log.get('carbs', 0) * log.get('portion_multiplier', 1.0)
+                          for log in food_logs)
+        total_fat = sum(log.get('fat', 0) * log.get('portion_multiplier', 1.0)
+                        for log in food_logs)
         total_water_ml = sum(log.get('amount_ml', 0) for log in water_logs)
         
         # Build summary
@@ -86,7 +90,9 @@ class ConversationContext:
             'food': {
                 'count': len(food_logs),
                 'calories': round(total_calories, 1),
-                'protein': round(total_protein, 1)
+                'protein': round(total_protein, 1),
+                'carbs': round(total_carbs, 1),
+                'fat': round(total_fat, 1),
             },
             'water': {
                 'count': len(water_logs),

@@ -11,8 +11,15 @@ COMMUNICATION_MODE=sms
 # =============================================================================
 # NLP ENGINE CONFIGURATION
 # =============================================================================
-# NLP Engine (Gemini API)
-NLP_ENGINE=gemini
+# NLP Engine (OpenAI primary, Gemini fallback)
+NLP_ENGINE=openai
+
+# OpenAI API Key
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional: OpenAI model selection
+# Default: gpt-4.1-mini
+OPENAI_MODEL=gpt-4.1-mini
 
 # Google Gemini API Key
 # Get your API key from: https://aistudio.google.com/app/apikey

@@ -4,7 +4,7 @@ Classifies user messages into specific intents
 """
 
 from typing import Dict, Optional
-from .gemini_client import GeminiClient
+from .llm_types import LLMClient
 
 
 class IntentClassifier:
@@ -19,14 +19,14 @@ class IntentClassifier:
         'undo_edit', 'confirmation', 'integration_manage', 'unknown'
     ]
     
-    def __init__(self, gemini_client: GeminiClient):
+    def __init__(self, llm_client: LLMClient):
         """
         Initialize intent classifier
         
         Args:
-            gemini_client: GeminiClient instance
+            llm_client: LLM client instance
         """
-        self.client = gemini_client
+        self.client = llm_client
     
     def classify(self, message: str) -> str:
         """

@@ -43,8 +43,106 @@
                         <span>{{ user.timezone or 'UTC' }}</span>
                     </div>
                     <div class="setting-item">
+                        <label>Location:</label>
+                        <span>{{ user.location_name or 'Not set' }}</span>
+                    </div>
+                    <div class="setting-item">
                         <label>Account Created:</label>
                         <span>{{ user.created_at[:10] if user.created_at else 'Unknown' }}</span>
+                    </div>
+                </div>
+
+                <h2>Preferences</h2>
+                <div class="settings-card">
+                    <div class="setting-item">
+                        <label for="pref-units">Units:</label>
+                        <select id="pref-units">
+                            <option value="metric" {% if (prefs.units or 'metric') == 'metric' %}selected{% endif %}>Metric (ml, kg)</option>
+                            <option value="imperial" {% if prefs.units == 'imperial' %}selected{% endif %}>Imperial (oz, lbs)</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>Quiet hours:</label>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                            <input id="pref-quiet-start" type="number" min="0" max="23" value="{{ prefs.quiet_hours_start if prefs.quiet_hours_start is not none else 22 }}" style="width:80px;">
+                            <span>to</span>
+                            <input id="pref-quiet-end" type="number" min="0" max="23" value="{{ prefs.quiet_hours_end if prefs.quiet_hours_end is not none else 8 }}" style="width:80px;">
+                            <span>(0–23)</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="pref-weekly-day">Weekly digest:</label>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                            <select id="pref-weekly-day">
+                                {% set wd = prefs.weekly_digest_day %}
+                                <option value="">Default</option>
+                                <option value="0" {% if wd == 0 %}selected{% endif %}>Monday</option>
+                                <option value="1" {% if wd == 1 %}selected{% endif %}>Tuesday</option>
+                                <option value="2" {% if wd == 2 %}selected{% endif %}>Wednesday</option>
+                                <option value="3" {% if wd == 3 %}selected{% endif %}>Thursday</option>
+                                <option value="4" {% if wd == 4 %}selected{% endif %}>Friday</option>
+                                <option value="5" {% if wd == 5 %}selected{% endif %}>Saturday</option>
+                                <option value="6" {% if wd == 6 %}selected{% endif %}>Sunday</option>
+                            </select>
+                            <input id="pref-weekly-hour" type="number" min="0" max="23" value="{{ prefs.weekly_digest_hour if prefs.weekly_digest_hour is not none else '' }}" placeholder="hour (0–23)" style="width:120px;">
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>Daily goals:</label>
+                        <div style="display:flex; gap:8px; flex-wrap: wrap;">
+                            <input id="goal-water" type="number" placeholder="Water ml" value="{{ prefs.default_water_goal_ml or '' }}" style="width:120px;">
+                            <input id="goal-cal" type="number" placeholder="Calories" value="{{ prefs.default_calories_goal or '' }}" style="width:120px;">
+                            <input id="goal-protein" type="number" placeholder="Protein g" value="{{ prefs.default_protein_goal or '' }}" style="width:120px;">
+                            <input id="goal-carbs" type="number" placeholder="Carbs g" value="{{ prefs.default_carbs_goal or '' }}" style="width:120px;">
+                            <input id="goal-fat" type="number" placeholder="Fat g" value="{{ prefs.default_fat_goal or '' }}" style="width:120px;">
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>Morning text:</label>
+                        <div style="display:flex; gap:12px; flex-wrap: wrap; align-items:center;">
+                            <label style="display:flex; gap:6px; align-items:center;">
+                                <input id="morning-reminders" type="checkbox" {% if prefs.morning_include_reminders is not defined or prefs.morning_include_reminders %}checked{% endif %}>
+                                Reminders/todos
+                            </label>
+                            <label style="display:flex; gap:6px; align-items:center;">
+                                <input id="morning-weather" type="checkbox" {% if prefs.morning_include_weather is not defined or prefs.morning_include_weather %}checked{% endif %}>
+                                Weather
+                            </label>
+                            <label style="display:flex; gap:6px; align-items:center;">
+                                <input id="morning-quote" type="checkbox" {% if prefs.morning_include_quote is not defined or prefs.morning_include_quote %}checked{% endif %}>
+                                Quote
+                            </label>
+                            <label style="display:flex; gap:6px; align-items:center;">
+                                <span>Hour:</span>
+                                <input id="morning-hour" type="number" min="0" max="23" value="{{ user.morning_checkin_hour if user.morning_checkin_hour is not none else '' }}" placeholder="0–23" style="width:90px;">
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <button class="btn-primary" id="save-preferences">Save Preferences</button>
+                        <span id="prefs-status" style="margin-left: 10px;"></span>
+                    </div>
+                </div>
+
+                <h2>Profile</h2>
+                <div class="settings-card">
+                    <div class="setting-item">
+                        <label for="profile-timezone">Timezone:</label>
+                        <input id="profile-timezone" type="text" value="{{ user.timezone or '' }}" placeholder="America/New_York">
+                    </div>
+                    <div class="setting-item">
+                        <label for="profile-location-name">Location (for weather):</label>
+                        <input id="profile-location-name" type="text" value="{{ user.location_name or '' }}" placeholder="Durham, NC">
+                        <button class="btn-secondary" id="use-device-location" style="margin-left: 8px;">Use device location</button>
+                    </div>
+                    <div class="setting-item">
+                        <button class="btn-primary" id="save-profile">Save Profile</button>
+                        <span id="profile-status" style="margin-left: 10px;"></span>
                     </div>
                 </div>
                 
@@ -61,5 +159,97 @@
             </div>
         </div>
     </div>
+
+    <script>
+        async function postJSON(url, payload) {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.success === false) {
+                throw new Error(data.error || 'Request failed');
+            }
+            return data;
+        }
+
+        // Default timezone suggestion (best-effort)
+        try {
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const tzInput = document.getElementById('profile-timezone');
+            if (tzInput && !tzInput.value && tz) tzInput.value = tz;
+        } catch (e) {}
+
+        document.getElementById('save-preferences')?.addEventListener('click', async () => {
+            const status = document.getElementById('prefs-status');
+            status.textContent = 'Saving...';
+            try {
+                const payload = {
+                    units: document.getElementById('pref-units').value,
+                    quiet_hours_start: Number(document.getElementById('pref-quiet-start').value),
+                    quiet_hours_end: Number(document.getElementById('pref-quiet-end').value),
+                    weekly_digest_day: document.getElementById('pref-weekly-day').value === '' ? null : Number(document.getElementById('pref-weekly-day').value),
+                    weekly_digest_hour: document.getElementById('pref-weekly-hour').value === '' ? null : Number(document.getElementById('pref-weekly-hour').value),
+                    default_water_goal_ml: document.getElementById('goal-water').value === '' ? null : Number(document.getElementById('goal-water').value),
+                    default_calories_goal: document.getElementById('goal-cal').value === '' ? null : Number(document.getElementById('goal-cal').value),
+                    default_protein_goal: document.getElementById('goal-protein').value === '' ? null : Number(document.getElementById('goal-protein').value),
+                    default_carbs_goal: document.getElementById('goal-carbs').value === '' ? null : Number(document.getElementById('goal-carbs').value),
+                    default_fat_goal: document.getElementById('goal-fat').value === '' ? null : Number(document.getElementById('goal-fat').value),
+                    morning_include_reminders: document.getElementById('morning-reminders').checked,
+                    morning_include_weather: document.getElementById('morning-weather').checked,
+                    morning_include_quote: document.getElementById('morning-quote').checked,
+                };
+                await postJSON('{{ url_for("dashboard_api_settings_preferences") }}', payload);
+
+                // morning hour lives on user profile
+                const mh = document.getElementById('morning-hour').value;
+                if (mh !== '') {
+                    await postJSON('{{ url_for("dashboard_api_settings_profile") }}', { morning_checkin_hour: Number(mh) });
+                }
+
+                status.textContent = 'Saved.';
+            } catch (e) {
+                status.textContent = 'Error: ' + e.message;
+            }
+        });
+
+        document.getElementById('save-profile')?.addEventListener('click', async () => {
+            const status = document.getElementById('profile-status');
+            status.textContent = 'Saving...';
+            try {
+                const payload = {
+                    timezone: document.getElementById('profile-timezone').value.trim(),
+                    location_name: document.getElementById('profile-location-name').value.trim()
+                };
+                await postJSON('{{ url_for("dashboard_api_settings_profile") }}', payload);
+                status.textContent = 'Saved.';
+            } catch (e) {
+                status.textContent = 'Error: ' + e.message;
+            }
+        });
+
+        document.getElementById('use-device-location')?.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const status = document.getElementById('profile-status');
+            status.textContent = 'Requesting location...';
+            if (!navigator.geolocation) {
+                status.textContent = 'Geolocation not available in this browser.';
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                try {
+                    const lat = pos.coords.latitude;
+                    const lon = pos.coords.longitude;
+                    await postJSON('{{ url_for("dashboard_api_settings_profile") }}', { location_lat: lat, location_lon: lon });
+                    status.textContent = 'Saved device coordinates. (Optional: type a city name too.)';
+                } catch (err) {
+                    status.textContent = 'Error: ' + (err?.message || err);
+                }
+            }, (err) => {
+                status.textContent = 'Location error: ' + (err?.message || err);
+            });
+        });
+    </script>
 </body>
 </html>
