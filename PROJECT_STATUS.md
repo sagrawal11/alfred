@@ -256,6 +256,11 @@ The SMS Assistant project has a modular, scalable design. **All 8 implementation
 - `web/routes.py` - Web routes
 - `web/integrations.py` - Integration routes
 
+### Nutrition + Image Logging (2026)
+- `services/nutrition/` - External nutrition resolver + providers + caching
+- `services/vision/` - OpenAI vision extraction for labels/receipts
+- `supabase_schema_nutrition_pipeline.sql` - Nutrition cache + food log metadata + image uploads schema additions
+
 ### Integrations
 - `integrations/auth.py` - OAuth manager
 - `integrations/sync_manager.py` - Sync orchestration

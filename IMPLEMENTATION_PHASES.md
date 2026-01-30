@@ -201,6 +201,9 @@ I'll update `requirements.txt` in Phase 1, but you can prepare:
 10. ✅ `data/fact_repository.py` - Fact/information recall operations
 11. ✅ `data/__init__.py` - Repository exports
 12. ✅ `tests/test_repositories.py` - Unit tests for repositories
+13. ✅ `data/nutrition_cache_repository.py` - External nutrition cache (2026)
+14. ✅ `data/food_log_metadata_repository.py` - Per-log nutrition metadata (2026)
+15. ✅ `data/food_image_upload_repository.py` - Uploaded food images metadata (2026)
 
 ### What You Need to Do:
 - [x] Nothing! This is all code.
@@ -403,7 +406,7 @@ App runs at `http://localhost:5001` (or the port in `PORT`).
    - **Confirm password**: same
    - **Name** (optional)
    - **Phone** (optional): leave blank for web-only, or use e.g. `+15551234567` for SMS verification.
-4. Submit. You should be redirected to the dashboard (or verify-phone if you added a phone).
+4. Submit. You should be redirected to the dashboard.
 5. If you added a phone: verification code is shown in the **flash message** (and sent via SMS if Twilio is configured). Enter it and verify.
 6. Log out, then **log in** again with the same email/password.
 

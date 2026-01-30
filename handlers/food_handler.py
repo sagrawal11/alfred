@@ -9,7 +9,7 @@ from supabase import Client
 
 from handlers.base_handler import BaseHandler
 from core.context import ConversationContext
-from data import FoodRepository
+from data import FoodRepository, FoodLogMetadataRepository
 
 
 class FoodHandler(BaseHandler):
@@ -18,6 +18,7 @@ class FoodHandler(BaseHandler):
     def __init__(self, supabase: Client, parser, formatter):
         super().__init__(supabase, parser, formatter)
         self.food_repo = FoodRepository(supabase)
+        self.food_meta_repo = FoodLogMetadataRepository(supabase)
     
     def handle(self, message: str, intent: str, entities: Dict, 
                user_id: int, context: ConversationContext) -> Optional[str]:
@@ -66,6 +67,23 @@ class FoodHandler(BaseHandler):
             if not created:
                 print(f"Warning: create_food_log returned None/empty for user {user_id}")
                 return self.formatter.format_error("Failed to save food log")
+
+            # Persist nutrition metadata when available (non-blocking)
+            try:
+                src = food_data.get("nutrition_source")
+                if src:
+                    self.food_meta_repo.create_metadata(
+                        food_log_id=int(created.get("id")),
+                        source=str(src),
+                        confidence=float(food_data.get("nutrition_confidence") or 0.5),
+                        basis=food_data.get("nutrition_basis"),
+                        serving_weight_grams=food_data.get("serving_weight_grams"),
+                        resolved_name=food_data.get("resolved_name"),
+                        raw_query=message,
+                        raw=food_data.get("nutrition_raw"),
+                    )
+            except Exception as e:
+                print(f"Warning: failed to persist food metadata: {e}")
             
             # Invalidate context cache
             context.invalidate_cache()

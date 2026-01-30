@@ -16,7 +16,7 @@ from .database_loader import DatabaseLoader
 class Parser:
     """Parses user messages into structured data"""
     
-    def __init__(self, llm_client: LLMClient, database_loader: DatabaseLoader):
+    def __init__(self, llm_client: LLMClient, database_loader: DatabaseLoader, nutrition_resolver=None):
         """
         Initialize parser
         
@@ -27,6 +27,7 @@ class Parser:
         self.client = llm_client
         self.db_loader = database_loader
         self.water_bottle_size_ml = database_loader.water_bottle_size_ml
+        self.nutrition_resolver = nutrition_resolver
     
     def parse_water_amount(self, message: str, entities: Dict, water_bottle_size_ml: Optional[int] = None) -> Optional[float]:
         """Parse water amount from message"""
@@ -173,6 +174,23 @@ Respond with ONLY valid JSON, no other text."""
                         'restaurant': restaurant or None,
                         'portion_multiplier': food_data.get('portion_multiplier', 1.0)
                     }
+
+                    # External nutrition fallback (only if user didn't explicitly provide macros)
+                    user_provided = any(
+                        food_data.get(k) is not None
+                        for k in ["calories", "protein_g", "carbs_g", "fat_g"]
+                    )
+                    if not user_provided and self.nutrition_resolver is not None:
+                        try:
+                            nut = self.nutrition_resolver.resolve(
+                                query=result.get("food_name") or food_name,
+                                restaurant=restaurant or None,
+                            )
+                            if nut:
+                                # Fill macros if available; do not overwrite if somehow present
+                                result.update({k: v for k, v in nut.to_parser_fields().items() if v is not None})
+                        except Exception as e:
+                            print(f"Nutrition resolver failed: {e}")
                 
                 return result
             return None

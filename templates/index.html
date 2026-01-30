@@ -100,8 +100,8 @@
                 </div>
                 <div class="form-group">
                     <label for="signup-phone">Phone Number:</label>
-                    <input type="tel" id="signup-phone" name="phone_number" placeholder="+1234567890" required>
-                    <small>E.164 format (e.g., +1234567890)</small>
+                    <input type="tel" id="signup-phone" name="phone_number" placeholder="+1 (123) 456-7890" required inputmode="tel" autocomplete="tel">
+                    <small>US numbers only (we’ll format it as you type)</small>
                 </div>
                 <input type="hidden" id="signup-timezone" name="timezone" value="">
                 <button type="submit" class="btn-modal">Register</button>
@@ -207,6 +207,44 @@
             if (tzInput && tz) tzInput.value = tz;
         } catch (e) {}
 
+        // Phone formatting: +1 (123) 456-7890
+        const phoneInput = document.getElementById('signup-phone');
+        function toDigits(s) {
+            return (s || '').replace(/\D/g, '');
+        }
+        function formatUSPhone(digitsRaw) {
+            let d = (digitsRaw || '').slice(0, 11);
+            if (d.startsWith('1')) d = d.slice(1);
+            const a = d.slice(0, 3);
+            const b = d.slice(3, 6);
+            const c = d.slice(6, 10);
+            if (!a) return '+1 ';
+            if (a.length < 3) return `+1 (${a}`;
+            if (!b) return `+1 (${a}) `;
+            if (b.length < 3) return `+1 (${a}) ${b}`;
+            if (!c) return `+1 (${a}) ${b}-`;
+            return `+1 (${a}) ${b}-${c}`;
+        }
+        function toE164US(inputValue) {
+            const digits = toDigits(inputValue);
+            if (!digits) return null;
+            if (digits.length === 10) return `+1${digits}`;
+            if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+            // Some users may paste +1XXXXXXXXXX (digits=11) or formatted variants; handled above.
+            return null;
+        }
+        if (phoneInput) {
+            phoneInput.addEventListener('input', () => {
+                const digits = toDigits(phoneInput.value);
+                phoneInput.value = formatUSPhone(digits);
+            });
+            // If browser autofills, format once on load
+            setTimeout(() => {
+                const digits = toDigits(phoneInput.value);
+                if (digits) phoneInput.value = formatUSPhone(digits);
+            }, 0);
+        }
+
         document.getElementById('signup-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -230,14 +268,14 @@
                 errorDiv.style.display = 'block';
                 return;
             }
-            
-            // Validate phone number format (E.164: starts with +, followed by digits)
-            const phoneRegex = /^\+[1-9]\d{1,14}$/;
-            if (!phoneRegex.test(phone)) {
-                errorDiv.textContent = 'Phone number must be in E.164 format (e.g., +1234567890).';
+
+            const e164 = toE164US(phone);
+            if (!e164) {
+                errorDiv.textContent = 'Please enter a valid US phone number (10 digits).';
                 errorDiv.style.display = 'block';
                 return;
             }
+            formData.set('phone_number', e164);
             
             if (password !== passwordConfirm) {
                 errorDiv.textContent = 'Passwords do not match.';

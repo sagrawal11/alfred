@@ -61,6 +61,35 @@ The `Parser` module contains specialized parsing logic for each domain:
 - Automatic macro calculation (calories, protein, carbs, fat) from restaurant-specific data
 - Portion multiplier detection ("double", "half", "2x")
 
+**Nutrition Resolver (Milestone A):**
+- When the local restaurant JSON database does not match and the user didn’t explicitly provide macros, Alfred falls back to a tiered nutrition resolver.
+- Sources (in order): **USDA FoodData Central** → **Open Food Facts** → **Nutritionix** (if configured). If a restaurant is provided, Nutritionix is tried first.
+- Results are cached in Supabase to reduce repeated external API calls.
+
+Key code:
+- Resolver: `services/nutrition/resolver.py`
+- Providers: `services/nutrition/providers.py`
+- Cache repo: `data/nutrition_cache_repository.py`
+- Food log metadata repo: `data/food_log_metadata_repository.py`
+
+Schema additions:
+- `nutrition_cache` and `food_log_metadata` tables are defined in `supabase_schema_nutrition_pipeline.sql`.
+
+**Dashboard image uploads (Milestone B):**
+- Dashboard can upload images (nutrition labels / receipts / food photos) via `POST /dashboard/api/upload/image` (multipart form-data).
+- Images are stored in **Supabase Storage** (bucket configurable via `FOOD_IMAGE_BUCKET`).
+- Upload metadata is stored in `food_image_uploads` for later processing (Milestone C).
+
+Key code:
+- Route: `web/routes.py`
+- Repo: `data/food_image_upload_repository.py`
+
+Schema additions:
+- `food_image_uploads` table is defined in `supabase_schema_nutrition_pipeline.sql`.
+
+**Guardrails (Milestone D):**
+- Rate limiting via Flask-Limiter is enabled in `app.py` and applied to upload/process/delete endpoints.\n+- Receipt processing skips creating “0 calorie” logs when nutrition can’t be resolved; unresolved items are returned for follow-up.\n+- A deletion endpoint exists for privacy cleanup: `POST /dashboard/api/upload/image/delete`.
+
 **Water Parsing:**
 - Multi-unit support (ml, oz, liters, bottles with configurable bottle size)
 - Implicit quantity inference ("drank a bottle" → 710ml default)

@@ -21,6 +21,10 @@ OPENAI_API_KEY=your_openai_api_key_here
 # Default: gpt-4.1-mini
 OPENAI_MODEL=gpt-4.1-mini
 
+# Optional: OpenAI vision model (used for dashboard image analysis)
+# Default: falls back to OPENAI_MODEL
+OPENAI_VISION_MODEL=gpt-4.1-mini
+
 # Google Gemini API Key
 # Get your API key from: https://aistudio.google.com/app/apikey
 GEMINI_API_KEY=your_gemini_api_key_here
@@ -119,6 +123,34 @@ ENCRYPTION_KEY=your_encryption_key_here
 # Fitbit OAuth (get from https://dev.fitbit.com)
 FITBIT_CLIENT_ID=your_fitbit_client_id_here
 FITBIT_CLIENT_SECRET=your_fitbit_client_secret_here
+
+# =============================================================================
+# NUTRITION APIs (Milestone A)
+# =============================================================================
+# USDA FoodData Central API key (recommended for generic foods + many branded foods)
+# Get a key from: https://fdc.nal.usda.gov/api-guide.html
+USDA_FDC_API_KEY=your_usda_fdc_api_key_here
+
+# Open Food Facts base URL (public API; packaged foods, best with barcode)
+# Default: https://world.openfoodfacts.org
+OPENFOODFACTS_BASE_URL=https://world.openfoodfacts.org
+
+# Nutritionix (optional; great for restaurant/chain/menu-style items)
+# Get keys from: https://developer.nutritionix.com/
+NUTRITIONIX_APP_ID=your_nutritionix_app_id_here
+NUTRITIONIX_API_KEY=your_nutritionix_api_key_here
+
+# Cache TTL for external nutrition lookups (days)
+NUTRITION_CACHE_TTL_DAYS=30
+
+# =============================================================================
+# DASHBOARD IMAGE UPLOADS (Milestone B)
+# =============================================================================
+# Supabase Storage bucket name for uploaded food images (labels/receipts/photos)
+FOOD_IMAGE_BUCKET=food-uploads
+
+# Max upload size in bytes (default ~6MB)
+FOOD_IMAGE_MAX_BYTES=6000000
 
 # Google OAuth (get from Google Cloud Console)
 # Note: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are already defined above for Calendar

@@ -29,6 +29,7 @@ from handlers.integration_handler import IntegrationHandler
 from responses.formatter import ResponseFormatter
 from integrations import IntegrationAuthManager, SyncManager
 from data import IntegrationRepository
+from services.nutrition import NutritionResolver
 
 
 class MessageProcessor:
@@ -48,7 +49,8 @@ class MessageProcessor:
         self.db_loader = DatabaseLoader()
         self.intent_classifier = IntentClassifier(self.llm_client)
         self.entity_extractor = EntityExtractor(self.llm_client)
-        self.parser = Parser(self.llm_client, self.db_loader)
+        self.nutrition_resolver = NutritionResolver(self.supabase)
+        self.parser = Parser(self.llm_client, self.db_loader, nutrition_resolver=self.nutrition_resolver)
         
         # Initialize repositories
         self.user_repo = UserRepository(supabase)

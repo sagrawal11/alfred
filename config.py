@@ -23,6 +23,7 @@ class Config:
     # OpenAI Configuration (primary)
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
     OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
+    OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", os.getenv("OPENAI_MODEL", "gpt-4.1-mini"))
     
     # Google Gemini Configuration (fallback)
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
@@ -85,6 +86,17 @@ class Config:
     
     # Redis Configuration (optional - for caching)
     REDIS_URL = os.getenv('REDIS_URL', '')
+
+    # Nutrition / Food APIs (Milestone A)
+    USDA_FDC_API_KEY = os.getenv("USDA_FDC_API_KEY", "")
+    OPENFOODFACTS_BASE_URL = os.getenv("OPENFOODFACTS_BASE_URL", "https://world.openfoodfacts.org")
+    NUTRITIONIX_APP_ID = os.getenv("NUTRITIONIX_APP_ID", "")
+    NUTRITIONIX_API_KEY = os.getenv("NUTRITIONIX_API_KEY", "")
+    NUTRITION_CACHE_TTL_DAYS = int(os.getenv("NUTRITION_CACHE_TTL_DAYS", 30))
+
+    # Dashboard uploads (Milestone B)
+    FOOD_IMAGE_BUCKET = os.getenv("FOOD_IMAGE_BUCKET", "food-uploads")
+    FOOD_IMAGE_MAX_BYTES = int(os.getenv("FOOD_IMAGE_MAX_BYTES", 6_000_000))  # ~6MB
     
     # Email Configuration (for password reset)
     SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.gmail.com')

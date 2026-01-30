@@ -12,7 +12,8 @@ from .dashboard import DashboardData
 
 
 def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboard_data: DashboardData,
-                        job_scheduler=None, reminder_service=None, sync_service=None, notification_service=None):
+                        job_scheduler=None, reminder_service=None, sync_service=None, notification_service=None,
+                        limiter=None):
     """
     Register all web routes with the Flask app
     
@@ -32,6 +33,14 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 return redirect(url_for('dashboard_login'))
             return f(*args, **kwargs)
         return decorated_function
+
+    def limit(rule: str):
+        """Optional rate limiting wrapper (no-op if limiter not provided)."""
+        if limiter is None:
+            def _noop(fn: Callable) -> Callable:
+                return fn
+            return _noop
+        return limiter.limit(rule)
     
     # ============================================================================
     # Landing Page Route
@@ -89,12 +98,23 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             
             if not phone_number:
                 return jsonify({'error': 'Phone number is required'}), 400
-            
-            # Validate phone number format (E.164)
+
+            # Normalize phone number to E.164 (US-only for now)
+            # Accept: +1XXXXXXXXXX, 1XXXXXXXXXX, XXXXXXXXXX, or formatted like "+1 (123) 456-7890"
             import re
+            digits = re.sub(r'\D', '', phone_number)
+            if len(digits) == 10:
+                phone_number = "+1" + digits
+            elif len(digits) == 11 and digits.startswith("1"):
+                phone_number = "+" + digits
+            elif phone_number.startswith("+") and 1 < len(digits) <= 15:
+                phone_number = "+" + digits
+            else:
+                return jsonify({'error': 'Phone number must be a valid US number (10 digits).'}), 400
+
             phone_regex = re.compile(r'^\+[1-9]\d{1,14}$')
             if not phone_regex.match(phone_number):
-                return jsonify({'error': 'Phone number must be in E.164 format (e.g., +1234567890)'}), 400
+                return jsonify({'error': 'Phone number must be in E.164 format (e.g., +11234567890).'}), 400
             
             if password != password_confirm:
                 return jsonify({'error': 'Passwords do not match'}), 400
@@ -106,61 +126,17 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             success, user, error = auth_manager.register_with_email_password(email, password, name, phone_number, timezone=timezone or None)
             
             if success:
-                # After registration, send phone OTP for verification
-                # Supabase Auth handles the OTP sending automatically
-                otp_sent, otp_error = auth_manager.send_phone_otp(phone_number)
-                if otp_sent:
-                    # Redirect to phone verification page
-                    return jsonify({
-                        'success': True,
-                        'message': 'Registration successful! Please check your phone for verification code.',
-                        'redirect': url_for('dashboard_verify_phone')
-                    }), 200
-                else:
-                    # Registration succeeded but OTP failed - still allow login
-                    return jsonify({
-                        'success': True,
-                        'message': 'Registration successful! You can verify your phone later.',
-                        'redirect': url_for('dashboard_index')
-                    }), 200
+                # Phone verification disabled for now; go straight to dashboard.
+                return jsonify({
+                    'success': True,
+                    'message': 'Registration successful!',
+                    'redirect': url_for('dashboard_index')
+                }), 200
             else:
                 return jsonify({'error': error or 'Registration failed'}), 400
         
         # GET request - redirect to landing page (modals are there)
         return redirect(url_for('landing_page'))
-    
-    @app.route('/dashboard/verify-phone', methods=['GET', 'POST'])
-    @require_login
-    def dashboard_verify_phone():
-        """Phone verification page"""
-        user = auth_manager.get_current_user()
-        
-        if request.method == 'POST':
-            code = request.form.get('code', '').strip()
-            
-            if not code:
-                return render_template('dashboard/verify_phone.html', error='Verification code required')
-            
-            phone_number = user.get('phone_number', '')
-            if not phone_number:
-                return render_template('dashboard/verify_phone.html', error='No phone number found')
-            
-            # Verify OTP with Supabase Auth
-            success, user_dict, error = auth_manager.verify_phone_otp(phone_number, code)
-            
-            if success:
-                flash('Phone number verified successfully!', 'success')
-                return redirect(url_for('dashboard_index'))
-            else:
-                return render_template('dashboard/verify_phone.html', error=error or 'Verification failed')
-        
-        # GET request - show verification form
-        phone_number = user.get('phone_number', '')
-        if not phone_number or str(phone_number).startswith('web-'):
-            flash('No phone number to verify', 'error')
-            return redirect(url_for('dashboard_settings'))
-        
-        return render_template('dashboard/verify_phone.html', phone_number=phone_number)
     
     @app.route('/dashboard/logout')
     def dashboard_logout():
@@ -380,6 +356,343 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 'error': str(e),
                 'error_type': type(e).__name__
             }), 500
+
+    # ============================================================================
+    # Dashboard Uploads (Food images)
+    # ============================================================================
+
+    @app.route('/dashboard/api/upload/image', methods=['POST'])
+    @limit("10 per minute")
+    @require_login
+    def dashboard_api_upload_image():
+        """
+        Upload an image (nutrition label / receipt / food photo) to Supabase Storage and
+        store metadata in the database.
+
+        Expects multipart form-data:
+        - image: file
+        - kind: optional string ('label'|'receipt'|'plated'|'unknown')
+        """
+        user = auth_manager.get_current_user()
+        if not user:
+            return jsonify({'success': False, 'error': 'Not logged in'}), 401
+
+        file = request.files.get('image')
+        if not file:
+            return jsonify({'success': False, 'error': 'Missing image file (form field: image)'}), 400
+
+        kind = (request.form.get('kind', '') or '').strip().lower() or None
+        if kind not in (None, 'label', 'receipt', 'plated', 'unknown'):
+            return jsonify({'success': False, 'error': 'kind must be one of: label, receipt, plated, unknown'}), 400
+
+        # Read bytes (enforce max size)
+        from config import Config
+        max_bytes = int(getattr(Config, 'FOOD_IMAGE_MAX_BYTES', 6_000_000) or 6_000_000)
+        data = file.read()
+        size_bytes = len(data or b'')
+        if size_bytes <= 0:
+            return jsonify({'success': False, 'error': 'Empty file'}), 400
+        if size_bytes > max_bytes:
+            return jsonify({'success': False, 'error': f'File too large (max {max_bytes} bytes)'}), 413
+
+        # Basic content-type allowlist
+        mime_type = (file.mimetype or '').lower()
+        allowed = {'image/jpeg', 'image/png', 'image/webp'}
+        if mime_type not in allowed:
+            return jsonify({'success': False, 'error': f'Unsupported image type: {mime_type}'}), 400
+
+        # Build storage path
+        import uuid
+        import os
+        ext = os.path.splitext(file.filename or '')[1].lower()
+        if ext not in ('.jpg', '.jpeg', '.png', '.webp'):
+            # Fall back based on mime
+            ext = '.jpg' if mime_type == 'image/jpeg' else ('.png' if mime_type == 'image/png' else '.webp')
+
+        bucket = getattr(Config, 'FOOD_IMAGE_BUCKET', 'food-uploads') or 'food-uploads'
+        key = str(uuid.uuid4())
+        path = f"user_{user['id']}/{key}{ext}"
+
+        # Upload to Supabase Storage
+        try:
+            # supabase-py: storage.from_(bucket).upload(path, data, {contentType, upsert})
+            supabase.storage.from_(bucket).upload(
+                path,
+                data,
+                {
+                    'contentType': mime_type,
+                    'upsert': False,
+                },
+            )
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Upload failed: {str(e)}'}), 500
+
+        # Store metadata
+        try:
+            from data import FoodImageUploadRepository
+            repo = FoodImageUploadRepository(supabase)
+            row = repo.create_upload(
+                user_id=int(user['id']),
+                bucket=bucket,
+                path=path,
+                mime_type=mime_type,
+                size_bytes=size_bytes,
+                status='uploaded',
+                kind=kind or 'unknown',
+                original_filename=(file.filename or None),
+            )
+            if not row:
+                return jsonify({'success': False, 'error': 'Upload saved but metadata insert failed'}), 500
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Upload saved but metadata insert failed: {str(e)}'}), 500
+
+        return jsonify({
+            'success': True,
+            'upload_id': row.get('id'),
+            'bucket': bucket,
+            'path': path,
+            'kind': row.get('kind'),
+            'size_bytes': size_bytes,
+            'mime_type': mime_type,
+        })
+
+    @app.route('/dashboard/api/food/image/process', methods=['POST'])
+    @limit("5 per minute")
+    @require_login
+    def dashboard_api_process_food_image():
+        """
+        Process a previously uploaded food image:
+        - create a signed URL from Supabase Storage
+        - run OpenAI vision to extract either a nutrition label or receipt items
+        - insert food_logs entries
+        - store extraction results back on food_image_uploads
+
+        JSON body:
+        - upload_id: integer
+        """
+        user = auth_manager.get_current_user()
+        if not user:
+            return jsonify({'success': False, 'error': 'Not logged in'}), 401
+
+        payload = request.get_json(silent=True) or {}
+        upload_id = payload.get("upload_id")
+        try:
+            upload_id_int = int(upload_id)
+        except Exception:
+            return jsonify({'success': False, 'error': 'upload_id must be an integer'}), 400
+
+        from data import FoodImageUploadRepository, FoodRepository, FoodLogMetadataRepository
+        upload_repo = FoodImageUploadRepository(supabase)
+        food_repo = FoodRepository(supabase)
+        meta_repo = FoodLogMetadataRepository(supabase)
+
+        # Fetch upload row and verify ownership
+        try:
+            row = upload_repo.get_by_id(upload_id_int)
+        except Exception:
+            row = None
+        if not row:
+            return jsonify({'success': False, 'error': 'Upload not found'}), 404
+        if int(row.get("user_id") or -1) != int(user["id"]):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+        bucket = row.get("bucket")
+        path = row.get("path")
+        kind = row.get("kind") or "unknown"
+        if not bucket or not path:
+            return jsonify({'success': False, 'error': 'Upload record missing bucket/path'}), 500
+
+        # Create signed URL for the image (private bucket friendly)
+        try:
+            signed = supabase.storage.from_(bucket).create_signed_url(path, 600)
+            signed_url = None
+            # supabase-py may return dict-like or object-like
+            if isinstance(signed, dict):
+                signed_url = signed.get("signedUrl") or signed.get("signed_url")
+            else:
+                signed_url = getattr(signed, "signedUrl", None) or getattr(signed, "signed_url", None)
+            if not signed_url:
+                return jsonify({'success': False, 'error': 'Failed to generate signed URL'}), 500
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Failed to generate signed URL: {str(e)}'}), 500
+
+        # Run vision extraction
+        try:
+            from services.vision import OpenAIVisionClient
+            vision = OpenAIVisionClient()
+            extracted = vision.analyze_food_image(image_url=signed_url, kind_hint=kind)
+        except Exception as e:
+            # mark as failed
+            try:
+                upload_repo.update(upload_id_int, {"status": "failed", "error": str(e)})
+            except Exception:
+                pass
+            return jsonify({'success': False, 'error': f'Vision analysis failed: {str(e)}'}), 500
+
+        created_logs = []
+        created_meta = []
+        unresolved_items = []
+
+        try:
+            etype = (extracted.get("type") or "unknown").lower()
+            confidence = float(extracted.get("confidence") or 0.5)
+
+            if etype == "label":
+                product_name = extracted.get("product_name") or "nutrition label"
+                per = extracted.get("per_serving") or {}
+                servings = extracted.get("servings_consumed")
+                try:
+                    servings = float(servings) if servings is not None else 1.0
+                except Exception:
+                    servings = 1.0
+
+                created = food_repo.create_food_log(
+                    user_id=int(user["id"]),
+                    food_name=str(product_name),
+                    calories=float(per.get("calories") or 0),
+                    protein=float(per.get("protein_g") or 0),
+                    carbs=float(per.get("carbs_g") or 0),
+                    fat=float(per.get("fat_g") or 0),
+                    restaurant=None,
+                    portion_multiplier=float(servings or 1.0),
+                )
+                created_logs.append(created)
+
+                meta = meta_repo.create_metadata(
+                    food_log_id=int(created.get("id")),
+                    source="label_ocr",
+                    confidence=confidence,
+                    basis="serving",
+                    serving_weight_grams=extracted.get("serving_weight_grams"),
+                    resolved_name=product_name,
+                    raw_query=None,
+                    raw=extracted,
+                )
+                if meta:
+                    created_meta.append(meta)
+
+            elif etype == "receipt":
+                merchant = extracted.get("merchant")
+                items = extracted.get("items") or []
+
+                # Resolve each item via nutrition resolver
+                from services.nutrition import NutritionResolver
+                resolver = NutritionResolver(supabase)
+
+                for it in items[:25]:
+                    name = (it.get("name") or "").strip()
+                    if not name:
+                        continue
+                    qty = it.get("quantity")
+                    try:
+                        qty_f = float(qty) if qty is not None else 1.0
+                    except Exception:
+                        qty_f = 1.0
+                    if qty_f <= 0:
+                        qty_f = 1.0
+
+                    nut = resolver.resolve(query=name, restaurant=merchant)
+                    if not nut or (
+                        (nut.calories is None)
+                        and (nut.protein_g is None)
+                        and (nut.carbs_g is None)
+                        and (nut.fat_g is None)
+                    ):
+                        unresolved_items.append({"name": name, "quantity": qty_f})
+                        continue
+
+                    calories = float(nut.calories or 0)
+                    protein = float(nut.protein_g or 0)
+                    carbs = float(nut.carbs_g or 0)
+                    fat = float(nut.fat_g or 0)
+                    source = nut.source
+                    conf = float(nut.confidence)
+
+                    created = food_repo.create_food_log(
+                        user_id=int(user["id"]),
+                        food_name=name,
+                        calories=calories,
+                        protein=protein,
+                        carbs=carbs,
+                        fat=fat,
+                        restaurant=merchant,
+                        portion_multiplier=qty_f,
+                    )
+                    created_logs.append(created)
+
+                    meta = meta_repo.create_metadata(
+                        food_log_id=int(created.get("id")),
+                        source=source,
+                        confidence=conf,
+                        basis=(nut.basis if nut else None),
+                        serving_weight_grams=(nut.serving_weight_grams if nut else None),
+                        resolved_name=(nut.resolved_name if nut else None),
+                        raw_query=name,
+                        raw={"upload_extraction": extracted, "resolved": (nut.raw if nut else None)},
+                    )
+                    if meta:
+                        created_meta.append(meta)
+
+            # Update upload record
+            upload_repo.update(upload_id_int, {"status": "processed", "extracted": extracted, "error": None})
+        except Exception as e:
+            try:
+                upload_repo.update(upload_id_int, {"status": "failed", "extracted": extracted, "error": str(e)})
+            except Exception:
+                pass
+            return jsonify({'success': False, 'error': f'Failed to create food logs: {str(e)}', 'extracted': extracted}), 500
+
+        return jsonify({
+            "success": True,
+            "upload_id": upload_id_int,
+            "extracted": extracted,
+            "created_logs": [{"id": r.get("id"), "food_name": r.get("food_name")} for r in created_logs],
+            "unresolved_items": unresolved_items,
+        })
+
+    @app.route('/dashboard/api/upload/image/delete', methods=['POST'])
+    @limit("10 per minute")
+    @require_login
+    def dashboard_api_delete_uploaded_image():
+        """
+        Delete an uploaded image and its metadata (privacy cleanup).
+        JSON body:
+        - upload_id: integer
+        """
+        user = auth_manager.get_current_user()
+        if not user:
+            return jsonify({'success': False, 'error': 'Not logged in'}), 401
+
+        payload = request.get_json(silent=True) or {}
+        upload_id = payload.get("upload_id")
+        try:
+            upload_id_int = int(upload_id)
+        except Exception:
+            return jsonify({'success': False, 'error': 'upload_id must be an integer'}), 400
+
+        from data import FoodImageUploadRepository
+        repo = FoodImageUploadRepository(supabase)
+        row = repo.get_by_id(upload_id_int)
+        if not row:
+            return jsonify({'success': False, 'error': 'Upload not found'}), 404
+        if int(row.get("user_id") or -1) != int(user["id"]):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+        bucket = row.get("bucket")
+        path = row.get("path")
+        try:
+            if bucket and path:
+                supabase.storage.from_(bucket).remove([path])
+        except Exception:
+            # continue even if storage deletion fails (user can retry)
+            pass
+
+        try:
+            supabase.table("food_image_uploads").delete().eq("id", upload_id_int).execute()
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Failed to delete metadata: {str(e)}'}), 500
+
+        return jsonify({'success': True, 'deleted': True})
     
     # ============================================================================
     # Dashboard API Routes (JSON endpoints)

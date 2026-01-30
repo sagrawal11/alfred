@@ -26,6 +26,14 @@ app = Flask(__name__)
 app.config.from_object(Config)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 
+# Rate limiting (Milestone D)
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"])
+except Exception:
+    limiter = None
+
 # Initialize configuration
 config = Config()
 if not config.SUPABASE_URL or not config.SUPABASE_KEY:
@@ -64,7 +72,7 @@ notification_service = NotificationService(supabase, config, communication_servi
 
 # Register web routes
 register_web_routes(app, supabase, auth_manager, dashboard_data,
-                    job_scheduler, reminder_service, sync_service, notification_service)
+                    job_scheduler, reminder_service, sync_service, notification_service, limiter=limiter)
 
 # Register integration routes
 register_integration_routes(app, supabase, auth_manager, integration_repo,

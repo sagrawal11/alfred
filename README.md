@@ -97,7 +97,7 @@ Optional but powerful. The system reads your calendar and shows events alongside
 
 ### Custom Food Database
 
-Log meals with automatic macro tracking from your custom food database. Same food from different restaurants? Different macros. The system handles portion multipliers, restaurant-specific entries, and learns your eating patterns.
+Log meals with automatic macro tracking from your custom food database. If an item isn’t in your local restaurant JSONs, Alfred can fall back to external nutrition sources (USDA FoodData Central, Open Food Facts, and Nutritionix when configured) and caches results to reduce repeat lookups.
 
 ### Assignment Tracking
 
@@ -123,6 +123,9 @@ Track school assignments with class names and due dates. Text "CS101 homework 3 
 - `"drank a bottle"` → Logs water, shows daily total and goal progress
 - `"ate sazon quesadilla"` → Logs food with macros from your database
 - `"did bench press 135x5"` → Logs workout with all details
+
+**Dashboard uploads (labels/receipts):**
+- Upload a nutrition label or receipt screenshot in the dashboard to auto-log meals (uses OpenAI vision + nutrition lookups).
 
 **Tasks:**
 - `"remind me to call mom at 3pm"` → Sets time-based reminder

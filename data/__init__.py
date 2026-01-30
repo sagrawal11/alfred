@@ -15,6 +15,9 @@ from .assignment_repository import AssignmentRepository
 from .fact_repository import FactRepository
 from .integration_repository import IntegrationRepository
 from .user_preferences_repository import UserPreferencesRepository
+from .nutrition_cache_repository import NutritionCacheRepository
+from .food_log_metadata_repository import FoodLogMetadataRepository
+from .food_image_upload_repository import FoodImageUploadRepository
 
 __all__ = [
     'BaseRepository',
@@ -29,4 +32,7 @@ __all__ = [
     'FactRepository',
     'IntegrationRepository',
     'UserPreferencesRepository',
+    'NutritionCacheRepository',
+    'FoodLogMetadataRepository',
+    'FoodImageUploadRepository',
 ]

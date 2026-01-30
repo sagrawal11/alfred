@@ -32,9 +32,6 @@
                     <div class="setting-item">
                         <label>Phone Number:</label>
                         <span>{{ user.phone_number or 'Not set' }}</span>
-                        {% if user.phone_number and not user.get('phone_verified') %}
-                            <a href="{{ url_for('dashboard_verify_phone') }}" class="btn-link">Verify Phone</a>
-                        {% endif %}
                     </div>
                     <div class="setting-item">
                         <label>Name:</label>
