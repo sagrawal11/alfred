@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trends - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Butler:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='Alfred.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='Alfred.png') }}">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-logo" href="{{ url_for('dashboard_index') }}">
+                <img src="{{ url_for('static', filename='Alfred.png') }}" alt="Alfred" class="sidebar-logo-img">
+                <span class="sidebar-logo-text">Alfred</span>
+            </a>
+
+            <nav class="sidebar-nav">
+                <a class="sidebar-link {% if active_page == 'trends' %}active{% endif %}" href="{{ url_for('dashboard_trends') }}">Trends</a>
+                <a class="sidebar-link {% if active_page == 'integrations' %}active{% endif %}" href="{{ url_for('dashboard_integrations') }}">Integrations</a>
+                <a class="sidebar-link {% if active_page == 'preferences' %}active{% endif %}" href="{{ url_for('dashboard_preferences') }}">Preferences</a>
+                <a class="sidebar-link {% if active_page == 'pricing' %}active{% endif %}" href="{{ url_for('dashboard_pricing') }}">Pricing</a>
+                <a class="sidebar-link {% if active_page == 'chat' %}active{% endif %}" href="{{ url_for('dashboard_chat') }}">Chat Test</a>
+                <a class="sidebar-link {% if active_page == 'test_jobs' %}active{% endif %}" href="{{ url_for('dashboard_test') }}">Test Jobs</a>
+            </nav>
+
+            <div class="sidebar-spacer"></div>
+
+            <div class="sidebar-footer">
+                <button class="profile-button" id="profile-button" type="button">
+                    <div class="profile-name">{{ (user.name or user.email or 'Profile') }}</div>
+                    <div class="profile-meta">Profile</div>
+                </button>
+                <div class="profile-menu" id="profile-menu">
+                    <a href="{{ url_for('dashboard_settings') }}">Settings</a>
+                    <a href="{{ url_for('dashboard_logout') }}">Log out</a>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <div class="dashboard-container">
+                <header class="dashboard-header">
+                    <h1>Trends</h1>
+                </header>
+
+                <div class="dashboard-content trends-content">
+                    <div class="trends-page">
+                        <!-- Full-width graph -->
+                        <div class="settings-card trends-graph-card">
+                            <div class="trends-graph-header">
+                                <div class="trends-graph-title">Trend graph</div>
+                                <div class="trends-graph-meta" id="trends-graph-meta">Past 7 days • Calories</div>
+                            </div>
+                            <div class="trends-graph-canvas-wrap">
+                                <canvas id="trends-chart" height="110"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Controls row: timeframe dropdown on left, metric buttons on right -->
+                        <div class="settings-card trends-controls-card">
+                            <div class="trends-controls">
+                                <div class="trends-timeframe">
+                                    <label for="trend-timeframe">Timeframe</label>
+                                    <select id="trend-timeframe">
+                                        <option value="7d" selected>Past 7 days</option>
+                                        <option value="14d">Past 2 weeks</option>
+                                        <option value="1m">Past 1 month</option>
+                                        <option value="1y">Past 1 year</option>
+                                    </select>
+                                </div>
+
+                                <div class="trends-metric-buttons" id="trends-metric-buttons">
+                                    <button class="btn-trend active" type="button" data-metric="sleep">Sleep</button>
+                                    <button class="btn-trend" type="button" data-metric="water">Water</button>
+                                    <button class="btn-trend" type="button" data-metric="calories">Calories</button>
+                                    <button class="btn-trend" type="button" data-metric="protein">Protein</button>
+                                    <button class="btn-trend" type="button" data-metric="carbs">Carbs</button>
+                                    <button class="btn-trend" type="button" data-metric="fat">Fat</button>
+                                    <button class="btn-trend" type="button" data-metric="todos">Todos</button>
+                                    <button class="btn-trend" type="button" data-metric="workouts">Workouts</button>
+                                    <button class="btn-trend" type="button" data-metric="messages">Messages</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card-based log -->
+                        <div class="settings-card trends-log-card">
+                            <div class="trends-log-header">
+                                <h2 style="margin:0; color: var(--bw-fg);">Activity log</h2>
+                                <p style="margin:0.35rem 0 0 0; color: var(--bw-muted);">
+                                    Each entry you log will appear here with metadata (date/time/source).
+                                </p>
+                            </div>
+
+                            <div id="trends-log" class="trends-log">
+                                <div class="trends-log-empty">
+                                    No entries yet.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+            <script>
+                // Trends UI (real series from backend)
+                (function () {
+                    const meta = document.getElementById('trends-graph-meta');
+                    const timeframe = document.getElementById('trend-timeframe');
+                    const buttonsWrap = document.getElementById('trends-metric-buttons');
+                    const canvas = document.getElementById('trends-chart');
+                    const logEl = document.getElementById('trends-log');
+                    if (!meta || !timeframe || !buttonsWrap || !canvas || !window.Chart) return;
+
+                    function timeframeLabel(v) {
+                        if (v === '7d') return 'Past 7 days';
+                        if (v === '14d') return 'Past 2 weeks';
+                        if (v === '1m') return 'Past 1 month';
+                        if (v === '1y') return 'Past 1 year';
+                        return 'Past 7 days';
+                    }
+
+                    function xAxisLabel(tf) {
+                        return tf === '1y' ? 'Month' : 'Day';
+                    }
+
+                    function metricTitle(metric) {
+                        if (metric === 'todos') return 'Todos';
+                        if (metric === 'workouts') return 'Workouts';
+                        if (metric === 'messages') return 'Messages';
+                        return metric.charAt(0).toUpperCase() + metric.slice(1);
+                    }
+
+                    function yAxisLabel(metric) {
+                        if (metric === 'water') return 'Water (ml)';
+                        if (metric === 'calories') return 'Calories (kcal)';
+                        if (metric === 'protein') return 'Protein (g)';
+                        if (metric === 'carbs') return 'Carbs (g)';
+                        if (metric === 'fat') return 'Fat (g)';
+                        if (metric === 'sleep') return 'Sleep (hours)';
+                        if (metric === 'todos') return 'Todos';
+                        if (metric === 'workouts') return 'Workouts';
+                        if (metric === 'messages') return 'Messages sent';
+                        return metricTitle(metric);
+                    }
+
+                    function buildLabels(tf) {
+                        const n = tf === '14d' ? 14 : tf === '1m' ? 30 : tf === '1y' ? 12 : 7;
+                        if (tf === '1y') return Array.from({ length: 12 }, (_, i) => `M${i + 1}`);
+                        return Array.from({ length: n }, (_, i) => `D${i + 1}`);
+                    }
+
+                    let currentMetric = 'sleep';
+                    let currentTf = timeframe.value || '7d';
+                    let labels = buildLabels(currentTf);
+
+                    const chart = new Chart(canvas, {
+                        type: 'line',
+                        data: {
+                            labels,
+                            datasets: [{
+                                label: 'Sleep',
+                                data: new Array(labels.length).fill(0),
+                                borderColor: '#000',
+                                backgroundColor: 'rgba(0,0,0,0.06)',
+                                tension: 0.35,
+                                pointRadius: 2,
+                                pointHoverRadius: 3,
+                                fill: true,
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: { enabled: true },
+                            },
+                            scales: {
+                                x: {
+                                    grid: { color: 'rgba(0,0,0,0.08)' },
+                                    ticks: { color: '#000' },
+                                    title: { display: true, text: xAxisLabel(currentTf), color: '#000', font: { weight: '700' } }
+                                },
+                                y: {
+                                    grid: { color: 'rgba(0,0,0,0.08)' },
+                                    ticks: { color: '#000' },
+                                    title: { display: true, text: yAxisLabel(currentMetric), color: '#000', font: { weight: '700' } }
+                                }
+                            }
+                        }
+                    });
+
+                    async function loadSeries(tf, metric) {
+                        meta.textContent = `Loading…`;
+                        try {
+                            const res = await fetch(`/dashboard/api/trends/series?timeframe=${encodeURIComponent(tf)}&metric=${encodeURIComponent(metric)}`);
+                            const data = await res.json();
+                            if (!res.ok || data.success === false) throw new Error(data.error || 'Failed to load series');
+
+                            const labels = data.labels || [];
+                            const values = data.values || [];
+
+                            chart.data.labels = labels;
+                            chart.data.datasets[0].data = values;
+                            chart.data.datasets[0].label = metricTitle(metric);
+                            chart.options.scales.x.title.text = xAxisLabel(tf);
+                            chart.options.scales.y.title.text = yAxisLabel(metric);
+                            chart.update();
+
+                            meta.textContent = `${timeframeLabel(tf)} • ${metricTitle(metric)}`;
+                        } catch (e) {
+                            // If the API fails, keep chart but make it obvious it's empty
+                            chart.data.labels = buildLabels(tf);
+                            chart.data.datasets[0].data = new Array(chart.data.labels.length).fill(0);
+                            chart.update();
+                            meta.textContent = `No data yet • ${metricTitle(metric)}`;
+                        }
+                    }
+
+                    async function loadActivityLog(tf, metric) {
+                        if (!logEl) return;
+                        logEl.innerHTML = `<div class="trends-log-empty">Loading activity…</div>`;
+                        try {
+                            const res = await fetch(`/dashboard/api/trends/activity?timeframe=${encodeURIComponent(tf)}&metric=${encodeURIComponent(metric)}`);
+                            const data = await res.json();
+                            if (!res.ok || data.success === false) throw new Error(data.error || 'Failed to load activity');
+
+                            const items = data.items || [];
+                            if (items.length === 0) {
+                                logEl.innerHTML = `<div class="trends-log-empty">No entries yet.</div>`;
+                                return;
+                            }
+
+                            const html = items.map((it) => {
+                                const ts = it.timestamp ? new Date(it.timestamp) : null;
+                                const when = ts && !isNaN(ts.getTime())
+                                    ? ts.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+                                    : (it.timestamp || '');
+                                return `
+                                    <div class="trends-log-item">
+                                        <div>
+                                            <div class="trends-log-item-title">${(it.title || 'Entry')}</div>
+                                            <div class="trends-log-item-subtitle">${(it.subtitle || '')}</div>
+                                        </div>
+                                        <div class="trends-log-item-meta">${when}</div>
+                                    </div>
+                                `;
+                            }).join('');
+
+                            logEl.innerHTML = html;
+                        } catch (e) {
+                            logEl.innerHTML = `<div class="trends-log-empty">Error loading activity: ${e.message}</div>`;
+                        }
+                    }
+
+                    function setActiveMetric(metric) {
+                        currentMetric = metric;
+                        buttonsWrap.querySelectorAll('button').forEach((b) => {
+                            b.classList.toggle('active', b.dataset.metric === metric);
+                        });
+                        const title = metricTitle(metric);
+                        meta.textContent = `${timeframeLabel(currentTf)} • ${title}`;
+                        loadSeries(currentTf, metric);
+                        loadActivityLog(currentTf, metric);
+                    }
+
+                    function setTimeframe(tf) {
+                        currentTf = tf;
+                        chart.options.scales.x.title.text = xAxisLabel(tf);
+                        loadSeries(tf, currentMetric);
+                        loadActivityLog(tf, currentMetric);
+                    }
+
+                    buttonsWrap.addEventListener('click', (e) => {
+                        const btn = e.target?.closest?.('button[data-metric]');
+                        if (!btn) return;
+                        setActiveMetric(btn.dataset.metric);
+                    });
+
+                    timeframe.addEventListener('change', () => setTimeframe(timeframe.value));
+
+                    setTimeframe(currentTf);
+                    setActiveMetric('calories');
+                })();
+
+                // Profile dropdown
+                (function () {
+                    const btn = document.getElementById('profile-button');
+                    const menu = document.getElementById('profile-menu');
+                    if (!btn || !menu) return;
+                    btn.addEventListener('click', () => menu.classList.toggle('open'));
+                    window.addEventListener('click', (e) => {
+                        if (!menu.classList.contains('open')) return;
+                        if (btn.contains(e.target) || menu.contains(e.target)) return;
+                        menu.classList.remove('open');
+                    });
+                })();
+            </script>
+        </main>
+    </div>
+</body>
+</html>

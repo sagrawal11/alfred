@@ -12,7 +12,38 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='Alfred.png') }}">
 </head>
 <body>
-    <div class="dashboard-container">
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-logo" href="{{ url_for('dashboard_index') }}">
+                <img src="{{ url_for('static', filename='Alfred.png') }}" alt="Alfred" class="sidebar-logo-img">
+                <span class="sidebar-logo-text">Alfred</span>
+            </a>
+
+            <nav class="sidebar-nav">
+                <a class="sidebar-link {% if active_page == 'trends' %}active{% endif %}" href="{{ url_for('dashboard_trends') }}">Trends</a>
+                <a class="sidebar-link {% if active_page == 'integrations' %}active{% endif %}" href="{{ url_for('dashboard_integrations') }}">Integrations</a>
+                <a class="sidebar-link {% if active_page == 'preferences' %}active{% endif %}" href="{{ url_for('dashboard_preferences') }}">Preferences</a>
+                <a class="sidebar-link {% if active_page == 'pricing' %}active{% endif %}" href="{{ url_for('dashboard_pricing') }}">Pricing</a>
+                <a class="sidebar-link {% if active_page == 'chat' %}active{% endif %}" href="{{ url_for('dashboard_chat') }}">Chat Test</a>
+                <a class="sidebar-link {% if active_page == 'test_jobs' %}active{% endif %}" href="{{ url_for('dashboard_test') }}">Test Jobs</a>
+            </nav>
+
+            <div class="sidebar-spacer"></div>
+
+            <div class="sidebar-footer">
+                <button class="profile-button" id="profile-button" type="button">
+                    <div class="profile-name">{{ (user.name or user.email or 'Profile') }}</div>
+                    <div class="profile-meta">Profile</div>
+                </button>
+                <div class="profile-menu" id="profile-menu">
+                    <a href="{{ url_for('dashboard_settings') }}">Settings</a>
+                    <a href="{{ url_for('dashboard_logout') }}">Log out</a>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <div class="dashboard-container">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, msg in messages %}
@@ -22,13 +53,6 @@
         {% endwith %}
         <header class="dashboard-header">
             <h1>Activity Dashboard</h1>
-            <div class="header-actions">
-                <a href="{{ url_for('dashboard_integrations') }}" class="btn-secondary">🔗 Integrations</a>
-                <a href="{{ url_for('dashboard_settings') }}" class="btn-secondary">⚙️ Settings</a>
-                <a href="{{ url_for('dashboard_chat') }}" class="btn-secondary">💬 Chat Test</a>
-                <a href="{{ url_for('dashboard_test') }}" class="btn-secondary">🧪 Test Jobs</a>
-                <a href="{{ url_for('dashboard_logout') }}" class="btn-logout">Logout</a>
-            </div>
         </header>
         
         <div class="dashboard-content">
@@ -45,19 +69,6 @@
                 <div id="stats-panel" class="stats-panel">
                     <p class="placeholder-text">Click on a date to view stats</p>
                 </div>
-                
-                <div class="trends-section">
-                    <h3>Trends</h3>
-                    <div class="trend-buttons">
-                        <button class="btn-trend" data-days="7">7 Days</button>
-                        <button class="btn-trend" data-days="30">30 Days</button>
-                        <button class="btn-trend" data-days="90">90 Days</button>
-                    </div>
-                    <p class="trends-hint">Click a date on the calendar, then select a time period to view trends ending on that date</p>
-                    <div id="trends-display" class="trends-display">
-                        <p class="placeholder-text">Select a time period to view trends</p>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -65,8 +76,6 @@
     <script>
         let currentDate = new Date();
         let selectedDate = null;
-        let selectedTrendDays = null;
-        let selectedTrendEndDate = null;
         
         // Month names
         const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -109,20 +118,6 @@
             document.getElementById('next-month').addEventListener('click', () => {
                 currentDate.setMonth(currentDate.getMonth() + 1);
                 renderCalendar();
-            });
-            
-            // Trend buttons - now require clicking a date first (or use today)
-            document.querySelectorAll('.btn-trend').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const days = parseInt(btn.dataset.days);
-                    // Use selected date or today as end date
-                    const endDate = selectedDate || getTodayString();
-                    if (isFutureDate(endDate)) {
-                        alert('Cannot select future dates');
-                        return;
-                    }
-                    selectTrendRange(days, endDate);
-                });
             });
         }
         
@@ -187,59 +182,6 @@
                 grid.appendChild(dayElement);
             }
             
-            // Apply range highlighting if a trend range is selected
-            if (selectedTrendDays && selectedTrendEndDate) {
-                highlightTrendRange(selectedTrendDays, selectedTrendEndDate);
-            }
-        }
-        
-        function highlightTrendRange(days, endDateStr) {
-            const endDate = parseLocalDate(endDateStr);
-            const startDate = new Date(endDate);
-            startDate.setDate(startDate.getDate() - (days - 1));
-            
-            // Normalize dates to compare just the date part (ignore time)
-            const startDateStr = startDate.getFullYear() + '-' + 
-                                String(startDate.getMonth() + 1).padStart(2, '0') + '-' + 
-                                String(startDate.getDate()).padStart(2, '0');
-            const endDateStrNormalized = endDateStr;
-            
-            document.querySelectorAll('.calendar-day').forEach(dayEl => {
-                const dateStr = dayEl.dataset.date;
-                if (!dateStr || dayEl.classList.contains('empty')) return;
-                
-                const date = parseLocalDate(dateStr);
-                if (date >= startDate && date <= endDate && !dayEl.classList.contains('future')) {
-                    dayEl.classList.add('in-range');
-                    
-                    // Add special styling for first and last dates
-                    if (dateStr === startDateStr) {
-                        dayEl.classList.add('range-start');
-                    }
-                    if (dateStr === endDateStrNormalized) {
-                        dayEl.classList.add('range-end');
-                    }
-                }
-            });
-        }
-        
-        function selectTrendRange(days, endDate) {
-            selectedTrendDays = days;
-            selectedTrendEndDate = endDate;
-            
-            // Update active button
-            document.querySelectorAll('.btn-trend').forEach(btn => {
-                btn.classList.remove('active');
-                if (parseInt(btn.dataset.days) === days) {
-                    btn.classList.add('active');
-                }
-            });
-            
-            // Re-render calendar to show range highlighting
-            renderCalendar();
-            
-            // Load trends
-            loadTrends(days, endDate);
         }
         
         function selectDate(date) {
@@ -248,11 +190,6 @@
             }
             
             selectedDate = date;
-            
-            // Clear trend selection
-            selectedTrendDays = null;
-            selectedTrendEndDate = null;
-            document.querySelectorAll('.btn-trend').forEach(btn => btn.classList.remove('active'));
             
             // Update selected state
             document.querySelectorAll('.calendar-day').forEach(day => {
@@ -266,9 +203,6 @@
             
             // Load stats for this date
             loadDateStats(date);
-            
-            // Clear trends display
-            document.getElementById('trends-display').innerHTML = '<p class="placeholder-text">Select a time period to view trends</p>';
         }
         
         async function loadDateStats(date) {
@@ -447,42 +381,26 @@
             panel.innerHTML = html;
         }
         
-        async function loadTrends(days, endDate) {
-            const display = document.getElementById('trends-display');
-            display.innerHTML = '<p>Loading...</p>';
-            
-            try {
-                // Include end_date parameter if provided
-                const url = endDate ? `/dashboard/api/trends/${days}?end_date=${endDate}` : `/dashboard/api/trends/${days}`;
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error('Failed to load trends');
-                }
-                
-                const data = await response.json();
-                displayTrends(data, days);
-            } catch (error) {
-                display.innerHTML = `<p class="error">Error loading trends: ${error.message}</p>`;
-            }
-        }
-        
-        function displayTrends(data, days) {
-            const display = document.getElementById('trends-display');
-            let html = `<h4>${days}-Day Summary</h4>`;
-            html += `<p class="date-range">${data.date_range}</p>`;
-            html += '<div class="trend-metrics">';
-            html += `<div class="trend-metric"><span class="metric-label">Water (avg):</span> <span class="metric-value">${Math.round(data.water_avg_ml)}ml/day</span></div>`;
-            html += `<div class="trend-metric"><span class="metric-label">Calories (avg):</span> <span class="metric-value">${Math.round(data.calories_avg)}/day</span></div>`;
-            html += `<div class="trend-metric"><span class="metric-label">Gym days:</span> <span class="metric-value">${data.gym_days}</span></div>`;
-            html += `<div class="trend-metric"><span class="metric-label">Todo completion:</span> <span class="metric-value">${data.todo_completion_rate.toFixed(1)}%</span></div>`;
-            html += '</div>';
-            
-            display.innerHTML = html;
-        }
-        
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', initCalendar);
+
+        // Profile dropdown
+        (function () {
+            const btn = document.getElementById('profile-button');
+            const menu = document.getElementById('profile-menu');
+            if (!btn || !menu) return;
+            btn.addEventListener('click', () => {
+                menu.classList.toggle('open');
+            });
+            window.addEventListener('click', (e) => {
+                if (!menu.classList.contains('open')) return;
+                if (btn.contains(e.target) || menu.contains(e.target)) return;
+                menu.classList.remove('open');
+            });
+        })();
     </script>
+</main>
+</div>
 </body>
 </html>
 

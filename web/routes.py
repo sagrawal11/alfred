@@ -129,7 +129,6 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 # Phone verification disabled for now; go straight to dashboard.
                 return jsonify({
                     'success': True,
-                    'message': 'Registration successful!',
                     'redirect': url_for('dashboard_index')
                 }), 200
             else:
@@ -142,7 +141,6 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     def dashboard_logout():
         """Logout"""
         auth_manager.logout()
-        flash('Logged out successfully', 'success')
         return redirect(url_for('dashboard_login'))
     
     @app.route('/dashboard/forgot-password', methods=['GET', 'POST'])
@@ -203,12 +201,20 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     @require_login
     def dashboard_index():
         """Main dashboard"""
-        return render_template('dashboard/index.html')
+        user = auth_manager.get_current_user()
+        return render_template('dashboard/index.html', user=user, active_page='dashboard')
     
     @app.route('/dashboard/settings')
     @require_login
     def dashboard_settings():
         """Settings page"""
+        user = auth_manager.get_current_user()
+        return render_template('dashboard/settings.html', user=user, active_page='settings')
+
+    @app.route('/dashboard/preferences')
+    @require_login
+    def dashboard_preferences():
+        """Preferences page"""
         user = auth_manager.get_current_user()
         try:
             from data import UserPreferencesRepository
@@ -216,7 +222,21 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             prefs = prefs_repo.ensure(user['id']) if user else {}
         except Exception:
             prefs = {}
-        return render_template('dashboard/settings.html', user=user, prefs=prefs)
+        return render_template('dashboard/preferences.html', user=user, prefs=prefs, active_page='preferences')
+
+    @app.route('/dashboard/trends')
+    @require_login
+    def dashboard_trends():
+        """Trends page (UI to be refined later)."""
+        user = auth_manager.get_current_user()
+        return render_template('dashboard/trends.html', user=user, active_page='trends')
+
+    @app.route('/dashboard/pricing')
+    @require_login
+    def dashboard_pricing():
+        """Pricing page (placeholder plans; details TBD)."""
+        user = auth_manager.get_current_user()
+        return render_template('dashboard/pricing.html', user=user, active_page='pricing')
 
     @app.route('/dashboard/api/settings/profile', methods=['POST'])
     @require_login
@@ -314,7 +334,8 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     @require_login
     def dashboard_chat():
         """Chat test page"""
-        return render_template('dashboard/chat.html')
+        user = auth_manager.get_current_user()
+        return render_template('dashboard/chat.html', user=user, active_page='chat')
     
     @app.route('/dashboard/api/chat', methods=['POST'])
     @require_login
@@ -763,6 +784,365 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         if data.get('error'):
             return jsonify(data), 500
         return jsonify(data)
+
+    @app.route('/dashboard/api/trends/activity')
+    @require_login
+    def dashboard_api_trends_activity():
+        """
+        Activity log for Trends page.
+        Query params:
+        - timeframe: '7d' | '14d' | '1m' | '1y' (preferred)
+        - days: int (fallback)
+        """
+        from datetime import date, timedelta, datetime
+
+        user = auth_manager.get_current_user()
+        tf = (request.args.get('timeframe') or '').strip()
+        metric = (request.args.get('metric') or '').strip()
+        days_q = request.args.get('days')
+
+        days = 7
+        if tf == '14d':
+            days = 14
+        elif tf == '1m':
+            days = 30
+        elif tf == '1y':
+            days = 365
+        elif tf == '7d':
+            days = 7
+        elif days_q:
+            try:
+                days = max(1, min(365, int(days_q)))
+            except Exception:
+                days = 7
+
+        end_d = date.today()
+        start_d = end_d - timedelta(days=days - 1)
+        start_date = start_d.isoformat()
+        end_date = end_d.isoformat()
+
+        def _safe_iso(dt_str: str) -> str:
+            if not dt_str:
+                return ''
+            return str(dt_str).replace(' ', 'T')
+
+        def _dt_key(dt_str: str):
+            if not dt_str:
+                return datetime.min
+            s = str(dt_str)
+            if len(s) == 10:  # YYYY-MM-DD
+                s = s + "T00:00:00"
+            s = s.replace("Z", "+00:00")
+            try:
+                return datetime.fromisoformat(s)
+            except Exception:
+                return datetime.min
+
+        items = []
+        allowed_metrics = {'sleep', 'water', 'calories', 'protein', 'carbs', 'fat', 'todos', 'workouts', 'messages'}
+        metric = metric if metric in allowed_metrics else ''
+
+        def _metric_allows(t: str) -> bool:
+            if not metric:
+                return True
+            if metric in {'calories', 'protein', 'carbs', 'fat'}:
+                return t == 'food'
+            if metric == 'water':
+                return t == 'water'
+            if metric == 'sleep':
+                return t == 'sleep'
+            if metric == 'workouts':
+                return t == 'workout'
+            if metric == 'todos':
+                return t in {'todo', 'reminder'}
+            if metric == 'messages':
+                return t == 'message'
+            return True
+
+        try:
+            food_logs = dashboard_data.food_repo.get_by_date_range(int(user['id']), start_date, end_date)
+            for log in (food_logs or []):
+                ts = _safe_iso(log.get('timestamp'))
+                kcal = log.get('calories')
+                pm = float(log.get('portion_multiplier') or 1.0)
+                title = (log.get('food_name') or 'Food').strip()
+                subtitle_parts = []
+                if kcal is not None:
+                    try:
+                        subtitle_parts.append(f"{int(float(kcal) * pm)} cal")
+                    except Exception:
+                        subtitle_parts.append(f"{kcal} cal")
+                rest = log.get('restaurant')
+                if rest:
+                    subtitle_parts.append(str(rest))
+                items.append({
+                    "type": "food",
+                    "timestamp": ts,
+                    "title": title,
+                    "subtitle": " • ".join(subtitle_parts) if subtitle_parts else "Food log",
+                })
+        except Exception:
+            pass
+
+        try:
+            water_logs = dashboard_data.water_repo.get_by_date_range(int(user['id']), start_date, end_date)
+            for log in (water_logs or []):
+                ts = _safe_iso(log.get('timestamp'))
+                amt = log.get('amount_ml')
+                subtitle = f"{amt} ml" if amt is not None else "Water log"
+                items.append({
+                    "type": "water",
+                    "timestamp": ts,
+                    "title": "Water",
+                    "subtitle": subtitle,
+                })
+        except Exception:
+            pass
+
+        try:
+            gym_logs = dashboard_data.gym_repo.get_by_date_range(int(user['id']), start_date, end_date)
+            for log in (gym_logs or []):
+                ts = _safe_iso(log.get('timestamp'))
+                ex = (log.get('exercise') or 'Workout').strip()
+                sets = log.get('sets')
+                reps = log.get('reps')
+                weight = log.get('weight')
+                parts = []
+                if sets and reps:
+                    parts.append(f"{sets}×{reps}")
+                elif sets:
+                    parts.append(f"{sets} sets")
+                if weight is not None and weight != '':
+                    parts.append(f"@ {weight}")
+                items.append({
+                    "type": "workout",
+                    "timestamp": ts,
+                    "title": ex,
+                    "subtitle": " • ".join(parts) if parts else "Workout log",
+                })
+        except Exception:
+            pass
+
+        try:
+            sleep_logs = dashboard_data.sleep_repo.get_by_date_range(int(user['id']), start_date, end_date)
+            for log in (sleep_logs or []):
+                d = log.get('date') or ''
+                wake = log.get('wake_time') or '00:00:00'
+                ts = _safe_iso(f"{d}T{wake}") if d else ''
+                dur = log.get('duration_hours')
+                subtitle = f"{dur} hours" if dur is not None else "Sleep log"
+                items.append({
+                    "type": "sleep",
+                    "timestamp": ts,
+                    "title": "Sleep",
+                    "subtitle": subtitle,
+                })
+        except Exception:
+            pass
+
+        try:
+            # Todos/reminders: show items created in range (timestamp) + completions in range (completed_at)
+            start_ts = f"{start_date}T00:00:00"
+            end_ts = f"{end_date}T23:59:59.999999"
+            q = supabase.table("reminders_todos").select("*").eq("user_id", int(user["id"]))\
+                .gte("timestamp", start_ts).lte("timestamp", end_ts).order("timestamp", desc=True).limit(200)
+            res = q.execute()
+            for log in (res.data or []):
+                ts = _safe_iso(log.get('timestamp'))
+                ttype = (log.get('type') or 'todo')
+                title = "Reminder" if ttype == 'reminder' else "Todo"
+                content = (log.get('content') or '').strip()
+                items.append({
+                    "type": ttype,
+                    "timestamp": ts,
+                    "title": title,
+                    "subtitle": content or title,
+                })
+        except Exception:
+            pass
+
+        if metric == 'messages' or metric == '':
+            try:
+                start_ts = f"{start_date}T00:00:00"
+                end_ts = f"{end_date}T23:59:59.999999"
+                res = supabase.table("message_log").select("processed_at,message_body").eq("user_id", int(user["id"]))\
+                    .gte("processed_at", start_ts).lte("processed_at", end_ts).order("processed_at", desc=True).limit(200).execute()
+                for m in (res.data or []):
+                    ts = _safe_iso(m.get("processed_at"))
+                    body = (m.get("message_body") or "").strip()
+                    items.append({
+                        "type": "message",
+                        "timestamp": ts,
+                        "title": "Message to Alfred",
+                        "subtitle": body[:140] if body else "Message",
+                    })
+            except Exception:
+                pass
+
+        items = [it for it in items if _metric_allows(it.get("type") or "")]
+        items.sort(key=lambda it: _dt_key(it.get("timestamp")), reverse=True)
+        items = items[:200]
+
+        return jsonify({
+            "success": True,
+            "start_date": start_date,
+            "end_date": end_date,
+            "days": days,
+            "items": items,
+        })
+
+    @app.route('/dashboard/api/trends/series')
+    @require_login
+    def dashboard_api_trends_series():
+        """
+        Time-series data for Trends chart.
+        Query params:
+        - timeframe: '7d' | '14d' | '1m' | '1y'
+        - metric: 'sleep' | 'water' | 'calories' | 'protein' | 'carbs' | 'fat' | 'todos' | 'workouts' | 'messages'
+        """
+        from datetime import date, timedelta, datetime
+        from calendar import month_abbr
+
+        user = auth_manager.get_current_user()
+        tf = (request.args.get('timeframe') or '7d').strip()
+        metric = (request.args.get('metric') or 'calories').strip()
+
+        allowed_metrics = {'sleep', 'water', 'calories', 'protein', 'carbs', 'fat', 'todos', 'workouts', 'messages'}
+        if metric not in allowed_metrics:
+            return jsonify({'success': False, 'error': 'Invalid metric'}), 400
+
+        # timeframe -> days (for day-based charts)
+        days = 7
+        if tf == '14d':
+            days = 14
+        elif tf == '1m':
+            days = 30
+        elif tf == '1y':
+            days = 365
+        else:
+            tf = '7d'
+            days = 7
+
+        end_d = date.today()
+        start_d = end_d - timedelta(days=days - 1)
+
+        def _safe_dt(s: str):
+            if not s:
+                return None
+            try:
+                s2 = str(s).replace(" ", "T").replace("Z", "+00:00")
+                if len(s2) == 10:
+                    s2 += "T00:00:00"
+                return datetime.fromisoformat(s2)
+            except Exception:
+                return None
+
+        # Preload message counts if needed
+        msg_counts_by_date = {}
+        msg_counts_by_month = {}
+        if metric == 'messages':
+            try:
+                start_ts = f"{start_d.isoformat()}T00:00:00"
+                end_ts = f"{end_d.isoformat()}T23:59:59.999999"
+                res = supabase.table("message_log").select("processed_at").eq("user_id", int(user["id"]))\
+                    .gte("processed_at", start_ts).lte("processed_at", end_ts).execute()
+                for r in (res.data or []):
+                    dt = _safe_dt(r.get("processed_at"))
+                    if not dt:
+                        continue
+                    dkey = dt.date().isoformat()
+                    msg_counts_by_date[dkey] = msg_counts_by_date.get(dkey, 0) + 1
+                    mkey = f"{dt.year:04d}-{dt.month:02d}"
+                    msg_counts_by_month[mkey] = msg_counts_by_month.get(mkey, 0) + 1
+            except Exception:
+                pass
+
+        # 1y uses 12 monthly buckets for readability
+        if tf == '1y':
+            labels = []
+            values = []
+            # last 12 months inclusive
+            y = end_d.year
+            m = end_d.month
+            months = []
+            for _ in range(12):
+                months.append((y, m))
+                m -= 1
+                if m == 0:
+                    m = 12
+                    y -= 1
+            months.reverse()
+
+            for (yy, mm) in months:
+                labels.append(f"{month_abbr[mm]} {yy}")
+                if metric == 'messages':
+                    values.append(int(msg_counts_by_month.get(f"{yy:04d}-{mm:02d}", 0)))
+                    continue
+
+                # For other metrics, sum daily values across the month using get_date_stats
+                try:
+                    from calendar import monthrange
+                    last_day = monthrange(yy, mm)[1]
+                    total = 0.0
+                    for day in range(1, last_day + 1):
+                        d = date(yy, mm, day)
+                        s = dashboard_data.get_date_stats(int(user["id"]), d.isoformat())
+                        if s.get("error"):
+                            continue
+                        if metric == 'sleep':
+                            total += float(((s.get('sleep') or {}).get('total_hours') or 0))
+                        elif metric == 'water':
+                            total += float(((s.get('water') or {}).get('total_ml') or 0))
+                        elif metric == 'calories':
+                            total += float(((s.get('food') or {}).get('total_calories') or 0))
+                        elif metric == 'protein':
+                            total += float(((s.get('food') or {}).get('total_protein') or 0))
+                        elif metric == 'carbs':
+                            total += float(((s.get('food') or {}).get('total_carbs') or 0))
+                        elif metric == 'fat':
+                            total += float(((s.get('food') or {}).get('total_fat') or 0))
+                        elif metric == 'todos':
+                            total += float(((s.get('todos') or {}).get('completed') or 0))
+                        elif metric == 'workouts':
+                            total += float(((s.get('gym') or {}).get('workout_count') or 0))
+                    values.append(total)
+                except Exception:
+                    values.append(0)
+
+            return jsonify({"success": True, "timeframe": tf, "metric": metric, "labels": labels, "values": values})
+
+        # day-based series
+        labels = []
+        values = []
+        for i in range(days):
+            d = start_d + timedelta(days=i)
+            d_iso = d.isoformat()
+            labels.append(d_iso)
+            if metric == 'messages':
+                values.append(int(msg_counts_by_date.get(d_iso, 0)))
+                continue
+            s = dashboard_data.get_date_stats(int(user["id"]), d_iso)
+            if s.get('error'):
+                values.append(0)
+                continue
+            if metric == 'sleep':
+                values.append(float(((s.get('sleep') or {}).get('total_hours') or 0)))
+            elif metric == 'water':
+                values.append(float(((s.get('water') or {}).get('total_ml') or 0)))
+            elif metric == 'calories':
+                values.append(float(((s.get('food') or {}).get('total_calories') or 0)))
+            elif metric == 'protein':
+                values.append(float(((s.get('food') or {}).get('total_protein') or 0)))
+            elif metric == 'carbs':
+                values.append(float(((s.get('food') or {}).get('total_carbs') or 0)))
+            elif metric == 'fat':
+                values.append(float(((s.get('food') or {}).get('total_fat') or 0)))
+            elif metric == 'todos':
+                values.append(float(((s.get('todos') or {}).get('completed') or 0)))
+            elif metric == 'workouts':
+                values.append(float(((s.get('gym') or {}).get('workout_count') or 0)))
+
+        return jsonify({"success": True, "timeframe": tf, "metric": metric, "labels": labels, "values": values})
     
     # ============================================================================
     # Legacy Routes (for existing templates)
@@ -791,7 +1171,8 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     @require_login
     def dashboard_test():
         """Testing page for background jobs"""
-        return render_template('dashboard/test.html')
+        user = auth_manager.get_current_user()
+        return render_template('dashboard/test.html', user=user, active_page='test_jobs')
     
     @app.route('/dashboard/api/test/jobs', methods=['GET'])
     @require_login

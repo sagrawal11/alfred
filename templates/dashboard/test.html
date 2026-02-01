@@ -119,16 +119,42 @@
     </style>
 </head>
 <body>
-    <div class="dashboard-container">
-        <header class="dashboard-header">
-            <h1>Background Jobs Testing</h1>
-            <div class="header-actions">
-                <a href="{{ url_for('dashboard_index') }}" class="btn-secondary">← Back to Dashboard</a>
-                <a href="{{ url_for('dashboard_chat') }}" class="btn-secondary">Chat Interface</a>
-                <a href="{{ url_for('dashboard_logout') }}" class="btn-logout">Logout</a>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-logo" href="{{ url_for('dashboard_index') }}">
+                <img src="{{ url_for('static', filename='Alfred.png') }}" alt="Alfred" class="sidebar-logo-img">
+                <span class="sidebar-logo-text">Alfred</span>
+            </a>
+
+            <nav class="sidebar-nav">
+                <a class="sidebar-link {% if active_page == 'trends' %}active{% endif %}" href="{{ url_for('dashboard_trends') }}">Trends</a>
+                <a class="sidebar-link {% if active_page == 'integrations' %}active{% endif %}" href="{{ url_for('dashboard_integrations') }}">Integrations</a>
+                <a class="sidebar-link {% if active_page == 'preferences' %}active{% endif %}" href="{{ url_for('dashboard_preferences') }}">Preferences</a>
+                <a class="sidebar-link {% if active_page == 'pricing' %}active{% endif %}" href="{{ url_for('dashboard_pricing') }}">Pricing</a>
+                <a class="sidebar-link {% if active_page == 'chat' %}active{% endif %}" href="{{ url_for('dashboard_chat') }}">Chat Test</a>
+                <a class="sidebar-link {% if active_page == 'test_jobs' %}active{% endif %}" href="{{ url_for('dashboard_test') }}">Test Jobs</a>
+            </nav>
+
+            <div class="sidebar-spacer"></div>
+
+            <div class="sidebar-footer">
+                <button class="profile-button" id="profile-button" type="button">
+                    <div class="profile-name">{{ (user.name or user.email or 'Profile') }}</div>
+                    <div class="profile-meta">Profile</div>
+                </button>
+                <div class="profile-menu" id="profile-menu">
+                    <a href="{{ url_for('dashboard_settings') }}">Settings</a>
+                    <a href="{{ url_for('dashboard_logout') }}">Log out</a>
+                </div>
             </div>
-        </header>
-        
+        </aside>
+
+        <main class="main-area">
+            <div class="dashboard-container">
+                <header class="dashboard-header">
+                    <h1>Test Jobs</h1>
+                </header>
+
         <div class="test-section">
             <h2>Scheduler Status</h2>
             <div id="scheduler-status">
@@ -270,6 +296,24 @@
         
         // Refresh every 30 seconds
         setInterval(loadJobStatus, 30000);
+
+        // Profile dropdown
+        (function () {
+            const btn = document.getElementById('profile-button');
+            const menu = document.getElementById('profile-menu');
+            if (!btn || !menu) return;
+            btn.addEventListener('click', () => {
+                menu.classList.toggle('open');
+            });
+            window.addEventListener('click', (e) => {
+                if (!menu.classList.contains('open')) return;
+                if (btn.contains(e.target) || menu.contains(e.target)) return;
+                menu.classList.remove('open');
+            });
+        })();
     </script>
+</div>
+</main>
+</div>
 </body>
 </html>

@@ -45,20 +45,28 @@ class DashboardData:
             Dictionary with stats for that date
         """
         try:
+            def _num(x, default: float = 0.0) -> float:
+                if x is None or x == '':
+                    return default
+                try:
+                    return float(x)
+                except Exception:
+                    return default
+
             # Parse date
             target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
             date_iso = target_date.isoformat()
             
             # Get food logs
             food_logs = self.food_repo.get_by_date(user_id, date_iso)
-            total_calories = sum(log.get('calories', 0) or 0 for log in food_logs)
-            total_protein = sum(log.get('protein', 0) or 0 for log in food_logs)
-            total_carbs = sum(log.get('carbs', 0) or 0 for log in food_logs)
-            total_fat = sum(log.get('fat', 0) or 0 for log in food_logs)
+            total_calories = sum(_num(log.get('calories')) for log in food_logs)
+            total_protein = sum(_num(log.get('protein')) for log in food_logs)
+            total_carbs = sum(_num(log.get('carbs')) for log in food_logs)
+            total_fat = sum(_num(log.get('fat')) for log in food_logs)
             
             # Get water logs
             water_logs = self.water_repo.get_by_date(user_id, date_iso)
-            total_water_ml = sum(log.get('amount_ml', 0) or 0 for log in water_logs)
+            total_water_ml = sum(_num(log.get('amount_ml')) for log in water_logs)
             total_water_liters = round(total_water_ml / 1000, 2)
 
             # User's bottle size (fallback 500ml for display)
@@ -80,8 +88,14 @@ class DashboardData:
             total_todos = len(todos)
             
             # Get sleep logs
-            sleep_logs = self.sleep_repo.get_by_date(user_id, date_iso)
-            total_sleep_hours = sum(log.get('duration_hours', 0) or 0 for log in sleep_logs)
+            # SleepRepository.get_by_date returns a single record (dict) or None
+            sleep_log = self.sleep_repo.get_by_date(user_id, date_iso)
+            if isinstance(sleep_log, dict):
+                total_sleep_hours = _num(sleep_log.get('duration_hours'))
+                sleep_sessions = 1
+            else:
+                total_sleep_hours = 0.0
+                sleep_sessions = 0
             
             # Get assignments
             assignments = self.assignment_repo.get_by_date(user_id, date_iso)
@@ -113,7 +127,7 @@ class DashboardData:
                 },
                 'sleep': {
                     'total_hours': round(total_sleep_hours, 1),
-                    'sessions': len(sleep_logs)
+                    'sessions': sleep_sessions
                 },
                 'assignments': {
                     'completed': completed_assignments,

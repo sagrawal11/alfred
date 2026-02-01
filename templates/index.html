@@ -298,10 +298,7 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    // Success - show message and redirect
-                    if (data.message) {
-                        alert(data.message);
-                    }
+                    // Success - redirect to dashboard
                     window.location.href = data.redirect || '/dashboard';
                 } else {
                     // Error - show error message

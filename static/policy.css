@@ -94,7 +94,7 @@ body {
 
 .policy-section code {
     color: #000000;
-    font-family: 'Courier New', monospace;
+    font-family: inherit;
     font-size: 0.95em;
     padding: 0.15em 0.4em;
     border-radius: 6px;
@@ -145,7 +145,7 @@ body {
     color: #000000;
     font-size: 1.2rem;
     font-weight: 600;
-    font-family: 'Courier New', monospace;
+    font-family: inherit;
     letter-spacing: 2px;
 }
 

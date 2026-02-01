@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Butler:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='Alfred.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='Alfred.png') }}">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-logo" href="{{ url_for('dashboard_index') }}">
+                <img src="{{ url_for('static', filename='Alfred.png') }}" alt="Alfred" class="sidebar-logo-img">
+                <span class="sidebar-logo-text">Alfred</span>
+            </a>
+
+            <nav class="sidebar-nav">
+                <a class="sidebar-link {% if active_page == 'trends' %}active{% endif %}" href="{{ url_for('dashboard_trends') }}">Trends</a>
+                <a class="sidebar-link {% if active_page == 'integrations' %}active{% endif %}" href="{{ url_for('dashboard_integrations') }}">Integrations</a>
+                <a class="sidebar-link {% if active_page == 'preferences' %}active{% endif %}" href="{{ url_for('dashboard_preferences') }}">Preferences</a>
+                <a class="sidebar-link {% if active_page == 'pricing' %}active{% endif %}" href="{{ url_for('dashboard_pricing') }}">Pricing</a>
+                <a class="sidebar-link {% if active_page == 'chat' %}active{% endif %}" href="{{ url_for('dashboard_chat') }}">Chat Test</a>
+                <a class="sidebar-link {% if active_page == 'test_jobs' %}active{% endif %}" href="{{ url_for('dashboard_test') }}">Test Jobs</a>
+            </nav>
+
+            <div class="sidebar-spacer"></div>
+
+            <div class="sidebar-footer">
+                <button class="profile-button" id="profile-button" type="button">
+                    <div class="profile-name">{{ (user.name or user.email or 'Profile') }}</div>
+                    <div class="profile-meta">Profile</div>
+                </button>
+                <div class="profile-menu" id="profile-menu">
+                    <a href="{{ url_for('dashboard_settings') }}">Settings</a>
+                    <a href="{{ url_for('dashboard_logout') }}">Log out</a>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <div class="dashboard-container">
+                <header class="dashboard-header">
+                    <h1>Pricing</h1>
+                </header>
+
+                <div class="dashboard-content pricing-content">
+                    <div class="pricing-page">
+                        <div class="settings-card pricing-header-card">
+                            <h2 style="margin:0; color: var(--bw-fg);">Choose your plan</h2>
+                            <p style="margin:0.5rem 0 0 0; color: var(--bw-muted);">
+                                We’ll finalize plan details later. This page is just the polished structure.
+                            </p>
+                        </div>
+
+                        <div class="pricing-grid">
+                            <div class="settings-card plan-card">
+                                <div class="plan-top">
+                                    <h3 class="plan-name">Starter</h3>
+                                    <div class="plan-price">TBD</div>
+                                </div>
+                                <ul class="plan-features">
+                                    <li>Core SMS assistant</li>
+                                    <li>Basic logging</li>
+                                    <li>Weekly summary</li>
+                                </ul>
+                                <button class="btn-primary plan-cta" type="button" disabled>Coming soon</button>
+                            </div>
+
+                            <div class="settings-card plan-card plan-featured">
+                                <div class="plan-top">
+                                    <h3 class="plan-name">Pro</h3>
+                                    <div class="plan-price">TBD</div>
+                                </div>
+                                <ul class="plan-features">
+                                    <li>Everything in Starter</li>
+                                    <li>Advanced trends</li>
+                                    <li>Priority support</li>
+                                </ul>
+                                <button class="btn-primary plan-cta" type="button" disabled>Coming soon</button>
+                            </div>
+
+                            <div class="settings-card plan-card">
+                                <div class="plan-top">
+                                    <h3 class="plan-name">Team</h3>
+                                    <div class="plan-price">TBD</div>
+                                </div>
+                                <ul class="plan-features">
+                                    <li>Shared accountability</li>
+                                    <li>Admin controls</li>
+                                    <li>Usage analytics</li>
+                                </ul>
+                                <button class="btn-primary plan-cta" type="button" disabled>Coming soon</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                // Profile dropdown
+                (function () {
+                    const btn = document.getElementById('profile-button');
+                    const menu = document.getElementById('profile-menu');
+                    if (!btn || !menu) return;
+                    btn.addEventListener('click', () => menu.classList.toggle('open'));
+                    window.addEventListener('click', (e) => {
+                        if (!menu.classList.contains('open')) return;
+                        if (btn.contains(e.target) || menu.contains(e.target)) return;
+                        menu.classList.remove('open');
+                    });
+                })();
+            </script>
+        </main>
+    </div>
+</body>
+</html>
+

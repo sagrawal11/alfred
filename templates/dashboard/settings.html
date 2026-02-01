@@ -12,150 +12,129 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='Alfred.png') }}">
 </head>
 <body>
-    <div class="dashboard-container">
-        <header class="dashboard-header">
-            <h1>Settings</h1>
-            <div class="header-actions">
-                <a href="{{ url_for('dashboard_index') }}" class="btn-secondary">← Back to Dashboard</a>
-                <a href="{{ url_for('dashboard_logout') }}" class="btn-logout">Logout</a>
-            </div>
-        </header>
-        
-        <div class="dashboard-content">
-            <div class="settings-section">
-                <h2>Account Information</h2>
-                <div class="settings-card">
-                    <div class="setting-item">
-                        <label>Email:</label>
-                        <span>{{ user.email or 'Not set' }}</span>
-                    </div>
-                    <div class="setting-item">
-                        <label>Phone Number:</label>
-                        <span>{{ user.phone_number or 'Not set' }}</span>
-                    </div>
-                    <div class="setting-item">
-                        <label>Name:</label>
-                        <span>{{ user.name or 'Not set' }}</span>
-                    </div>
-                    <div class="setting-item">
-                        <label>Timezone:</label>
-                        <span>{{ user.timezone or 'UTC' }}</span>
-                    </div>
-                    <div class="setting-item">
-                        <label>Location:</label>
-                        <span>{{ user.location_name or 'Not set' }}</span>
-                    </div>
-                    <div class="setting-item">
-                        <label>Account Created:</label>
-                        <span>{{ user.created_at[:10] if user.created_at else 'Unknown' }}</span>
-                    </div>
-                </div>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-logo" href="{{ url_for('dashboard_index') }}">
+                <img src="{{ url_for('static', filename='Alfred.png') }}" alt="Alfred" class="sidebar-logo-img">
+                <span class="sidebar-logo-text">Alfred</span>
+            </a>
 
-                <h2>Preferences</h2>
-                <div class="settings-card">
-                    <div class="setting-item">
-                        <label for="pref-units">Units:</label>
-                        <select id="pref-units">
-                            <option value="metric" {% if (prefs.units or 'metric') == 'metric' %}selected{% endif %}>Metric (ml, kg)</option>
-                            <option value="imperial" {% if prefs.units == 'imperial' %}selected{% endif %}>Imperial (oz, lbs)</option>
-                        </select>
-                    </div>
+            <nav class="sidebar-nav">
+                <a class="sidebar-link {% if active_page == 'trends' %}active{% endif %}" href="{{ url_for('dashboard_trends') }}">Trends</a>
+                <a class="sidebar-link {% if active_page == 'integrations' %}active{% endif %}" href="{{ url_for('dashboard_integrations') }}">Integrations</a>
+                <a class="sidebar-link {% if active_page == 'preferences' %}active{% endif %}" href="{{ url_for('dashboard_preferences') }}">Preferences</a>
+                <a class="sidebar-link {% if active_page == 'pricing' %}active{% endif %}" href="{{ url_for('dashboard_pricing') }}">Pricing</a>
+                <a class="sidebar-link {% if active_page == 'chat' %}active{% endif %}" href="{{ url_for('dashboard_chat') }}">Chat Test</a>
+                <a class="sidebar-link {% if active_page == 'test_jobs' %}active{% endif %}" href="{{ url_for('dashboard_test') }}">Test Jobs</a>
+            </nav>
 
-                    <div class="setting-item">
-                        <label>Quiet hours:</label>
-                        <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
-                            <input id="pref-quiet-start" type="number" min="0" max="23" value="{{ prefs.quiet_hours_start if prefs.quiet_hours_start is not none else 22 }}" style="width:80px;">
-                            <span>to</span>
-                            <input id="pref-quiet-end" type="number" min="0" max="23" value="{{ prefs.quiet_hours_end if prefs.quiet_hours_end is not none else 8 }}" style="width:80px;">
-                            <span>(0–23)</span>
-                        </div>
-                    </div>
+            <div class="sidebar-spacer"></div>
 
-                    <div class="setting-item">
-                        <label for="pref-weekly-day">Weekly digest:</label>
-                        <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
-                            <select id="pref-weekly-day">
-                                {% set wd = prefs.weekly_digest_day %}
-                                <option value="">Default</option>
-                                <option value="0" {% if wd == 0 %}selected{% endif %}>Monday</option>
-                                <option value="1" {% if wd == 1 %}selected{% endif %}>Tuesday</option>
-                                <option value="2" {% if wd == 2 %}selected{% endif %}>Wednesday</option>
-                                <option value="3" {% if wd == 3 %}selected{% endif %}>Thursday</option>
-                                <option value="4" {% if wd == 4 %}selected{% endif %}>Friday</option>
-                                <option value="5" {% if wd == 5 %}selected{% endif %}>Saturday</option>
-                                <option value="6" {% if wd == 6 %}selected{% endif %}>Sunday</option>
-                            </select>
-                            <input id="pref-weekly-hour" type="number" min="0" max="23" value="{{ prefs.weekly_digest_hour if prefs.weekly_digest_hour is not none else '' }}" placeholder="hour (0–23)" style="width:120px;">
-                        </div>
-                    </div>
-
-                    <div class="setting-item">
-                        <label>Daily goals:</label>
-                        <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                            <input id="goal-water" type="number" placeholder="Water ml" value="{{ prefs.default_water_goal_ml or '' }}" style="width:120px;">
-                            <input id="goal-cal" type="number" placeholder="Calories" value="{{ prefs.default_calories_goal or '' }}" style="width:120px;">
-                            <input id="goal-protein" type="number" placeholder="Protein g" value="{{ prefs.default_protein_goal or '' }}" style="width:120px;">
-                            <input id="goal-carbs" type="number" placeholder="Carbs g" value="{{ prefs.default_carbs_goal or '' }}" style="width:120px;">
-                            <input id="goal-fat" type="number" placeholder="Fat g" value="{{ prefs.default_fat_goal or '' }}" style="width:120px;">
-                        </div>
-                    </div>
-
-                    <div class="setting-item">
-                        <label>Morning text:</label>
-                        <div style="display:flex; gap:12px; flex-wrap: wrap; align-items:center;">
-                            <label style="display:flex; gap:6px; align-items:center;">
-                                <input id="morning-reminders" type="checkbox" {% if prefs.morning_include_reminders is not defined or prefs.morning_include_reminders %}checked{% endif %}>
-                                Reminders/todos
-                            </label>
-                            <label style="display:flex; gap:6px; align-items:center;">
-                                <input id="morning-weather" type="checkbox" {% if prefs.morning_include_weather is not defined or prefs.morning_include_weather %}checked{% endif %}>
-                                Weather
-                            </label>
-                            <label style="display:flex; gap:6px; align-items:center;">
-                                <input id="morning-quote" type="checkbox" {% if prefs.morning_include_quote is not defined or prefs.morning_include_quote %}checked{% endif %}>
-                                Quote
-                            </label>
-                            <label style="display:flex; gap:6px; align-items:center;">
-                                <span>Hour:</span>
-                                <input id="morning-hour" type="number" min="0" max="23" value="{{ user.morning_checkin_hour if user.morning_checkin_hour is not none else '' }}" placeholder="0–23" style="width:90px;">
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="setting-item">
-                        <button class="btn-primary" id="save-preferences">Save Preferences</button>
-                        <span id="prefs-status" style="margin-left: 10px;"></span>
-                    </div>
-                </div>
-
-                <h2>Profile</h2>
-                <div class="settings-card">
-                    <div class="setting-item">
-                        <label for="profile-timezone">Timezone:</label>
-                        <input id="profile-timezone" type="text" value="{{ user.timezone or '' }}" placeholder="America/New_York">
-                    </div>
-                    <div class="setting-item">
-                        <label for="profile-location-name">Location (for weather):</label>
-                        <input id="profile-location-name" type="text" value="{{ user.location_name or '' }}" placeholder="Durham, NC">
-                        <button class="btn-secondary" id="use-device-location" style="margin-left: 8px;">Use device location</button>
-                    </div>
-                    <div class="setting-item">
-                        <button class="btn-primary" id="save-profile">Save Profile</button>
-                        <span id="profile-status" style="margin-left: 10px;"></span>
-                    </div>
-                </div>
-                
-                <h2>Password</h2>
-                <div class="settings-card">
-                    <a href="{{ url_for('dashboard_forgot_password') }}" class="btn-primary">Change Password</a>
-                </div>
-                
-                <h2>Danger Zone</h2>
-                <div class="settings-card danger-zone">
-                    <p class="warning-text">⚠️ Deleting your account will permanently remove all your data.</p>
-                    <button class="btn-danger" onclick="alert('Account deletion not yet implemented')">Delete Account</button>
+            <div class="sidebar-footer">
+                <button class="profile-button" id="profile-button" type="button">
+                    <div class="profile-name">{{ (user.name or user.email or 'Profile') }}</div>
+                    <div class="profile-meta">Profile</div>
+                </button>
+                <div class="profile-menu" id="profile-menu">
+                    <a href="{{ url_for('dashboard_settings') }}">Settings</a>
+                    <a href="{{ url_for('dashboard_logout') }}">Log out</a>
                 </div>
             </div>
+        </aside>
+
+        <main class="main-area">
+            <div class="dashboard-container">
+                <header class="dashboard-header">
+                    <h1>Settings</h1>
+                </header>
+
+                <div class="dashboard-content settings-content">
+                    <div class="settings-page">
+                        <div class="settings-grid">
+                            <section class="settings-block">
+                                <h2>Profile</h2>
+                                <div class="settings-card">
+                                    <div class="settings-field">
+                                        <label for="profile-name">Name</label>
+                                        <input id="profile-name" type="text" value="{{ user.name or '' }}" placeholder="Your name">
+                                    </div>
+
+                                    <div class="settings-field">
+                                        <label for="profile-timezone">Timezone</label>
+                                        <input id="profile-timezone" type="text" value="{{ user.timezone or '' }}" placeholder="America/New_York">
+                                    </div>
+
+                                    <div class="settings-field">
+                                        <label for="profile-location-name">Location (for weather)</label>
+                                        <div class="settings-inline">
+                                            <input id="profile-location-name" type="text" value="{{ user.location_name or '' }}" placeholder="Durham, NC">
+                                            <button class="btn-secondary" id="use-device-location" type="button">Use device location</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="settings-actions">
+                                        <button class="btn-primary" id="save-profile" type="button">Save</button>
+                                        <span id="profile-status" class="setting-status"></span>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="settings-block">
+                                <h2>Account</h2>
+                                <div class="settings-card">
+                                    <div class="settings-kv">
+                                        <div class="settings-k">Email</div>
+                                        <div class="settings-v">{{ user.email or 'Not set' }}</div>
+                                    </div>
+                                    <div class="settings-kv">
+                                        <div class="settings-k">Phone</div>
+                                        <div class="settings-v">{{ user.phone_number or 'Not set' }}</div>
+                                    </div>
+                                    <div class="settings-kv">
+                                        <div class="settings-k">Created</div>
+                                        <div class="settings-v">{{ user.created_at[:10] if user.created_at else 'Unknown' }}</div>
+                                    </div>
+                                </div>
+
+                                <h2>Security</h2>
+                                <div class="settings-card">
+                                    <div class="settings-kv settings-reset-row" style="border-bottom: none;">
+                                        <div class="settings-reset-copy">
+                                            <div class="settings-k">Reset password</div>
+                                            <div class="settings-reset-subtitle">We’ll email you a reset link.</div>
+                                        </div>
+                                        <button class="btn-primary btn-small" id="open-reset-modal" type="button">Send reset link</button>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+
+                    <!-- Password reset modal (UI only for now) -->
+                    <div class="modal-overlay" id="reset-modal" aria-hidden="true">
+                        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="reset-modal-title">
+                            <div class="modal-header">
+                                <h3 id="reset-modal-title">Reset password</h3>
+                                <button class="modal-close" id="close-reset-modal" type="button" aria-label="Close">×</button>
+                            </div>
+
+                            <p class="modal-subtitle">Enter your email and we’ll send a password reset link.</p>
+
+                            <form id="reset-form">
+                                <div class="settings-field">
+                                    <label for="reset-email">Email</label>
+                                    <input id="reset-email" type="email" value="{{ user.email or '' }}" placeholder="you@example.com" required>
+                                </div>
+
+                                <div class="modal-actions">
+                                    <button class="btn-secondary btn-small" id="cancel-reset" type="button">Cancel</button>
+                                    <button class="btn-primary btn-small" id="send-reset" type="submit">Send link</button>
+                                    <span id="reset-status" class="setting-status"></span>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
         </div>
     </div>
 
@@ -180,44 +159,12 @@
             if (tzInput && !tzInput.value && tz) tzInput.value = tz;
         } catch (e) {}
 
-        document.getElementById('save-preferences')?.addEventListener('click', async () => {
-            const status = document.getElementById('prefs-status');
-            status.textContent = 'Saving...';
-            try {
-                const payload = {
-                    units: document.getElementById('pref-units').value,
-                    quiet_hours_start: Number(document.getElementById('pref-quiet-start').value),
-                    quiet_hours_end: Number(document.getElementById('pref-quiet-end').value),
-                    weekly_digest_day: document.getElementById('pref-weekly-day').value === '' ? null : Number(document.getElementById('pref-weekly-day').value),
-                    weekly_digest_hour: document.getElementById('pref-weekly-hour').value === '' ? null : Number(document.getElementById('pref-weekly-hour').value),
-                    default_water_goal_ml: document.getElementById('goal-water').value === '' ? null : Number(document.getElementById('goal-water').value),
-                    default_calories_goal: document.getElementById('goal-cal').value === '' ? null : Number(document.getElementById('goal-cal').value),
-                    default_protein_goal: document.getElementById('goal-protein').value === '' ? null : Number(document.getElementById('goal-protein').value),
-                    default_carbs_goal: document.getElementById('goal-carbs').value === '' ? null : Number(document.getElementById('goal-carbs').value),
-                    default_fat_goal: document.getElementById('goal-fat').value === '' ? null : Number(document.getElementById('goal-fat').value),
-                    morning_include_reminders: document.getElementById('morning-reminders').checked,
-                    morning_include_weather: document.getElementById('morning-weather').checked,
-                    morning_include_quote: document.getElementById('morning-quote').checked,
-                };
-                await postJSON('{{ url_for("dashboard_api_settings_preferences") }}', payload);
-
-                // morning hour lives on user profile
-                const mh = document.getElementById('morning-hour').value;
-                if (mh !== '') {
-                    await postJSON('{{ url_for("dashboard_api_settings_profile") }}', { morning_checkin_hour: Number(mh) });
-                }
-
-                status.textContent = 'Saved.';
-            } catch (e) {
-                status.textContent = 'Error: ' + e.message;
-            }
-        });
-
         document.getElementById('save-profile')?.addEventListener('click', async () => {
             const status = document.getElementById('profile-status');
             status.textContent = 'Saving...';
             try {
                 const payload = {
+                    name: document.getElementById('profile-name').value.trim(),
                     timezone: document.getElementById('profile-timezone').value.trim(),
                     location_name: document.getElementById('profile-location-name').value.trim()
                 };
@@ -249,6 +196,73 @@
                 status.textContent = 'Location error: ' + (err?.message || err);
             });
         });
+
+        // Password reset modal (UI-only for now)
+        (function () {
+            const overlay = document.getElementById('reset-modal');
+            const openBtn = document.getElementById('open-reset-modal');
+            const closeBtn = document.getElementById('close-reset-modal');
+            const cancelBtn = document.getElementById('cancel-reset');
+            const form = document.getElementById('reset-form');
+            const status = document.getElementById('reset-status');
+            const email = document.getElementById('reset-email');
+            const sendBtn = document.getElementById('send-reset');
+
+            if (!overlay || !openBtn || !closeBtn || !cancelBtn || !form) return;
+
+            function open() {
+                overlay.classList.add('open');
+                overlay.setAttribute('aria-hidden', 'false');
+                if (status) status.textContent = '';
+                setTimeout(() => email?.focus(), 0);
+            }
+            function close() {
+                overlay.classList.remove('open');
+                overlay.setAttribute('aria-hidden', 'true');
+            }
+
+            openBtn.addEventListener('click', open);
+            closeBtn.addEventListener('click', close);
+            cancelBtn.addEventListener('click', close);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) close();
+            });
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && overlay.classList.contains('open')) close();
+            });
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!email?.value) return;
+                if (status) status.textContent = 'Sending...';
+                if (sendBtn) sendBtn.disabled = true;
+
+                // UI-only for now: we’ll implement Supabase reset flow later.
+                setTimeout(() => {
+                    if (status) status.textContent = 'If that email exists, a reset link has been sent.';
+                    if (sendBtn) sendBtn.disabled = false;
+                    setTimeout(close, 700);
+                }, 600);
+            });
+        })();
+
+        // Profile dropdown
+        (function () {
+            const btn = document.getElementById('profile-button');
+            const menu = document.getElementById('profile-menu');
+            if (!btn || !menu) return;
+            btn.addEventListener('click', () => {
+                menu.classList.toggle('open');
+            });
+            window.addEventListener('click', (e) => {
+                if (!menu.classList.contains('open')) return;
+                if (btn.contains(e.target) || menu.contains(e.target)) return;
+                menu.classList.remove('open');
+            });
+        })();
     </script>
+</div>
+</main>
+</div>
 </body>
 </html>

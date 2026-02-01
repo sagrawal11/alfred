@@ -59,8 +59,12 @@ def register_integration_routes(app: Flask, supabase, auth_manager: AuthManager,
                 connections_by_provider[provider] = []
             connections_by_provider[provider].append(conn)
         
-        return render_template('dashboard/integrations.html', 
-                             connections=connections_by_provider)
+        return render_template(
+            'dashboard/integrations.html',
+            connections=connections_by_provider,
+            user=user,
+            active_page='integrations',
+        )
     
     @app.route('/dashboard/integrations/<provider>/connect')
     @require_login
@@ -101,23 +105,39 @@ def register_integration_routes(app: Flask, supabase, auth_manager: AuthManager,
         
         if error:
             flash(f'OAuth error: {error}', 'error')
-            return redirect(url_for('dashboard_integrations'))
+            return render_template(
+                'dashboard/oauth_done.html',
+                title='Connection failed',
+                message=f'{provider.title()} returned an error.',
+            )
         
         if not code:
             flash('No authorization code received', 'error')
-            return redirect(url_for('dashboard_integrations'))
+            return render_template(
+                'dashboard/oauth_done.html',
+                title='Connection failed',
+                message='No authorization code was received.',
+            )
         
         # Verify state
         stored_state = session.get(f'oauth_state_{provider}')
         if not stored_state or stored_state != state:
             flash('Invalid state token', 'error')
-            return redirect(url_for('dashboard_integrations'))
+            return render_template(
+                'dashboard/oauth_done.html',
+                title='Connection failed',
+                message='Invalid or missing state token.',
+            )
         
         # Get integration instance
         integration = _get_integration_instance(provider)
         if not integration:
             flash(f'Integration {provider} not available', 'error')
-            return redirect(url_for('dashboard_integrations'))
+            return render_template(
+                'dashboard/oauth_done.html',
+                title='Connection failed',
+                message='Integration is not available on this server (missing credentials).',
+            )
         
         # Complete OAuth
         success, error_msg, connection = integration_auth.complete_oauth(
@@ -148,8 +168,12 @@ def register_integration_routes(app: Flask, supabase, auth_manager: AuthManager,
         
         # Clear state
         session.pop(f'oauth_state_{provider}', None)
-        
-        return redirect(url_for('dashboard_integrations'))
+
+        return render_template(
+            'dashboard/oauth_done.html',
+            title='Connected' if success else 'Connection failed',
+            message='You can return to Alfred now.',
+        )
     
     @app.route('/dashboard/integrations/<int:connection_id>/disconnect', methods=['POST'])
     @require_login

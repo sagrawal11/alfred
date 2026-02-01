@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integration</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Butler:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='landing.css') }}">
+</head>
+<body>
+    <main class="hero-section" style="margin-top:0; padding: 2rem;">
+        <div class="hero-content" style="max-width: 720px;">
+            <h2 style="margin-bottom: 0.75rem;">{{ title }}</h2>
+            <p style="color:#000; opacity:0.75; margin-bottom: 1.5rem;">{{ message }}</p>
+            <p style="color:#000; opacity:0.75;">You can close this window.</p>
+        </div>
+    </main>
+
+    <script>
+        // If opened as a popup, refresh opener and close.
+        (function () {
+            try {
+                if (window.opener && !window.opener.closed) {
+                    window.opener.location.reload();
+                    window.close();
+                    return;
+                }
+            } catch (e) {}
+            // Fallback: redirect to integrations in same tab
+            setTimeout(() => { window.location.href = "{{ url_for('dashboard_integrations') }}"; }, 800);
+        })();
+    </script>
+</body>
+</html>
+

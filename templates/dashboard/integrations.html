@@ -12,16 +12,43 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='Alfred.png') }}">
 </head>
 <body>
-    <div class="dashboard-container">
-        <header class="dashboard-header">
-            <h1>Integrations</h1>
-            <div class="header-actions">
-                <a href="{{ url_for('dashboard_index') }}" class="btn-secondary">← Back to Dashboard</a>
-                <a href="{{ url_for('dashboard_logout') }}" class="btn-logout">Logout</a>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-logo" href="{{ url_for('dashboard_index') }}">
+                <img src="{{ url_for('static', filename='Alfred.png') }}" alt="Alfred" class="sidebar-logo-img">
+                <span class="sidebar-logo-text">Alfred</span>
+            </a>
+
+            <nav class="sidebar-nav">
+                <a class="sidebar-link {% if active_page == 'trends' %}active{% endif %}" href="{{ url_for('dashboard_trends') }}">Trends</a>
+                <a class="sidebar-link {% if active_page == 'integrations' %}active{% endif %}" href="{{ url_for('dashboard_integrations') }}">Integrations</a>
+                <a class="sidebar-link {% if active_page == 'preferences' %}active{% endif %}" href="{{ url_for('dashboard_preferences') }}">Preferences</a>
+                <a class="sidebar-link {% if active_page == 'pricing' %}active{% endif %}" href="{{ url_for('dashboard_pricing') }}">Pricing</a>
+                <a class="sidebar-link {% if active_page == 'chat' %}active{% endif %}" href="{{ url_for('dashboard_chat') }}">Chat Test</a>
+                <a class="sidebar-link {% if active_page == 'test_jobs' %}active{% endif %}" href="{{ url_for('dashboard_test') }}">Test Jobs</a>
+            </nav>
+
+            <div class="sidebar-spacer"></div>
+
+            <div class="sidebar-footer">
+                <button class="profile-button" id="profile-button" type="button">
+                    <div class="profile-name">{{ (user.name or user.email or 'Profile') }}</div>
+                    <div class="profile-meta">Profile</div>
+                </button>
+                <div class="profile-menu" id="profile-menu">
+                    <a href="{{ url_for('dashboard_settings') }}">Settings</a>
+                    <a href="{{ url_for('dashboard_logout') }}">Log out</a>
+                </div>
             </div>
-        </header>
-        
-        <div class="dashboard-content">
+        </aside>
+
+        <main class="main-area">
+            <div class="dashboard-container">
+                <header class="dashboard-header">
+                    <h1>Integrations</h1>
+                </header>
+
+                <div class="dashboard-content">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, msg in messages %}
@@ -32,57 +59,48 @@
             
             <div class="settings-section">
                 <h2>Available Integrations</h2>
-                
+                <p class="muted-text" style="margin-top: 0.75rem;">
+                    No integrations are available yet. Once an integration is ready, we’ll move it here.
+                </p>
+            </div>
+
+            <div class="settings-section" style="margin-top: 1.25rem;">
+                <h2>Coming Soon</h2>
+
                 <!-- Fitbit -->
                 <div class="settings-card">
-                    <div class="setting-item">
-                        <div>
+                    <div class="setting-item integration-item">
+                        <div class="integration-info">
                             <h3>Fitbit</h3>
                             <p>Sync workouts and sleep data from your Fitbit device</p>
                         </div>
-                        <div>
-                            {% if connections.get('fitbit') %}
-                                <span class="status-connected">✓ Connected</span>
-                                <form method="POST" action="{{ url_for('dashboard_integration_disconnect', connection_id=connections['fitbit'][0]['id']) }}" style="display: inline;">
-                                    <button type="submit" class="btn-danger" style="margin-left: 1rem;">Disconnect</button>
-                                </form>
-                                <button onclick="syncIntegration({{ connections['fitbit'][0]['id'] }})" class="btn-secondary" style="margin-left: 0.5rem;">Sync Now</button>
-                            {% else %}
-                                <a href="{{ url_for('dashboard_integration_connect', provider='fitbit') }}" class="btn-primary">Connect Fitbit</a>
-                            {% endif %}
+                        <div class="integration-actions">
+                            <span class="status-disabled">Coming Soon</span>
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Google Calendar -->
                 <div class="settings-card">
-                    <div class="setting-item">
-                        <div>
+                    <div class="setting-item integration-item">
+                        <div class="integration-info">
                             <h3>Google Calendar</h3>
                             <p>View your calendar events in queries and suggestions</p>
                         </div>
-                        <div>
-                            {% if connections.get('google_calendar') %}
-                                <span class="status-connected">✓ Connected</span>
-                                <form method="POST" action="{{ url_for('dashboard_integration_disconnect', connection_id=connections['google_calendar'][0]['id']) }}" style="display: inline;">
-                                    <button type="submit" class="btn-danger" style="margin-left: 1rem;">Disconnect</button>
-                                </form>
-                                <button onclick="syncIntegration({{ connections['google_calendar'][0]['id'] }})" class="btn-secondary" style="margin-left: 0.5rem;">Sync Now</button>
-                            {% else %}
-                                <a href="{{ url_for('dashboard_integration_connect', provider='google_calendar') }}" class="btn-primary">Connect Google Calendar</a>
-                            {% endif %}
+                        <div class="integration-actions">
+                            <span class="status-disabled">Coming Soon</span>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Google Fit (placeholder) -->
+
+                <!-- Google Fit -->
                 <div class="settings-card">
-                    <div class="setting-item">
-                        <div>
+                    <div class="setting-item integration-item">
+                        <div class="integration-info">
                             <h3>Google Fit</h3>
                             <p>Sync workouts and activity data from Google Fit</p>
                         </div>
-                        <div>
+                        <div class="integration-actions">
                             <span class="status-disabled">Coming Soon</span>
                         </div>
                     </div>
@@ -120,6 +138,56 @@
                 button.textContent = originalText;
             }
         }
+
+        // Open OAuth connect in a right-side popup window
+        (function () {
+            function openRightPopup(url, name) {
+                const w = 520;
+                const h = 740;
+                const top = (window.screenY || 0) + 80;
+                const left = (window.screenX || 0) + (window.outerWidth || 1200) - w - 24;
+                const features = `popup=yes,width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+                const win = window.open(url, name, features);
+                if (win) {
+                    win.focus();
+                    const timer = setInterval(() => {
+                        if (win.closed) {
+                            clearInterval(timer);
+                            // If user completes/cancels, refresh state
+                            window.location.reload();
+                        }
+                    }, 500);
+                } else {
+                    // Popup blocked: fall back to same-tab navigation
+                    window.location.href = url;
+                }
+            }
+
+            document.querySelectorAll('a.integration-connect').forEach((a) => {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const provider = a.getAttribute('data-provider') || 'oauth';
+                    openRightPopup(a.href, `alfred_oauth_${provider}`);
+                });
+            });
+        })();
+
+        // Profile dropdown
+        (function () {
+            const btn = document.getElementById('profile-button');
+            const menu = document.getElementById('profile-menu');
+            if (!btn || !menu) return;
+            btn.addEventListener('click', () => {
+                menu.classList.toggle('open');
+            });
+            window.addEventListener('click', (e) => {
+                if (!menu.classList.contains('open')) return;
+                if (btn.contains(e.target) || menu.contains(e.target)) return;
+                menu.classList.remove('open');
+            });
+        })();
     </script>
+</main>
+</div>
 </body>
 </html>

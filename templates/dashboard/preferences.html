@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preferences - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Butler:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='Alfred.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='Alfred.png') }}">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-logo" href="{{ url_for('dashboard_index') }}">
+                <img src="{{ url_for('static', filename='Alfred.png') }}" alt="Alfred" class="sidebar-logo-img">
+                <span class="sidebar-logo-text">Alfred</span>
+            </a>
+
+            <nav class="sidebar-nav">
+                <a class="sidebar-link {% if active_page == 'trends' %}active{% endif %}" href="{{ url_for('dashboard_trends') }}">Trends</a>
+                <a class="sidebar-link {% if active_page == 'integrations' %}active{% endif %}" href="{{ url_for('dashboard_integrations') }}">Integrations</a>
+                <a class="sidebar-link {% if active_page == 'preferences' %}active{% endif %}" href="{{ url_for('dashboard_preferences') }}">Preferences</a>
+                <a class="sidebar-link {% if active_page == 'pricing' %}active{% endif %}" href="{{ url_for('dashboard_pricing') }}">Pricing</a>
+                <a class="sidebar-link {% if active_page == 'chat' %}active{% endif %}" href="{{ url_for('dashboard_chat') }}">Chat Test</a>
+                <a class="sidebar-link {% if active_page == 'test_jobs' %}active{% endif %}" href="{{ url_for('dashboard_test') }}">Test Jobs</a>
+            </nav>
+
+            <div class="sidebar-spacer"></div>
+
+            <div class="sidebar-footer">
+                <button class="profile-button" id="profile-button" type="button">
+                    <div class="profile-name">{{ (user.name or user.email or 'Profile') }}</div>
+                    <div class="profile-meta">Profile</div>
+                </button>
+                <div class="profile-menu" id="profile-menu">
+                    <a href="{{ url_for('dashboard_settings') }}">Settings</a>
+                    <a href="{{ url_for('dashboard_logout') }}">Log out</a>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <div class="dashboard-container">
+                <header class="dashboard-header">
+                    <h1>Preferences</h1>
+                </header>
+
+                <div class="dashboard-content prefs-content">
+                    <div class="settings-section prefs-section">
+                        <div class="prefs-grid">
+                            <div class="settings-card prefs-card">
+                                <div class="prefs-card-header">
+                                    <h3>General</h3>
+                                    <p class="prefs-card-subtitle">Basic defaults used throughout Alfred.</p>
+                                </div>
+
+                                <div class="prefs-field">
+                                    <label for="pref-units">Units</label>
+                                    <select id="pref-units">
+                                        <option value="metric" {% if (prefs.units or 'metric') == 'metric' %}selected{% endif %}>Metric (ml, kg)</option>
+                                        <option value="imperial" {% if prefs.units == 'imperial' %}selected{% endif %}>Imperial (oz, lbs)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="settings-card prefs-card">
+                                <div class="prefs-card-header">
+                                    <h3>Quiet hours</h3>
+                                    <p class="prefs-card-subtitle">Hours when Alfred shouldn’t text you (0–23).</p>
+                                </div>
+
+                                <div class="prefs-row">
+                                    <div class="prefs-field">
+                                        <label for="pref-quiet-start">Start</label>
+                                        <input id="pref-quiet-start" type="number" min="0" max="23" value="{{ prefs.quiet_hours_start if prefs.quiet_hours_start is not none else 22 }}" placeholder="22">
+                                    </div>
+                                    <div class="prefs-field">
+                                        <label for="pref-quiet-end">End</label>
+                                        <input id="pref-quiet-end" type="number" min="0" max="23" value="{{ prefs.quiet_hours_end if prefs.quiet_hours_end is not none else 8 }}" placeholder="8">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="settings-card prefs-card">
+                                <div class="prefs-card-header">
+                                    <h3>Weekly digest</h3>
+                                    <p class="prefs-card-subtitle">Pick a day and (optional) hour.</p>
+                                </div>
+
+                                <div class="prefs-row">
+                                    <div class="prefs-field">
+                                        <label for="pref-weekly-day">Day</label>
+                                        <select id="pref-weekly-day">
+                                            {% set wd = prefs.weekly_digest_day %}
+                                            <option value="">Default</option>
+                                            <option value="0" {% if wd == 0 %}selected{% endif %}>Monday</option>
+                                            <option value="1" {% if wd == 1 %}selected{% endif %}>Tuesday</option>
+                                            <option value="2" {% if wd == 2 %}selected{% endif %}>Wednesday</option>
+                                            <option value="3" {% if wd == 3 %}selected{% endif %}>Thursday</option>
+                                            <option value="4" {% if wd == 4 %}selected{% endif %}>Friday</option>
+                                            <option value="5" {% if wd == 5 %}selected{% endif %}>Saturday</option>
+                                            <option value="6" {% if wd == 6 %}selected{% endif %}>Sunday</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="prefs-field">
+                                        <label for="pref-weekly-hour">Hour (optional)</label>
+                                        <input id="pref-weekly-hour" type="number" min="0" max="23" value="{{ prefs.weekly_digest_hour if prefs.weekly_digest_hour is not none else '' }}" placeholder="e.g. 9">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="settings-card prefs-card">
+                                <div class="prefs-card-header">
+                                    <h3>Daily goals</h3>
+                                    <p class="prefs-card-subtitle">Defaults used when you set goals.</p>
+                                </div>
+
+                                <div class="prefs-row prefs-row-3">
+                                    <div class="prefs-field">
+                                        <label for="goal-water">Water (ml)</label>
+                                        <input id="goal-water" type="number" placeholder="e.g. 2000" value="{{ prefs.default_water_goal_ml or '' }}">
+                                    </div>
+                                    <div class="prefs-field">
+                                        <label for="goal-cal">Calories</label>
+                                        <input id="goal-cal" type="number" placeholder="e.g. 2200" value="{{ prefs.default_calories_goal or '' }}">
+                                    </div>
+                                    <div class="prefs-field">
+                                        <label for="goal-protein">Protein (g)</label>
+                                        <input id="goal-protein" type="number" placeholder="e.g. 150" value="{{ prefs.default_protein_goal or '' }}">
+                                    </div>
+                                    <div class="prefs-field">
+                                        <label for="goal-carbs">Carbs (g)</label>
+                                        <input id="goal-carbs" type="number" placeholder="e.g. 250" value="{{ prefs.default_carbs_goal or '' }}">
+                                    </div>
+                                    <div class="prefs-field">
+                                        <label for="goal-fat">Fat (g)</label>
+                                        <input id="goal-fat" type="number" placeholder="e.g. 70" value="{{ prefs.default_fat_goal or '' }}">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="settings-card prefs-card">
+                                <div class="prefs-card-header">
+                                    <h3>Morning text</h3>
+                                    <p class="prefs-card-subtitle">Choose what Alfred includes in your morning check-in.</p>
+                                </div>
+
+                                <div class="prefs-checklist">
+                                    <label class="prefs-check">
+                                        <input id="morning-reminders" type="checkbox" {% if prefs.morning_include_reminders is not defined or prefs.morning_include_reminders %}checked{% endif %}>
+                                        <span>Reminders/todos</span>
+                                    </label>
+                                    <label class="prefs-check">
+                                        <input id="morning-weather" type="checkbox" {% if prefs.morning_include_weather is not defined or prefs.morning_include_weather %}checked{% endif %}>
+                                        <span>Weather</span>
+                                    </label>
+                                    <label class="prefs-check">
+                                        <input id="morning-quote" type="checkbox" {% if prefs.morning_include_quote is not defined or prefs.morning_include_quote %}checked{% endif %}>
+                                        <span>Quote</span>
+                                    </label>
+                                </div>
+
+                                <div class="prefs-field prefs-field-narrow">
+                                    <label for="morning-hour">Hour (0–23)</label>
+                                    <input id="morning-hour" type="number" min="0" max="23" value="{{ user.morning_checkin_hour if user.morning_checkin_hour is not none else '' }}" placeholder="e.g. 8">
+                                </div>
+                            </div>
+
+                            <div class="settings-card prefs-card prefs-actions">
+                                <div class="prefs-actions-row">
+                                    <button class="btn-primary" id="save-preferences">Save</button>
+                                    <span id="prefs-status" class="prefs-status"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                async function postJSON(url, payload) {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || data.success === false) {
+                        throw new Error(data.error || 'Request failed');
+                    }
+                    return data;
+                }
+
+                document.getElementById('save-preferences')?.addEventListener('click', async () => {
+                    const status = document.getElementById('prefs-status');
+                    status.textContent = 'Saving...';
+                    try {
+                        const payload = {
+                            units: document.getElementById('pref-units').value,
+                            quiet_hours_start: Number(document.getElementById('pref-quiet-start').value),
+                            quiet_hours_end: Number(document.getElementById('pref-quiet-end').value),
+                            weekly_digest_day: document.getElementById('pref-weekly-day').value === '' ? null : Number(document.getElementById('pref-weekly-day').value),
+                            weekly_digest_hour: document.getElementById('pref-weekly-hour').value === '' ? null : Number(document.getElementById('pref-weekly-hour').value),
+                            default_water_goal_ml: document.getElementById('goal-water').value === '' ? null : Number(document.getElementById('goal-water').value),
+                            default_calories_goal: document.getElementById('goal-cal').value === '' ? null : Number(document.getElementById('goal-cal').value),
+                            default_protein_goal: document.getElementById('goal-protein').value === '' ? null : Number(document.getElementById('goal-protein').value),
+                            default_carbs_goal: document.getElementById('goal-carbs').value === '' ? null : Number(document.getElementById('goal-carbs').value),
+                            default_fat_goal: document.getElementById('goal-fat').value === '' ? null : Number(document.getElementById('goal-fat').value),
+                            morning_include_reminders: document.getElementById('morning-reminders').checked,
+                            morning_include_weather: document.getElementById('morning-weather').checked,
+                            morning_include_quote: document.getElementById('morning-quote').checked,
+                        };
+                        await postJSON('{{ url_for("dashboard_api_settings_preferences") }}', payload);
+
+                        // morning hour lives on user profile
+                        const mh = document.getElementById('morning-hour').value;
+                        if (mh !== '') {
+                            await postJSON('{{ url_for("dashboard_api_settings_profile") }}', { morning_checkin_hour: Number(mh) });
+                        }
+
+                        status.textContent = 'Saved.';
+                    } catch (e) {
+                        status.textContent = 'Error: ' + e.message;
+                    }
+                });
+
+                // Profile dropdown
+                (function () {
+                    const btn = document.getElementById('profile-button');
+                    const menu = document.getElementById('profile-menu');
+                    if (!btn || !menu) return;
+                    btn.addEventListener('click', () => menu.classList.toggle('open'));
+                    window.addEventListener('click', (e) => {
+                        if (!menu.classList.contains('open')) return;
+                        if (btn.contains(e.target) || menu.contains(e.target)) return;
+                        menu.classList.remove('open');
+                    });
+                })();
+            </script>
+        </main>
+    </div>
+</body>
+</html>
+
