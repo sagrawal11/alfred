@@ -2177,6 +2177,7 @@ body {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1.25rem;
+    align-items: stretch;
 }
 
 @media (max-width: 1024px) {
@@ -2191,11 +2192,99 @@ body {
     gap: 1rem;
 }
 
-.plan-top {
+.pricing-hero {
     display: flex;
-    align-items: baseline;
+    align-items: flex-end;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.pricing-title {
+    margin: 0;
+    color: var(--bw-fg);
+    font-weight: 800;
+    letter-spacing: 0.2px;
+}
+
+.pricing-subtitle {
+    margin: 0.6rem 0 0 0;
+    color: var(--bw-muted);
+    max-width: none;
+    width: 100%;
+}
+
+.pricing-toggle-row {
+    display: flex;
+    justify-content: center;
+    padding: 0.25rem 0;
+}
+
+.pricing-current-plan {
+    display: flex;
+    justify-content: center;
+    margin-top: -0.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.plan-current-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border: 2px solid var(--bw-border);
+    border-radius: 999px;
+    background: #d4af37; /* gold */
+    color: #000;
+    font-weight: 850;
+    letter-spacing: 0.2px;
+}
+
+.pricing-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border: 2px solid var(--bw-border);
+    border-radius: 999px;
+    background: var(--bw-bg);
+}
+
+.pricing-toggle-label {
+    font-weight: 700;
+    color: var(--bw-muted);
+    white-space: nowrap;
+}
+
+.pricing-toggle-annual {
+    color: var(--bw-fg);
+}
+
+.pricing-toggle-pill {
+    position: relative;
+    width: 54px;
+    height: 32px;
+    border: 2px solid var(--bw-border);
+    border-radius: 999px;
+    background: var(--bw-bg);
+    cursor: pointer;
+    padding: 0;
+}
+
+.pricing-toggle-knob {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--bw-fg);
+    transition: transform 0.18s ease;
+}
+
+/* aria-pressed true = annual (knob right) */
+.pricing-toggle-pill[aria-pressed="true"] .pricing-toggle-knob {
+    transform: translateX(22px);
 }
 
 .plan-name {
@@ -2210,6 +2299,69 @@ body {
     font-weight: 750;
 }
 
+.plan-price-main {
+    font-size: 1.25rem;
+    font-weight: 850;
+    color: var(--bw-fg);
+}
+
+.plan-price-sub {
+    margin-top: 0.2rem;
+    color: var(--bw-muted);
+    font-weight: 650;
+    font-size: 0.95rem;
+}
+
+.plan-kicker {
+    margin-top: 0.35rem;
+    color: var(--bw-muted);
+    font-weight: 650;
+}
+
+.plan-blurb {
+    margin: 0.75rem 0 0 0;
+    color: var(--bw-fg);
+    opacity: 0.85;
+}
+
+.plan-wrap {
+    position: relative;
+    display: flex;
+}
+
+.plan-wrap .plan-card {
+    width: 100%;
+}
+
+.plan-flag {
+    position: absolute;
+    top: -12px;
+    right: 14px;
+    padding: 0.25rem 0.6rem;
+    border: 2px solid var(--bw-border);
+    border-radius: 999px;
+    font-weight: 850;
+    background: var(--bw-fg);
+    color: var(--bw-bg);
+    letter-spacing: 0.2px;
+    z-index: 2;
+}
+
+.plan-flag-current {
+    background: #d4af37; /* gold */
+    color: #000;
+}
+
+.plan-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.plan-cta-core {
+    font-weight: 800;
+}
+
 .plan-features {
     list-style: none;
     padding: 0;
@@ -2220,12 +2372,33 @@ body {
     gap: 0.4rem;
 }
 
-.plan-cta {
-    width: 100%;
+.plan-features li {
+    padding-left: 1.1rem;
+    position: relative;
 }
 
-.plan-featured {
-    background: var(--bw-surface-2) !important;
+.plan-features li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--bw-fg);
+    opacity: 0.65;
+}
+
+.plan-cta {
+    width: 100%;
+    margin-top: auto;
+    min-height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.plan-card-featured {
+    background: var(--bw-surface) !important;
+    border: 2px solid var(--bw-border) !important;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.10) !important;
 }
 
 /* Trends page */

@@ -152,6 +152,21 @@ FOOD_IMAGE_BUCKET=food-uploads
 # Max upload size in bytes (default ~6MB)
 FOOD_IMAGE_MAX_BYTES=6000000
 
+# =============================================================================
+# STRIPE BILLING (Subscriptions via Stripe Checkout)
+# =============================================================================
+# Stripe Secret Key (server-side)
+STRIPE_SECRET_KEY=sk_test_...
+
+# Stripe Webhook signing secret
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Stripe Price IDs (create in Stripe Dashboard)
+STRIPE_PRICE_CORE_MONTHLY=price_...
+STRIPE_PRICE_CORE_ANNUAL=price_...
+STRIPE_PRICE_PRO_MONTHLY=price_...
+STRIPE_PRICE_PRO_ANNUAL=price_...
+
 # Google OAuth (get from Google Cloud Console)
 # Note: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are already defined above for Calendar
 # These are used for both Calendar and Fit integrations

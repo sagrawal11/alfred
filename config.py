@@ -70,6 +70,9 @@ class Config:
     # Supabase Database Configuration
     SUPABASE_URL = os.getenv('SUPABASE_URL', '')
     SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
+
+    # Base URL (used for OAuth redirects + Stripe success/cancel URLs)
+    BASE_URL = os.getenv("BASE_URL", "http://localhost:5001")
     
     # Dashboard Configuration
     DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', '')
@@ -86,6 +89,14 @@ class Config:
     
     # Redis Configuration (optional - for caching)
     REDIS_URL = os.getenv('REDIS_URL', '')
+
+    # Stripe (payments)
+    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+    STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    STRIPE_PRICE_CORE_MONTHLY = os.getenv("STRIPE_PRICE_CORE_MONTHLY", "")
+    STRIPE_PRICE_CORE_ANNUAL = os.getenv("STRIPE_PRICE_CORE_ANNUAL", "")
+    STRIPE_PRICE_PRO_MONTHLY = os.getenv("STRIPE_PRICE_PRO_MONTHLY", "")
+    STRIPE_PRICE_PRO_ANNUAL = os.getenv("STRIPE_PRICE_PRO_ANNUAL", "")
 
     # Nutrition / Food APIs (Milestone A)
     USDA_FDC_API_KEY = os.getenv("USDA_FDC_API_KEY", "")

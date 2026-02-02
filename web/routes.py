@@ -41,6 +41,12 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 return fn
             return _noop
         return limiter.limit(rule)
+
+    # Stripe (optional - only needed if billing enabled)
+    try:
+        import stripe  # type: ignore
+    except Exception:
+        stripe = None
     
     # ============================================================================
     # Landing Page Route
@@ -237,6 +243,232 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         """Pricing page (placeholder plans; details TBD)."""
         user = auth_manager.get_current_user()
         return render_template('dashboard/pricing.html', user=user, active_page='pricing')
+
+    # ============================================================================
+    # Billing (Stripe Checkout) - Core/Pro subscriptions
+    # ============================================================================
+
+    def _stripe_price_id_for(plan: str, interval: str) -> str:
+        from config import Config
+        plan = (plan or "").strip().lower()
+        interval = (interval or "").strip().lower()
+        if plan == "core" and interval == "monthly":
+            return Config.STRIPE_PRICE_CORE_MONTHLY
+        if plan == "core" and interval == "annual":
+            return Config.STRIPE_PRICE_CORE_ANNUAL
+        if plan == "pro" and interval == "monthly":
+            return Config.STRIPE_PRICE_PRO_MONTHLY
+        if plan == "pro" and interval == "annual":
+            return Config.STRIPE_PRICE_PRO_ANNUAL
+        return ""
+
+    def _plan_from_price_id(price_id: str) -> dict:
+        """Map a Stripe price id -> {plan, interval}."""
+        from config import Config
+        if not price_id:
+            return {"plan": "free", "interval": None}
+        if price_id == Config.STRIPE_PRICE_CORE_MONTHLY:
+            return {"plan": "core", "interval": "monthly"}
+        if price_id == Config.STRIPE_PRICE_CORE_ANNUAL:
+            return {"plan": "core", "interval": "annual"}
+        if price_id == Config.STRIPE_PRICE_PRO_MONTHLY:
+            return {"plan": "pro", "interval": "monthly"}
+        if price_id == Config.STRIPE_PRICE_PRO_ANNUAL:
+            return {"plan": "pro", "interval": "annual"}
+        return {"plan": "free", "interval": None}
+
+    @app.route('/dashboard/api/billing/checkout', methods=['POST'])
+    @require_login
+    def dashboard_api_billing_checkout():
+        """Create a Stripe Checkout session for Core/Pro. Free never requires card."""
+        from config import Config
+        if stripe is None:
+            return jsonify({"success": False, "error": "Stripe dependency not installed"}), 500
+        if not Config.STRIPE_SECRET_KEY:
+            return jsonify({"success": False, "error": "Stripe is not configured (missing STRIPE_SECRET_KEY)"}), 500
+
+        user = auth_manager.get_current_user()
+        payload = request.get_json(silent=True) or {}
+        plan = (payload.get("plan") or "").strip().lower()
+        interval = (payload.get("interval") or "").strip().lower()
+
+        if plan not in ("core", "pro"):
+            return jsonify({"success": False, "error": "Invalid plan"}), 400
+        if interval not in ("monthly", "annual"):
+            return jsonify({"success": False, "error": "Invalid interval"}), 400
+
+        price_id = _stripe_price_id_for(plan, interval)
+        if not price_id:
+            return jsonify({"success": False, "error": "Price ID not configured for this plan/interval"}), 500
+
+        stripe.api_key = Config.STRIPE_SECRET_KEY
+
+        # Ensure Stripe customer exists
+        stripe_customer_id = user.get("stripe_customer_id")
+        if not stripe_customer_id:
+            customer = stripe.Customer.create(
+                email=user.get("email") or None,
+                name=user.get("name") or None,
+                phone=user.get("phone_number") or None,
+                metadata={"user_id": str(user.get("id"))},
+            )
+            stripe_customer_id = customer.get("id")
+            try:
+                supabase.table("users").update({"stripe_customer_id": stripe_customer_id}).eq("id", int(user["id"])).execute()
+            except Exception:
+                pass
+
+        base_url = (Config.BASE_URL or "").rstrip("/")
+        if not base_url:
+            base_url = request.host_url.rstrip("/")
+
+        session_obj = stripe.checkout.Session.create(
+            mode="subscription",
+            customer=stripe_customer_id,
+            line_items=[{"price": price_id, "quantity": 1}],
+            allow_promotion_codes=False,
+            client_reference_id=str(user.get("id")),
+            subscription_data={
+                "metadata": {
+                    "user_id": str(user.get("id")),
+                    "plan": plan,
+                    "interval": interval,
+                }
+            },
+            success_url=f"{base_url}/dashboard/pricing?success=1",
+            cancel_url=f"{base_url}/dashboard/pricing?canceled=1",
+        )
+
+        return jsonify({"success": True, "url": session_obj.get("url")})
+
+    @app.route('/dashboard/api/billing/portal', methods=['POST'])
+    @require_login
+    def dashboard_api_billing_portal():
+        """Open Stripe Billing Portal (optional)."""
+        from config import Config
+        if stripe is None:
+            return jsonify({"success": False, "error": "Stripe dependency not installed"}), 500
+        if not Config.STRIPE_SECRET_KEY:
+            return jsonify({"success": False, "error": "Stripe is not configured"}), 500
+        stripe.api_key = Config.STRIPE_SECRET_KEY
+
+        user = auth_manager.get_current_user()
+        stripe_customer_id = user.get("stripe_customer_id")
+        if not stripe_customer_id:
+            return jsonify({"success": False, "error": "No Stripe customer found for this user"}), 400
+
+        base_url = (Config.BASE_URL or "").rstrip("/")
+        if not base_url:
+            base_url = request.host_url.rstrip("/")
+
+        portal = stripe.billing_portal.Session.create(
+            customer=stripe_customer_id,
+            return_url=f"{base_url}/dashboard/settings",
+        )
+        return jsonify({"success": True, "url": portal.get("url")})
+
+    @app.route('/stripe/webhook', methods=['POST'])
+    def stripe_webhook():
+        """Stripe webhook (source of truth for subscription state)."""
+        from config import Config
+        if stripe is None:
+            return jsonify({"success": False, "error": "Stripe dependency not installed"}), 500
+        if not Config.STRIPE_WEBHOOK_SECRET or not Config.STRIPE_SECRET_KEY:
+            return jsonify({"success": False, "error": "Stripe webhook not configured"}), 500
+
+        stripe.api_key = Config.STRIPE_SECRET_KEY
+
+        payload = request.get_data(cache=False, as_text=False)
+        sig_header = request.headers.get("Stripe-Signature", "")
+        try:
+            event = stripe.Webhook.construct_event(payload, sig_header, Config.STRIPE_WEBHOOK_SECRET)
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Invalid signature: {str(e)}"}), 400
+
+        etype = event.get("type")
+        obj = (event.get("data") or {}).get("object") or {}
+
+        def _update_user_by_customer(customer_id: str, updates: dict):
+            if not customer_id:
+                return
+            try:
+                supabase.table("users").update(updates).eq("stripe_customer_id", customer_id).execute()
+            except Exception:
+                pass
+
+        def _update_user_by_id(user_id: int, updates: dict):
+            try:
+                supabase.table("users").update(updates).eq("id", int(user_id)).execute()
+            except Exception:
+                pass
+
+        def _iso_from_unix(ts: int):
+            try:
+                from datetime import datetime, timezone
+                return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+            except Exception:
+                return None
+
+        if etype == "checkout.session.completed":
+            if obj.get("mode") == "subscription":
+                customer_id = obj.get("customer")
+                sub_id = obj.get("subscription")
+                user_id = obj.get("client_reference_id")
+                if user_id:
+                    _update_user_by_id(int(user_id), {
+                        "stripe_customer_id": customer_id,
+                        "stripe_subscription_id": sub_id,
+                    })
+            return jsonify({"received": True})
+
+        if etype in ("customer.subscription.created", "customer.subscription.updated"):
+            customer_id = obj.get("customer")
+            sub_id = obj.get("id")
+            status = obj.get("status")
+            cancel_at_period_end = bool(obj.get("cancel_at_period_end") or False)
+            current_period_end = _iso_from_unix(obj.get("current_period_end")) if obj.get("current_period_end") else None
+
+            price_id = None
+            try:
+                items = (obj.get("items") or {}).get("data") or []
+                if items and items[0].get("price"):
+                    price_id = items[0]["price"].get("id")
+            except Exception:
+                price_id = None
+
+            mapped = _plan_from_price_id(price_id or "")
+            plan = mapped.get("plan") or "free"
+            interval = mapped.get("interval")
+
+            updates = {
+                "stripe_subscription_id": sub_id,
+                "stripe_subscription_status": status,
+                "stripe_price_id": price_id,
+                "stripe_current_period_end": current_period_end,
+                "stripe_cancel_at_period_end": cancel_at_period_end,
+                "plan": plan,
+                "plan_interval": interval,
+            }
+            _update_user_by_customer(customer_id, updates)
+            return jsonify({"received": True})
+
+        if etype == "customer.subscription.deleted":
+            customer_id = obj.get("customer")
+            sub_id = obj.get("id")
+            updates = {
+                "stripe_subscription_id": sub_id,
+                "stripe_subscription_status": "canceled",
+                "stripe_price_id": None,
+                "stripe_current_period_end": None,
+                "stripe_cancel_at_period_end": False,
+                "plan": "free",
+                "plan_interval": None,
+            }
+            _update_user_by_customer(customer_id, updates)
+            return jsonify({"received": True})
+
+        # Ignore other events for now
+        return jsonify({"received": True})
 
     @app.route('/dashboard/api/settings/profile', methods=['POST'])
     @require_login

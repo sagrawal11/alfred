@@ -51,50 +51,140 @@
                 <div class="dashboard-content pricing-content">
                     <div class="pricing-page">
                         <div class="settings-card pricing-header-card">
-                            <h2 style="margin:0; color: var(--bw-fg);">Choose your plan</h2>
-                            <p style="margin:0.5rem 0 0 0; color: var(--bw-muted);">
-                                We’ll finalize plan details later. This page is just the polished structure.
-                            </p>
+                            <div class="pricing-hero">
+                                <div>
+                                    <h2 class="pricing-title">Alfred helps you feel on top of your life.</h2>
+                                    <p class="pricing-subtitle">
+                                        Not another tracker. Alfred takes on the mental load: remembering, nudging, coordinating, and keeping you moving without you having to manage a system.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pricing-toggle-row">
+                            <div class="pricing-toggle" aria-label="Billing period">
+                                <span class="pricing-toggle-label">Monthly</span>
+                                <button class="pricing-toggle-pill" id="billing-toggle" type="button" aria-pressed="true">
+                                    <span class="pricing-toggle-knob" aria-hidden="true"></span>
+                                </button>
+                                <span class="pricing-toggle-label pricing-toggle-annual">Annual</span>
+                            </div>
+                        </div>
+
+                        {% set current_plan = (user.plan or 'free')|lower %}
+                        {% set current_interval = (user.plan_interval or '')|lower %}
+                        <div class="pricing-current-plan">
+                            <span class="plan-current-pill">
+                                Current plan:
+                                {% if current_plan == 'core' %}
+                                    Core{% if current_interval %} ({{ current_interval }}){% endif %}
+                                {% elif current_plan == 'pro' %}
+                                    Pro{% if current_interval %} ({{ current_interval }}){% endif %}
+                                {% else %}
+                                    Free
+                                {% endif %}
+                            </span>
                         </div>
 
                         <div class="pricing-grid">
-                            <div class="settings-card plan-card">
-                                <div class="plan-top">
-                                    <h3 class="plan-name">Starter</h3>
-                                    <div class="plan-price">TBD</div>
+                            <!-- Free -->
+                            <div class="plan-wrap">
+                                {% if current_plan == 'free' %}
+                                    <div class="plan-flag plan-flag-current">Current plan</div>
+                                {% endif %}
+                                <div class="settings-card plan-card">
+                                    <div class="plan-card-body">
+                                        <h3 class="plan-name">Free</h3>
+                                        <div class="plan-kicker">Try Alfred</div>
+                                        <p class="plan-blurb">
+                                            A quick taste of Alfred’s intelligence — designed to make the upgrade feel obvious once you hit the limits.
+                                        </p>
+                                        <div class="plan-price">
+                                            <div class="plan-price-main">$0</div>
+                                            <div class="plan-price-sub">No credit card</div>
+                                        </div>
+                                        <ul class="plan-features">
+                                            <li>Limited texting</li>
+                                            <li>Minimal memory</li>
+                                            <li>No proactive reminders or nudges</li>
+                                        </ul>
+                                    </div>
+                                    <a class="btn-secondary plan-cta" href="{{ url_for('dashboard_index') }}">Start free</a>
                                 </div>
-                                <ul class="plan-features">
-                                    <li>Core SMS assistant</li>
-                                    <li>Basic logging</li>
-                                    <li>Weekly summary</li>
-                                </ul>
-                                <button class="btn-primary plan-cta" type="button" disabled>Coming soon</button>
                             </div>
 
-                            <div class="settings-card plan-card plan-featured">
-                                <div class="plan-top">
-                                    <h3 class="plan-name">Pro</h3>
-                                    <div class="plan-price">TBD</div>
+                            <!-- Core (Recommended) -->
+                            <div class="plan-wrap plan-wrap-featured">
+                                {% if current_plan == 'core' %}
+                                    <div class="plan-flag plan-flag-current">Current plan</div>
+                                {% elif current_plan != 'pro' %}
+                                    <div class="plan-flag">Most popular!</div>
+                                {% endif %}
+                                <div class="settings-card plan-card plan-card-featured">
+                                    <div class="plan-card-body">
+                                        <h3 class="plan-name">Core</h3>
+                                        <div class="plan-kicker">Alfred becomes part of your day</div>
+                                        <p class="plan-blurb">
+                                            Unlimited texting, proactive support, and long-term memory — so you don’t have to keep everything in your head.
+                                        </p>
+                                        <div class="plan-price">
+                                        <div class="plan-price-main" data-price-monthly="$12/mo" data-price-annual="$120/yr">$120/yr</div>
+                                        <div class="plan-price-sub" data-sub-monthly="Billed monthly" data-sub-annual="Billed annually">Billed annually</div>
+                                        </div>
+                                        <ul class="plan-features">
+                                            <li>Unlimited texting</li>
+                                            <li>Photo-based food logging</li>
+                                            <li>Automatic water tracking</li>
+                                            <li>Workouts + sleep tracking</li>
+                                            <li>Reminders + proactive nudges</li>
+                                            <li>Weekly summaries</li>
+                                            <li>Long-term memory</li>
+                                        </ul>
+                                    </div>
+                                    <!-- Stripe Checkout hook (fill later) -->
+                                    <a class="btn-primary plan-cta plan-cta-core"
+                                       href="{{ url_for('dashboard_pricing') }}"
+                                       data-plan="core"
+                                       data-interval="annual"
+                                       >
+                                        Choose Core
+                                    </a>
                                 </div>
-                                <ul class="plan-features">
-                                    <li>Everything in Starter</li>
-                                    <li>Advanced trends</li>
-                                    <li>Priority support</li>
-                                </ul>
-                                <button class="btn-primary plan-cta" type="button" disabled>Coming soon</button>
                             </div>
 
-                            <div class="settings-card plan-card">
-                                <div class="plan-top">
-                                    <h3 class="plan-name">Team</h3>
-                                    <div class="plan-price">TBD</div>
+                            <!-- Pro -->
+                            <div class="plan-wrap">
+                                {% if current_plan == 'pro' %}
+                                    <div class="plan-flag plan-flag-current">Current plan</div>
+                                {% endif %}
+                                <div class="settings-card plan-card">
+                                    <div class="plan-card-body">
+                                        <h3 class="plan-name">Pro</h3>
+                                        <div class="plan-kicker">For power users</div>
+                                        <p class="plan-blurb">
+                                            Deeper analytics and more control — plus priority processing and early access.
+                                        </p>
+                                        <div class="plan-price">
+                                            <div class="plan-price-main" data-price-monthly="$20/mo" data-price-annual="$200/yr">$200/yr</div>
+                                            <div class="plan-price-sub" data-sub-monthly="Billed monthly" data-sub-annual="Billed annually">Billed annually</div>
+                                        </div>
+                                        <ul class="plan-features">
+                                            <li>Everything in Core</li>
+                                            <li>Deeper analytics + insights</li>
+                                            <li>Advanced rules + automations</li>
+                                            <li>Priority processing</li>
+                                            <li>Early access</li>
+                                        </ul>
+                                    </div>
+                                    <!-- Stripe Checkout hook (fill later) -->
+                                    <a class="btn-secondary plan-cta"
+                                       href="{{ url_for('dashboard_pricing') }}"
+                                       data-plan="pro"
+                                       data-interval="annual"
+                                       >
+                                        Choose Pro
+                                    </a>
                                 </div>
-                                <ul class="plan-features">
-                                    <li>Shared accountability</li>
-                                    <li>Admin controls</li>
-                                    <li>Usage analytics</li>
-                                </ul>
-                                <button class="btn-primary plan-cta" type="button" disabled>Coming soon</button>
                             </div>
                         </div>
                     </div>
@@ -102,6 +192,70 @@
             </div>
 
             <script>
+                // Billing toggle: default annual (aria-pressed true)
+                (function () {
+                    const toggle = document.getElementById('billing-toggle');
+                    if (!toggle) return;
+
+                    let annual = true;
+
+                    function apply() {
+                        toggle.setAttribute('aria-pressed', annual ? 'true' : 'false');
+                        document.body.classList.toggle('billing-monthly', !annual);
+                        document.body.classList.toggle('billing-annual', annual);
+
+                        document.querySelectorAll('.plan-price-main[data-price-monthly]').forEach((el) => {
+                            el.textContent = annual ? el.getAttribute('data-price-annual') : el.getAttribute('data-price-monthly');
+                        });
+                        document.querySelectorAll('.plan-price-sub[data-sub-monthly]').forEach((el) => {
+                            el.textContent = annual ? el.getAttribute('data-sub-annual') : el.getAttribute('data-sub-monthly');
+                        });
+                        document.querySelectorAll('a.plan-cta[data-plan]').forEach((a) => {
+                            a.setAttribute('data-interval', annual ? 'annual' : 'monthly');
+                        });
+                    }
+
+                    toggle.addEventListener('click', () => {
+                        annual = !annual;
+                        apply();
+                    });
+
+                    apply();
+                })();
+
+                // Start Stripe Checkout for Core/Pro
+                (function () {
+                    async function postJSON(url, payload) {
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || data.success === false) {
+                            throw new Error(data.error || 'Request failed');
+                        }
+                        return data;
+                    }
+
+                    document.querySelectorAll('a.plan-cta[data-plan]').forEach((a) => {
+                        a.addEventListener('click', async (e) => {
+                            e.preventDefault();
+                            const plan = a.getAttribute('data-plan');
+                            const interval = a.getAttribute('data-interval') || 'annual';
+                            a.setAttribute('aria-busy', 'true');
+                            try {
+                                const data = await postJSON('/dashboard/api/billing/checkout', { plan, interval });
+                                if (data.url) window.location.href = data.url;
+                            } catch (err) {
+                                alert(err.message);
+                            } finally {
+                                a.removeAttribute('aria-busy');
+                            }
+                        });
+                    });
+                })();
+
                 // Profile dropdown
                 (function () {
                     const btn = document.getElementById('profile-button');
