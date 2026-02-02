@@ -87,7 +87,7 @@
                             <div class="settings-card prefs-card">
                                 <div class="prefs-card-header">
                                     <h3>Weekly digest</h3>
-                                    <p class="prefs-card-subtitle">Pick a day and (optional) hour.</p>
+                                    <p class="prefs-card-subtitle">Pick a day and (optional) hour for Alfred to send you a weekly digest.</p>
                                 </div>
 
                                 <div class="prefs-row">
@@ -165,7 +165,7 @@
                                 </div>
 
                                 <div class="prefs-field prefs-field-narrow">
-                                    <label for="morning-hour">Hour (0–23)</label>
+                                    <label for="morning-hour">What time would you like your morning text? (Hours 0–23)</label>
                                     <input id="morning-hour" type="number" min="0" max="23" value="{{ user.morning_checkin_hour if user.morning_checkin_hour is not none else '' }}" placeholder="e.g. 8">
                                 </div>
                             </div>

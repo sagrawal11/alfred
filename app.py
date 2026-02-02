@@ -19,6 +19,7 @@ from integrations import IntegrationAuthManager, SyncManager, WebhookHandler
 from data import IntegrationRepository
 from services import JobScheduler, ReminderService, SyncService, NotificationService
 from apscheduler.triggers.interval import IntervalTrigger
+from data import UserRepository
  
 
 # Initialize Flask app
@@ -30,7 +31,26 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-product
 try:
     from flask_limiter import Limiter
     from flask_limiter.util import get_remote_address
-    limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"])
+
+    def _rate_limit_key():
+        # Prefer user_id when logged in (dashboard), else phone number (Twilio), else IP.
+        try:
+            from flask import session as flask_session  # type: ignore
+            uid = flask_session.get("user_id")
+            if uid:
+                return f"user:{uid}"
+        except Exception:
+            pass
+        try:
+            from flask import request as flask_request  # type: ignore
+            frm = (flask_request.form.get("From") or "").strip()
+            if frm:
+                return f"phone:{frm}"
+        except Exception:
+            pass
+        return get_remote_address()
+
+    limiter = Limiter(_rate_limit_key, app=app, default_limits=["200 per day", "60 per hour"])
 except Exception:
     limiter = None
 
@@ -48,12 +68,24 @@ communication_service = CommunicationService()
 # Initialize message processor (singleton)
 message_processor: MessageProcessor = None
 
+# Initialize agent orchestrator (singleton; enabled via env flag)
+agent_orchestrator = None
+
 def get_message_processor() -> MessageProcessor:
     """Get or create message processor instance"""
     global message_processor
     if message_processor is None:
         message_processor = MessageProcessor(supabase)
     return message_processor
+
+
+def get_agent_orchestrator():
+    """Get or create agent orchestrator instance (Option B)."""
+    global agent_orchestrator
+    if agent_orchestrator is None:
+        from services.agent.orchestrator import AgentOrchestrator
+        agent_orchestrator = AgentOrchestrator(supabase)
+    return agent_orchestrator
 
 # Initialize web components
 auth_manager = AuthManager(supabase)
@@ -72,7 +104,9 @@ notification_service = NotificationService(supabase, config, communication_servi
 
 # Register web routes
 register_web_routes(app, supabase, auth_manager, dashboard_data,
-                    job_scheduler, reminder_service, sync_service, notification_service, limiter=limiter)
+                    job_scheduler, reminder_service, sync_service, notification_service, limiter=limiter,
+                    get_message_processor_fn=get_message_processor,
+                    get_agent_orchestrator_fn=get_agent_orchestrator)
 
 # Register integration routes
 register_integration_routes(app, supabase, auth_manager, integration_repo,
@@ -106,10 +140,58 @@ def twilio_webhook():
             response = MessagingResponse()
             response.message("I didn't receive a message. Please try again.")
             return str(response), 200
-        
-        # Process message
-        processor = get_message_processor()
-        response_text = processor.process_message(message_body, phone_number=from_number)
+
+        # Prefer agent for onboarded users when enabled; fall back to classic processor otherwise.
+        response_text = None
+        try:
+            if os.getenv("AGENT_MODE_ENABLED", "false").lower() == "true":
+                # Keep STOP/HELP/START behavior aligned with classic processor.
+                low = (message_body or "").strip().lower()
+                if low not in ("help", "info", "stop", "start"):
+                    user = UserRepository(supabase).get_by_phone(from_number)
+                    if user and user.get("onboarding_complete", False):
+                        quota_blocked = False
+                        # Monthly quota enforcement (turns)
+                        try:
+                            from data import UserUsageRepository
+                            plan = (user.get("plan") or "free").strip().lower()
+                            month_key = UserUsageRepository.month_key_for()
+                            # Conservative defaults; can be tuned in pricing tier work.
+                            quota = 50 if plan == "free" else 1000 if plan == "core" else None
+                            if quota is not None:
+                                cur = supabase.table("user_usage_monthly").select("turns_used").eq("user_id", int(user["id"])).eq("month_key", month_key).limit(1).execute()
+                                used = int((cur.data[0].get("turns_used") if cur.data else 0) or 0)
+                                if used >= quota:
+                                    response_text = [
+                                        "You’ve hit your monthly message limit for this plan.",
+                                        "Upgrade to Pro for unlimited messaging (with fair-use safeguards).",
+                                    ]
+                                    quota_blocked = True
+                        except Exception as _quota_err:
+                            # If quota exceeded we already set response_text; otherwise ignore quota errors.
+                            if response_text:
+                                pass
+                        if not quota_blocked:
+                            response_text = get_agent_orchestrator().handle_message(
+                                user_id=int(user["id"]),
+                                phone_number=str(from_number),
+                                text=message_body,
+                                source="sms",
+                            )
+                            # Count the turn after a successful agent call.
+                            try:
+                                from data import UserUsageRepository
+                                UserUsageRepository(supabase).increment_month(int(user["id"]), UserUsageRepository.month_key_for(), delta=1)
+                            except Exception:
+                                pass
+        except Exception:
+            # Keep fallback behavior unless we already have a response.
+            if response_text is None:
+                response_text = None
+
+        if response_text is None:
+            processor = get_message_processor()
+            response_text = processor.process_message(message_body, phone_number=from_number)
         
         print(f"📱 Response: {response_text}")
         

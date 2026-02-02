@@ -3,7 +3,13 @@ NLP Layer
 Modular NLP processing components
 """
 
-from .gemini_client import GeminiClient
+try:
+    # Gemini is optional; on older Python versions or missing deps,
+    # importing Google libs can fail. Keep the package importable so
+    # OpenAI-only deployments still run.
+    from .gemini_client import GeminiClient  # type: ignore
+except Exception:  # pragma: no cover
+    GeminiClient = None  # type: ignore
 from .llm_client import create_llm_client
 from .llm_types import LLMClient
 from .intent_classifier import IntentClassifier

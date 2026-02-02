@@ -18,6 +18,10 @@ from .user_preferences_repository import UserPreferencesRepository
 from .nutrition_cache_repository import NutritionCacheRepository
 from .food_log_metadata_repository import FoodLogMetadataRepository
 from .food_image_upload_repository import FoodImageUploadRepository
+from .user_memory_state_repository import UserMemoryStateRepository
+from .user_memory_items_repository import UserMemoryItemsRepository
+from .user_memory_embeddings_repository import UserMemoryEmbeddingsRepository
+from .user_usage_repository import UserUsageRepository
 
 __all__ = [
     'BaseRepository',
@@ -35,4 +39,8 @@ __all__ = [
     'NutritionCacheRepository',
     'FoodLogMetadataRepository',
     'FoodImageUploadRepository',
+    'UserMemoryStateRepository',
+    'UserMemoryItemsRepository',
+    'UserMemoryEmbeddingsRepository',
+    'UserUsageRepository',
 ]

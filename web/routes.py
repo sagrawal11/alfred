@@ -13,7 +13,9 @@ from .dashboard import DashboardData
 
 def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboard_data: DashboardData,
                         job_scheduler=None, reminder_service=None, sync_service=None, notification_service=None,
-                        limiter=None):
+                        limiter=None,
+                        get_message_processor_fn=None,
+                        get_agent_orchestrator_fn=None):
     """
     Register all web routes with the Flask app
     
@@ -47,6 +49,29 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         import stripe  # type: ignore
     except Exception:
         stripe = None
+
+    # Message processor singleton (to preserve SMS-like conversation state in web chat)
+    _processor = None
+
+    def get_message_processor():
+        nonlocal _processor
+        if get_message_processor_fn is not None:
+            return get_message_processor_fn()
+        if _processor is None:
+            from core.processor import MessageProcessor
+            _processor = MessageProcessor(supabase)
+        return _processor
+
+    _agent = None
+
+    def get_agent_orchestrator():
+        nonlocal _agent
+        if get_agent_orchestrator_fn is not None:
+            return get_agent_orchestrator_fn()
+        if _agent is None:
+            from services.agent.orchestrator import AgentOrchestrator
+            _agent = AgentOrchestrator(supabase)
+        return _agent
     
     # ============================================================================
     # Landing Page Route
@@ -570,6 +595,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         return render_template('dashboard/chat.html', user=user, active_page='chat')
     
     @app.route('/dashboard/api/chat', methods=['POST'])
+    @limit("30 per minute")
     @require_login
     def dashboard_api_chat():
         """Process chat messages (same as SMS processing)"""
@@ -581,19 +607,68 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             return jsonify({'success': False, 'error': 'Message required'}), 400
         
         try:
-            # Import MessageProcessor here to avoid circular imports
-            from core.processor import MessageProcessor
-            
-            # Create message processor with the supabase client
-            processor = MessageProcessor(supabase)
-            
             # Match SMS semantics as closely as possible:
             # - identify the sender by phone number (E.164)
             # - if the account doesn't have a phone, use a stable placeholder that the processor understands
             phone_number = user.get('phone_number') or f"web-user-{user['id']}"
-            
-            # Process message
-            response_text = processor.process_message(message, phone_number=phone_number)
+
+            # If agent mode is enabled and onboarding is complete, use the new orchestrator.
+            # Otherwise fall back to the classic MessageProcessor (keeps onboarding/STOP/HELP behavior).
+            response_text = None
+            try:
+                if user.get("onboarding_complete", False):
+                    # Monthly quota enforcement (turns) for agent usage
+                    quota_blocked = False
+                    try:
+                        from data import UserUsageRepository
+
+                        plan = (user.get("plan") or "free").strip().lower()
+                        month_key = UserUsageRepository.month_key_for()
+                        quota = 50 if plan == "free" else 1000 if plan == "core" else None
+
+                        if quota is not None:
+                            cur = (
+                                supabase.table("user_usage_monthly")
+                                .select("turns_used")
+                                .eq("user_id", int(user["id"]))
+                                .eq("month_key", month_key)
+                                .limit(1)
+                                .execute()
+                            )
+                            used = int((cur.data[0].get("turns_used") if cur.data else 0) or 0)
+                            if used >= quota:
+                                response_text = [
+                                    "You’ve hit your monthly message limit for this plan.",
+                                    "Upgrade to Pro for unlimited messaging (with fair-use safeguards).",
+                                ]
+                                quota_blocked = True
+                    except Exception:
+                        quota_blocked = False
+
+                    if not quota_blocked:
+                        agent = get_agent_orchestrator()
+                        response_text = agent.handle_message(
+                            user_id=int(user["id"]),
+                            phone_number=str(phone_number),
+                            text=message,
+                            source="web",
+                        )
+                        try:
+                            from data import UserUsageRepository
+
+                            UserUsageRepository(supabase).increment_month(
+                                int(user["id"]),
+                                UserUsageRepository.month_key_for(),
+                                delta=1,
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                response_text = None
+
+            if response_text is None:
+                processor = get_message_processor()
+                response_text = processor.process_message(message, phone_number=phone_number)
 
             # Mirror Twilio response behavior (truncate for SMS-like output)
             if isinstance(response_text, (list, tuple)):

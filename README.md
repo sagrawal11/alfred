@@ -1,162 +1,226 @@
-# SMS Assistant
+# Alfred (SMS Assistant)
 
-**Your personal productivity assistant that lives in your text messages.** No apps to open, no dashboards to check—just text what you did, what you need, or what you want to know. Powered by advanced NLP and designed to understand you, not just respond to commands.
+Alfred is a personalized SMS-first assistant that feels like a real person, but is grounded in your data. You text naturally; Alfred logs, remembers, and retrieves your history from Supabase, and helps you stay on top of your life without making you manage a system.
 
-## Why This Exists
+This repo contains:
+- A **Flask** app that powers Twilio SMS webhooks + a web dashboard
+- A **Supabase** backend (Postgres + Storage)
+- A black/white **dashboard UI** (Trends, Preferences, Settings, Integrations (Coming Soon), Pricing)
+- A generalized nutrition pipeline + dashboard image-based food logging
+- **Stripe** subscriptions (Free/Core/Pro) with billing state stored on `public.users`
+- An **agent mode** (tool-calling + durable memory) powered by OpenAI (`gpt-4o` voice, `gpt-4o-mini` internal steps)
 
-Most productivity tools require you to adapt to them. This one adapts to you. Text naturally, make mistakes, be vague—it figures it out. After a long workout, just text "done" and it'll ask what you meant. Forget to respond to a reminder? It'll check back with you. Your todo list getting stale? It'll help you clean it up. This isn't just logging—it's an intelligent system that actually helps you stay on track.
+---
 
-## Architecture
+## Product philosophy
 
-```
-┌─────────────┐
-│   Twilio    │
-│   SMS API   │
-└──────┬──────┘
-       │
-       │ HTTP POST (TwiML)
-       ▼
-┌─────────────────────────────────────┐
-│         Flask Application           │
-│  ┌───────────────────────────────┐ │
-│  │  Message Processor             │ │
-│  │  - Intent Classification       │ │
-│  │  - Entity Extraction           │ │
-│  └───────────┬─────────────────────┘ │
-│              │                        │
-│  ┌───────────▼─────────────────────┐ │
-│  │  Gemini NLP Processor           │ │
-│  │  (Gemma-3-12b-it)               │ │
-│  └───────────┬─────────────────────┘ │
-│              │                        │
-│  ┌───────────▼─────────────────────┐ │
-│  │  Supabase Database              │ │
-│  │  - Food logs                    │ │
-│  │  - Water logs                   │ │
-│  │  - Gym logs                     │ │
-│  │  - Reminders/Todos              │ │
-│  │  - Assignments                  │ │
-│  │  - Sleep logs                   │ │
-│  │  - Facts/Information            │ │
-│  └─────────────────────────────────┘ │
-│                                       │
-│  ┌─────────────────────────────────┐ │
-│  │  Background Scheduler           │ │
-│  │  - Reminder checks              │ │
-│  │  - Follow-ups                   │ │
-│  │  - Weekly digests               │ │
-│  │  - Gentle nudges                │ │
-│  └─────────────────────────────────┘ │
-└───────────────────────────────────────┘
-       │
-       │ (optional)
-       ▼
-┌─────────────┐
-│   Google    │
-│  Calendar   │
-└─────────────┘
+Most tools are trackers. Alfred is a companion that reduces mental load:
+- remembers what matters
+- nudges gently
+- closes open loops
+- gives you the “what now?” answer without dashboards
+
+---
+
+## High-level architecture
+
+```text
+Twilio SMS  ->  Flask (/webhook/twilio)  ->  Alfred brain  ->  TwiML response
+                                   |
+                                   +-> Supabase (users + logs + memory + billing)
+                                   +-> Background jobs (nudges/digests/sync)
+
+Web dashboard -> Flask (/dashboard/...) -> Supabase
 ```
 
-## Core Features
+There are currently two “brains”:
 
-### Natural Language Everything
+- **Classic pipeline** (always available): intent classification → entity extraction → handler routing
+  - Implemented in `core/processor.py`
+  - Used for onboarding, STOP/HELP/START behaviors, and as a fallback
 
-Forget rigid commands. Text "drank a bottle" or "had a quesadilla" or "did bench press 135 for 5" and it understands. The system uses Google's Gemini API to parse intent and extract entities, so you can phrase things your way. It learns your patterns and gets smarter over time.
+- **Agent mode** (new, optional): tool-calling orchestration + durable memory
+  - Implemented in `services/agent/orchestrator.py`
+  - Uses:
+    - `gpt-4o` for Alfred’s final user-facing voice
+    - `gpt-4o-mini` for routing + summarization
+    - `text-embedding-3-small` for memory embeddings
 
-### Smart Context Awareness
+---
 
-Ask "what should I do now?" and it synthesizes everything: your incomplete todos, upcoming calendar events, water intake status, meal timing, and time of day to suggest what actually makes sense right now. It's like having a personal assistant that actually knows your situation.
+## Key user-facing features
 
-### "What Just Happened?" Mode
+### SMS + “Chat Test” simulator
+- SMS webhook: `/webhook/twilio`
+- Web chat simulator: `/dashboard/chat` → `/dashboard/api/chat`
+- Both are wired to the same underlying processing path and support multi-message replies.
 
-Text "just finished" or "done" when you're exhausted, and instead of guessing, it shows you a numbered list of likely interpretations based on your recent activity. Pick a number. Done. This feature alone saves mental energy when you're drained after a workout or late-night session.
+### Onboarding (account-first)
+- Web users create an account first, then onboarding happens via SMS/chat when `users.onboarding_complete = false`.
+- Onboarding flow lives in `core/onboarding.py`.
 
-### Intelligent Reminder System
+### Logging + queries
+- Food, water, workouts, sleep, todos/reminders are stored in Supabase.
+- Trends page shows a real chart + activity log from DB.
 
-Reminders don't just fire and forget. If you don't respond, the system checks back with a gentle follow-up. Missed a reminder? It proactively suggests rescheduling with quick options. The system treats reminders as open loops that deserve closure, not notifications to ignore.
+### Generalized nutrition (beyond a school database)
+- Tiered resolver with caching:
+  - local DB → USDA FoodData Central → Open Food Facts (Nutritionix optional)
+- Cache table: `nutrition_cache`
 
-### Task Decay & Cleanup
+### Dashboard image-based food logging
+- Upload a label/receipt/food photo in the dashboard
+- Stored in Supabase Storage + metadata tables
+- Processed with OpenAI vision to structured logs + metadata
 
-Your todo list won't become a forgotten archive. The system periodically reviews stale tasks and asks if they're still relevant. Keep it, reschedule it, or delete it—your choice. This keeps your task list meaningful and prevents silent clutter buildup.
+### Stripe subscriptions + plan visibility
+- Stripe Checkout for Core/Pro
+- Webhook updates billing state on `public.users` (plan + interval + subscription IDs)
+- Pricing page shows the user’s current plan badge
 
-### Weekly Digest
+---
 
-Every week, get a compact summary of your behavior: water averages, gym frequency, food patterns, task completion rates. Skimmable in 30 seconds, insightful without dashboards. Passive reflection that builds self-awareness with zero effort.
+## Repository layout (important folders)
 
-### Gentle Nudges
+- `app.py`: Flask entrypoint + Twilio webhook routes + service initialization
+- `web/`: dashboard routes, auth, trends APIs
+- `templates/` + `static/`: dashboard UI (black/white + Butler font)
+- `core/`: classic message processor, onboarding, session manager
+- `services/agent/`: agent mode orchestrator + validated tool execution
+- `data/`: Supabase repositories (all DB reads/writes)
+- `services/nutrition/` + `services/vision/`: nutrition resolver + vision extraction pipeline
 
-Instead of "Drink water now," you get "You're one bottle behind your usual pace today." Context-aware nudges that reference your personal patterns, not absolute goals. They're informative, non-judgmental, and harder to ignore because they feel helpful, not demanding.
+---
 
-### Undo & Edit
+## Supabase schema / migrations (run in SQL editor)
 
-Made a mistake? Text "undo last water" or "delete last food" and it's gone. No hunting through files or reissuing complex commands. This makes logging feel safe—you can always fix it later, which encourages more consistent use.
+Baseline + existing features:
+- `supabase_schema_complete.sql` (full schema from scratch)
+- `supabase_schema_onboarding_prefs.sql` (onboarding + preferences fields)
+- `supabase_schema_phase6_additions.sql` (older auth fields; some may be unused now)
+- `supabase_schema_nutrition_pipeline.sql` (nutrition cache + image uploads + log metadata)
+- `supabase_schema_stripe_billing.sql` (Stripe billing columns on `public.users`)
 
-### Google Calendar Integration
+Agent mode additions:
+- `supabase_schema_agent_memory.sql` (memory tables + pgvector + RLS)
+- `supabase_schema_agent_usage.sql` (monthly usage metering + RPC)
 
-Optional but powerful. The system reads your calendar and shows events alongside reminders and todos. Ask "what do I have today?" and get everything in one place. Schedule awareness without switching apps.
+---
 
-### Custom Food Database
+## Environment variables
 
-Log meals with automatic macro tracking from your custom food database. If an item isn’t in your local restaurant JSONs, Alfred can fall back to external nutrition sources (USDA FoodData Central, Open Food Facts, and Nutritionix when configured) and caches results to reduce repeat lookups.
+Start from `config/env_template.txt` and copy into `.env` (format must be `KEY=value`).
 
-### Assignment Tracking
+### Required (basic)
+- `SUPABASE_URL`
+- `SUPABASE_KEY`
+- `FLASK_SECRET_KEY`
+- `BASE_URL` (needed for Stripe and some redirects)
 
-Track school assignments with class names and due dates. Text "CS101 homework 3 due Friday" or "Math assignment due tomorrow" and the system automatically extracts the class, assignment name, and due date. Assignments appear in your morning check-ins and dashboard, helping you stay on top of deadlines.
+### OpenAI (agent + NLP)
+- `OPENAI_API_KEY`
 
-## What Makes This Different
+Agent mode configuration:
+- `AGENT_MODE_ENABLED=true|false`
+- `OPENAI_MODEL_VOICE=gpt-4o`
+- `OPENAI_MODEL_ROUTER=gpt-4o-mini`
+- `OPENAI_MODEL_SUMMARIZER=gpt-4o-mini`
+- `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
 
-**It's forgiving.** Make mistakes, be vague, forget to respond—the system handles it gracefully.
+### Twilio (SMS)
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_PHONE_NUMBER`
 
-**It's proactive.** It doesn't just log what you tell it; it follows up, suggests, and helps you stay on track.
+### Stripe
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_CORE_MONTHLY`
+- `STRIPE_PRICE_CORE_ANNUAL`
+- `STRIPE_PRICE_PRO_MONTHLY`
+- `STRIPE_PRICE_PRO_ANNUAL`
 
-**It's intelligent.** Uses advanced NLP to understand natural language, not just parse commands.
+### Nutrition / food APIs (optional)
+- `USDA_FDC_API_KEY`
+- `OPENFOODFACTS_BASE_URL` (default `https://world.openfoodfacts.org`)
+- `NUTRITIONIX_APP_ID` / `NUTRITIONIX_API_KEY` (optional)
 
-**It's context-aware.** Suggestions and responses consider your current situation, not just your data.
+### Dashboard uploads (optional but recommended if using image logging)
+- `FOOD_IMAGE_BUCKET`
+- `FOOD_IMAGE_MAX_BYTES`
 
-**It's low-friction.** Everything happens over SMS. No apps, no dashboards, no extra steps.
+---
 
-**It learns.** The system adapts to your patterns and gets better at understanding you over time.
+## Local development
 
-## Quick Examples
+### 1) Create + activate venv
 
-**Logging:**
-- `"drank a bottle"` → Logs water, shows daily total and goal progress
-- `"ate sazon quesadilla"` → Logs food with macros from your database
-- `"did bench press 135x5"` → Logs workout with all details
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-**Dashboard uploads (labels/receipts):**
-- Upload a nutrition label or receipt screenshot in the dashboard to auto-log meals (uses OpenAI vision + nutrition lookups).
+### 2) Run the app
 
-**Tasks:**
-- `"remind me to call mom at 3pm"` → Sets time-based reminder
-- `"todo buy groceries"` → Adds to your list
-- `"CS101 homework 3 due Friday"` → Adds assignment with class, name, and due date
-- `"called mom"` → Intelligently matches and completes the task
+```bash
+python app.py
+```
 
-**Queries:**
-- `"how much have I eaten"` → Daily food totals with macros
-- `"what do I have to do today"` → Todos, reminders, assignments, and calendar events
-- `"what should I do now"` → Context-aware suggestions based on your situation
+App:
+- Home: `http://localhost:5001/`
+- Dashboard login: `http://localhost:5001/dashboard/login`
 
-**Smart Features:**
-- `"just finished"` → Shows numbered options of what you might mean
-- `"undo last water"` → Removes last entry instantly
-- Weekly digest sent automatically every Monday
+### 3) Stripe webhook (local)
 
-## Technical Stack
+```bash
+stripe listen --forward-to localhost:5001/stripe/webhook
+```
 
-- **Flask** - Web framework for Twilio webhooks
-- **Twilio** - SMS API for messaging
-- **Google Gemini API (Gemma-3-12b-it)** - Natural language processing
-- **Supabase** - PostgreSQL database for persistent storage
-- **APScheduler** - Background task scheduling
-- **Google Calendar API** - Calendar integration
+---
 
-## Viewing Stats
-**Homepage:** https://objective-almeria-sarthakagrawal-a8b1c327.koyeb.app/
+## Agent mode behavior (important)
 
-Go to the homepage above (or `/dashboard/login`, which redirects there), then log in to view daily stats and 7, 30, and 90 day trends.
+When `AGENT_MODE_ENABLED=true`:
+- Web chat (`/dashboard/api/chat`) uses the agent **only if onboarding is complete**
+- Twilio SMS (`/webhook/twilio`) uses the agent **only if onboarding is complete**
+- STOP/HELP/START still use the classic behavior for safety/consistency
+
+Durable memory:
+- `user_memory_state` stores a short running summary used each turn
+- `user_memory_items` stores specific facts/preferences/plans
+- `user_memory_embeddings` stores embeddings for semantic recall (pgvector)
+
+Metering:
+- `user_usage_monthly` tracks “turns” per month
+- Quota defaults (can be tuned):
+  - Free: 50 turns/month
+  - Core: 1000 turns/month
+  - Pro: unlimited (fair use)
+
+---
+
+## Testing
+
+```bash
+pytest -q
+```
+
+---
+
+## Troubleshooting
+
+### “No such price: prod_…”
+Your `.env` has a Product ID instead of a Price ID. Stripe env vars must be `price_...`.
+
+### Gemini import errors on older Python
+Gemini is optional. The project runs OpenAI-first; Gemini imports are guarded so OpenAI-only deployments still run.
+
+### Trends chart shows zeros but activity log works
+Usually means logs exist but numeric macro fields are null/empty; the trend series sums numeric columns.
+
+---
 
 ## License
 
-See LICENSE file for details.
+See `LICENSE`.
