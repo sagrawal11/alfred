@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 @dataclass(frozen=True)
 class OnboardingResult:
-    reply: str
+    reply: Union[str, List[str]]
     # If True, onboarding has fully completed this turn
     completed: bool = False
 
@@ -143,7 +143,12 @@ def handle_onboarding(
     if step is None:
         step = 0
 
-    name = (user.get("name") or "").strip() or "there"
+    full_name = (user.get("name") or "").strip()
+    first_name = (full_name.split()[0] if full_name else "").strip() or "there"
+    reminder_style_question = (
+        "How much do you want me in your ear? Some people like constant check-ins and follow-ups; "
+        "others only want a nudge when it really matters. However you'd describe it—tell me."
+    )
 
     user_updates: Dict[str, Any] = {}
     prefs_updates: Dict[str, Any] = {}
@@ -152,7 +157,10 @@ def handle_onboarding(
         session["onboarding_step"] = 1
         return (
             OnboardingResult(
-                reply=f"Hey {name}! Good to hear from you. Let me ask you a couple things so I can be useful right away."
+                reply=[
+                    f"Hey {first_name}! Good to hear from you.",
+                    "Let me ask you a couple things so I can be useful right away.\n\n" + reminder_style_question,
+                ]
             ),
             user_updates,
             prefs_updates,
@@ -163,7 +171,7 @@ def handle_onboarding(
         if not raw:
             return (
                 OnboardingResult(
-                    reply="How much do you want me in your ear? Some people like constant check-ins and follow-ups; others only want a nudge when it really matters. However you'd describe it—tell me."
+                    reply=reminder_style_question
                 ),
                 user_updates,
                 prefs_updates,
@@ -252,7 +260,7 @@ def handle_onboarding(
     session["onboarding_step"] = 0
     return (
         OnboardingResult(
-            reply=f"Hey {name}! Let's get you set up. (If I ever lose my place, just say anything and I'll pick back up.)"
+            reply=f"Hey {first_name}! Let's get you set up. (If I ever lose my place, just say anything and I'll pick back up.)"
         ),
         user_updates,
         prefs_updates,

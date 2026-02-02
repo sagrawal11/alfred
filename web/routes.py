@@ -587,28 +587,44 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             # Create message processor with the supabase client
             processor = MessageProcessor(supabase)
             
-            # Get user's phone number
-            # Web users have a placeholder phone_number like "web-{uuid}" from registration
-            phone_number = user.get('phone_number')
-            if not phone_number:
-                # Fallback: use user_id as identifier (processor will create user if needed)
-                phone_number = f"web-user-{user['id']}"
+            # Match SMS semantics as closely as possible:
+            # - identify the sender by phone number (E.164)
+            # - if the account doesn't have a phone, use a stable placeholder that the processor understands
+            phone_number = user.get('phone_number') or f"web-user-{user['id']}"
             
             # Process message
-            response_text = processor.process_message(message, phone_number=phone_number, user_id=user['id'])
-            
+            response_text = processor.process_message(message, phone_number=phone_number)
+
+            # Mirror Twilio response behavior (truncate for SMS-like output)
+            if isinstance(response_text, (list, tuple)):
+                parts = []
+                for part in response_text:
+                    if not part:
+                        continue
+                    if len(part) > 1500:
+                        part = part[:1500] + "..."
+                    parts.append(part)
+                return jsonify({
+                    'success': True,
+                    'responses': parts,
+                    'response': ("\n\n".join(parts) if parts else "I didn't understand that. Try sending 'help' for available commands.")
+                })
+
+            if response_text and len(response_text) > 1500:
+                response_text = response_text[:1500] + "..."
+
             return jsonify({
                 'success': True,
                 'response': response_text or "I didn't understand that. Try sending 'help' for available commands."
             })
         except Exception as e:
+            # In SMS, users never see stack traces—keep parity by returning a generic response.
             import traceback
             traceback.print_exc()
             return jsonify({
-                'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__
-            }), 500
+                'success': True,
+                'response': "Sorry, I encountered an error processing your message. Please try again."
+            }), 200
 
     # ============================================================================
     # Dashboard Uploads (Food images)

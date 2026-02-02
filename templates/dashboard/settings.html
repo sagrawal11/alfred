@@ -91,6 +91,16 @@
                                         <div class="settings-v">{{ user.phone_number or 'Not set' }}</div>
                                     </div>
                                     <div class="settings-kv">
+                                        <div class="settings-k">Plan</div>
+                                        <div class="settings-v">
+                                            {% set plan = (user.plan or 'free') %}
+                                            {% set interval = (user.plan_interval or '') %}
+                                            <span class="{% if plan == 'free' %}plan-pill-neutral{% else %}plan-current-pill{% endif %}">
+                                                {{ plan|capitalize }}{% if plan != 'free' and interval %} · {{ interval|capitalize }}{% endif %}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="settings-kv">
                                         <div class="settings-k">Created</div>
                                         <div class="settings-v">{{ user.created_at[:10] if user.created_at else 'Unknown' }}</div>
                                     </div>

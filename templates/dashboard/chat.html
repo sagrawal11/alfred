@@ -50,7 +50,14 @@
 
                 <div class="chat-container">
             <div class="chat-info">
-                <p>This is a testing interface that uses the same message processing logic as the SMS system. Send messages below to test all features.</p>
+                <p>
+                    This is a testing interface that behaves like an SMS conversation with Alfred.
+                    Messages are processed through the same backend pipeline as Twilio.
+                </p>
+                <p class="chat-meta">
+                    <strong>Sender (simulated):</strong>
+                    <span>{{ user.phone_number or ('web-user-' ~ user.id) }}</span>
+                </p>
             </div>
             
             <div id="chat-messages" class="chat-messages">
@@ -166,17 +173,14 @@
                 
                 const data = await response.json();
                 
-                if (data.success) {
-                    addMessage(data.response, true);
+                // Backend returns SMS-like responses; onboarding may return multiple messages.
+                if (data && Array.isArray(data.responses) && data.responses.length) {
+                    data.responses.forEach((part) => addMessage(String(part || ''), true));
                 } else {
-                    let errorMsg = `Error: ${data.error || 'Unknown error occurred'}`;
-                    if (data.error_type) {
-                        errorMsg += `\nType: ${data.error_type}`;
-                    }
-                    addMessage(errorMsg, true);
+                    addMessage((data && data.response) ? data.response : "Sorry — something went wrong. Please try again.", true);
                 }
             } catch (error) {
-                addMessage(`Error: Failed to send message. ${error.message}`, true);
+                addMessage("Sorry — something went wrong. Please try again.", true);
             } finally {
                 sendButton.disabled = false;
                 sendButton.innerHTML = '<span>Send</span>';

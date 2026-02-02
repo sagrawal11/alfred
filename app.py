@@ -116,11 +116,18 @@ def twilio_webhook():
         # Create TwiML response
         response = MessagingResponse()
         
-        if response_text:
-            # Limit message length
-            if len(response_text) > 1500:
-                response_text = response_text[:1500] + "..."
-            response.message(response_text)
+        # Support multi-message replies (used by onboarding to send a greeting + first question).
+        parts = []
+        if isinstance(response_text, (list, tuple)):
+            parts = [p for p in response_text if p]
+        elif response_text:
+            parts = [response_text]
+
+        if parts:
+            for part in parts:
+                if len(part) > 1500:
+                    part = part[:1500] + "..."
+                response.message(part)
         else:
             response.message("I didn't understand that. Try sending 'help' for available commands.")
         
@@ -144,6 +151,10 @@ def sms_webhook():
     
     processor = get_message_processor()
     response_text = processor.process_message(message_body, phone_number=from_number)
+
+    # Keep legacy endpoint shape stable (single string), but allow onboarding to return multi-part.
+    if isinstance(response_text, (list, tuple)):
+        response_text = "\n\n".join([p for p in response_text if p])
     
     return jsonify({
         "response": response_text,

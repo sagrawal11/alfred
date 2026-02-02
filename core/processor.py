@@ -5,7 +5,7 @@ Main message processing engine that coordinates NLP, handlers, and responses
 
 import os
 import re
-from typing import Dict, Optional, Any
+from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 
 from nlp import (
@@ -90,7 +90,7 @@ class MessageProcessor:
                                                    self.formatter),
         }
     
-    def process_message(self, message: str, phone_number: str, user_id: Optional[int] = None) -> str:
+    def process_message(self, message: str, phone_number: str, user_id: Optional[int] = None) -> Union[str, List[str]]:
         """
         Process an incoming message
         
@@ -99,7 +99,7 @@ class MessageProcessor:
             phone_number: Sender's phone number (E.164 format)
             
         Returns:
-            Response text
+            Response text. In a few cases (onboarding), this can be a list of SMS-sized messages.
         """
         try:
             message_clean = (message or "").strip()
