@@ -11,6 +11,11 @@ import requests
 
 from .types import NutritionResult
 
+try:
+    from supabase import Client as SupabaseClient
+except ImportError:
+    SupabaseClient = None  # type: ignore[misc, assignment]
+
 
 class NutritionProvider(Protocol):
     source: str
@@ -26,6 +31,64 @@ def _first_number(v: Any) -> Optional[float]:
         return float(v)
     except Exception:
         return None
+
+
+class USDASupabaseProvider:
+    """
+    USDA nutrition from Supabase (usda_food, usda_food_nutrient, usda_nutrient,
+    plus food_portion, measure_unit, food_category, branded_food for accuracy).
+    """
+
+    source = "usda_db"
+
+    def __init__(self, supabase: SupabaseClient):
+        if SupabaseClient is None:
+            raise ImportError("supabase package required for USDASupabaseProvider")
+        from data.usda_repository import USDARepository
+        self.repo = USDARepository(supabase)
+
+    def lookup(self, *, query: str, restaurant: Optional[str] = None) -> Optional[NutritionResult]:
+        q = (query or "").strip()
+        if not q:
+            return None
+        foods = self.repo.search_food(q, limit=5)
+        if not foods:
+            return None
+        best = foods[0]
+        fdc_id = best.get("fdc_id")
+        if fdc_id is None:
+            return None
+        try:
+            fdc_id = int(fdc_id)
+        except (TypeError, ValueError):
+            return None
+        macros = self.repo.get_macros(fdc_id)
+        if (
+            macros.get("calories") is None
+            and macros.get("protein_g") is None
+            and macros.get("carbs_g") is None
+            and macros.get("fat_g") is None
+        ):
+            return None
+        serving = self.repo.get_serving_info(fdc_id)
+        resolved_name = best.get("description") or serving.get("portion_description")
+        raw: Dict[str, Any] = {
+            "fdc_id": fdc_id,
+            "data_type": best.get("data_type"),
+            "food_category_id": best.get("food_category_id"),
+        }
+        return NutritionResult(
+            calories=macros.get("calories"),
+            protein_g=macros.get("protein_g"),
+            carbs_g=macros.get("carbs_g"),
+            fat_g=macros.get("fat_g"),
+            source=self.source,
+            confidence=0.7,
+            basis=serving.get("basis") or "serving",
+            serving_weight_grams=serving.get("serving_weight_grams"),
+            resolved_name=resolved_name,
+            raw=raw,
+        )
 
 
 class USDAFoodDataCentralProvider:
@@ -235,12 +298,16 @@ class NutritionixProvider:
         )
 
 
-def build_default_providers() -> List[NutritionProvider]:
+def build_default_providers(supabase: SupabaseClient) -> List[NutritionProvider]:
     providers: List[NutritionProvider] = []
 
-    usda_key = os.getenv("USDA_FDC_API_KEY", "").strip()
-    if usda_key:
-        providers.append(USDAFoodDataCentralProvider(api_key=usda_key))
+    # USDA from Supabase (skip if tables were dropped; set USE_USDA_SUPABASE=false)
+    use_usda_supabase = os.getenv("USE_USDA_SUPABASE", "true").strip().lower() != "false"
+    if supabase is not None and use_usda_supabase:
+        try:
+            providers.append(USDASupabaseProvider(supabase))
+        except Exception:
+            pass
 
     # Open Food Facts is public
     providers.append(OpenFoodFactsProvider(base_url=os.getenv("OPENFOODFACTS_BASE_URL", "https://world.openfoodfacts.org")))

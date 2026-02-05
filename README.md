@@ -63,10 +63,10 @@ There are currently two “brains”:
 - Food, water, workouts, sleep, todos/reminders are stored in Supabase.
 - Trends page shows a real chart + activity log from DB.
 
-### Generalized nutrition (beyond a school database)
+### Generalized nutrition
 - Tiered resolver with caching:
-  - local DB → USDA FoodData Central → Open Food Facts (Nutritionix optional)
-- Cache table: `nutrition_cache`
+  - **USDA database** (Supabase: `usda_food`, `usda_food_nutrient`, `usda_nutrient`, plus portion/category/branded tables) → Open Food Facts → Nutritionix API (optional)
+- Run `supabase_schema_usda.sql` and import the 7 USDA CSVs into Supabase (one-time). Cache table: `nutrition_cache`
 
 ### Dashboard image-based food logging
 - Upload a label/receipt/food photo in the dashboard
@@ -99,6 +99,7 @@ Baseline + existing features:
 - `supabase_schema_onboarding_prefs.sql` (onboarding + preferences fields)
 - `supabase_schema_phase6_additions.sql` (older auth fields; some may be unused now)
 - `supabase_schema_nutrition_pipeline.sql` (nutrition cache + image uploads + log metadata)
+- `supabase_schema_usda.sql` (USDA food/nutrient/portion/category/branded tables for nutrition resolution; then import all 7 CSVs via Dashboard)
 - `supabase_schema_stripe_billing.sql` (Stripe billing columns on `public.users`)
 
 Agent mode additions:
@@ -140,10 +141,10 @@ Agent mode configuration:
 - `STRIPE_PRICE_PRO_MONTHLY`
 - `STRIPE_PRICE_PRO_ANNUAL`
 
-### Nutrition / food APIs (optional)
-- `USDA_FDC_API_KEY`
+### Nutrition
+- Food macros are resolved from **USDA data in Supabase** (run `supabase_schema_usda.sql` and import the 7 CSVs: food, food_nutrient, nutrient, food_portion, measure_unit, food_category, branded_food), then Open Food Facts, then Nutritionix API if configured.
 - `OPENFOODFACTS_BASE_URL` (default `https://world.openfoodfacts.org`)
-- `NUTRITIONIX_APP_ID` / `NUTRITIONIX_API_KEY` (optional)
+- `NUTRITIONIX_APP_ID` / `NUTRITIONIX_API_KEY` (optional fallback)
 
 ### Dashboard uploads (optional but recommended if using image logging)
 - `FOOD_IMAGE_BUCKET`

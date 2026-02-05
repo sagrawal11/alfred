@@ -63,12 +63,9 @@ Respond with ONLY the number in ml (just the number, no units), or "null" if no 
             return None
     
     def parse_food(self, message: str) -> Optional[Dict]:
-        """Parse food information from message"""
-        nicknames_map = self.db_loader.get_restaurant_nicknames()
-        nickname_examples = ', '.join([f'"{nickname}" = "{full}"' for nickname, full in list(nicknames_map.items())[:4]])
-        
-        prompt = f"""Extract food information from this message. Return JSON:
-{{
+        """Parse food information from message. Macros come from LLM if provided, else from nutrition resolver (USDA DB, Open Food Facts, Nutritionix)."""
+        prompt = """Extract food information from this message. Return JSON:
+{
   "food_name": "name of food (extract just the food name, ignore words like 'a', 'an', 'the', 'ate', 'eating')",
   "portion_multiplier": 1.0 (extract portion multiplier: "half" or "half of" = 0.5, "double" = 2.0, "2x" = 2.0, "1.5" = 1.5, "quarter" = 0.25, default = 1.0),
   "restaurant": "restaurant name if mentioned (handle both formats: 'restaurant food' OR 'food from restaurant')",
@@ -79,121 +76,56 @@ Respond with ONLY the number in ml (just the number, no units), or "null" if no 
   "dietary_fiber_g": null (extract if mentioned like "3g fiber"),
   "sodium_mg": null (extract if mentioned like "200mg sodium"),
   "sugars_g": null (extract if mentioned like "5g sugar")
-}}
+}
 
-IMPORTANT RULES:
-1. Restaurant can appear in TWO formats:
-   - "restaurant food" (most common): "kraft quesadilla", "gsoy brown rice", "skillet omelette", "pitch pizza"
-   - "food from restaurant" (less common): "ice cream sundae from gothic", "quesadilla from kraft"
-2. Restaurant nickname mappings: {nickname_examples}
-3. Portion multipliers - extract from phrases like:
-   - "half" or "half of" = 0.5
-   - "double" = 2.0
-   - "2x" or "2 x" = 2.0
-   - "1.5" or "one and a half" = 1.5
-   - "quarter" = 0.25
-   - Numbers like "2 quesadillas" = 2.0
-4. Ignore filler words: "just ate a", "just ate", "eating a", "had a", etc.
-5. Food name should be clean: remove articles ("a", "an", "the") and action words ("ate", "eating", "had")
-6. If macros are provided in the message, extract them directly. User-provided macros take priority over database values.
+RULES: Restaurant can be "restaurant food" or "food from restaurant". Portion multipliers: half=0.5, double/2x=2.0, quarter=0.25. Food name: remove articles and action words. If macros are in the message, extract them.
 
 Message: "{message}"
 
-Respond with ONLY valid JSON, no other text."""
-        
+Respond with ONLY valid JSON, no other text.""".format(message=message)
+
         try:
             text = self.client.generate_content(prompt)
-            
-            # Extract JSON
             json_match = re.search(r'\{.*\}', text, re.DOTALL)
-            if json_match:
-                food_data = json.loads(json_match.group())
-                
-                # Look up in food database (guard against None / non-str)
-                raw_food = food_data.get('food_name')
-                food_name = (str(raw_food).lower().strip() if raw_food is not None else '') or ''
-                raw_rest = food_data.get('restaurant')
-                restaurant = (str(raw_rest).lower().strip() if raw_rest is not None else '') or ''
-                
-                # Normalize restaurant name
-                if restaurant:
-                    nicknames_map = self.db_loader.get_restaurant_nicknames()
-                    normalized_restaurant = nicknames_map.get(restaurant, restaurant)
-                    if normalized_restaurant != restaurant:
-                        restaurant = normalized_restaurant
-                    
-                    restaurant_variations = self.db_loader.get_restaurant_variations(restaurant)
-                    food_name_spaces = food_name.replace('_', ' ')
-                    
-                    # Build search terms
-                    search_terms = []
-                    for restaurant_var in restaurant_variations:
-                        search_terms.append(f"{restaurant_var} {food_name}")
-                        if food_name_spaces != food_name:
-                            search_terms.append(f"{restaurant_var} {food_name_spaces}")
-                        search_terms.append(f"{food_name} from {restaurant_var}")
-                        if food_name_spaces != food_name:
-                            search_terms.append(f"{food_name_spaces} from {restaurant_var}")
-                else:
-                    search_terms = [food_name, food_name.replace('_', ' ')]
-                
-                # Look up in database
-                food_db = self.db_loader.get_food_database()
-                matched_food = None
-                
-                for search_term in search_terms:
-                    st = search_term if search_term is not None else ''
-                    search_term_lower = (st.lower().strip() if isinstance(st, str) else '')
-                    if search_term_lower and search_term_lower in food_db:
-                        matched_food = food_db[search_term_lower]
-                        break
-                
-                # Merge database data with extracted data (extracted data takes priority)
-                def safe_str(v):
-                    return (str(v).strip() if v is not None else '') or ''
+            if not json_match:
+                return None
+            food_data = json.loads(json_match.group())
+            raw_food = food_data.get('food_name')
+            food_name = (str(raw_food).strip() if raw_food is not None else '') or 'unknown food'
+            raw_rest = food_data.get('restaurant')
+            restaurant = (str(raw_rest).strip() if raw_rest is not None else '') or None
+            if restaurant:
+                restaurant = restaurant.strip() or None
 
-                if matched_food:
-                    fn = safe_str(matched_food.get('food_name') or food_name) or 'unknown food'
-                    rest = restaurant or safe_str(matched_food.get('restaurant'))
-                    result = {
-                        'food_name': fn,
-                        'calories': food_data.get('calories') or matched_food.get('calories', 0),
-                        'protein': food_data.get('protein_g') or matched_food.get('protein', 0),
-                        'carbs': food_data.get('carbs_g') or matched_food.get('carbs', 0),
-                        'fat': food_data.get('fat_g') or matched_food.get('fat', 0),
-                        'restaurant': rest or None,
-                        'portion_multiplier': food_data.get('portion_multiplier', 1.0)
-                    }
-                else:
-                    result = {
-                        'food_name': food_name or 'unknown food',
-                        'calories': food_data.get('calories', 0),
-                        'protein': food_data.get('protein_g', 0),
-                        'carbs': food_data.get('carbs_g', 0),
-                        'fat': food_data.get('fat_g', 0),
-                        'restaurant': restaurant or None,
-                        'portion_multiplier': food_data.get('portion_multiplier', 1.0)
-                    }
-
-                    # External nutrition fallback (only if user didn't explicitly provide macros)
-                    user_provided = any(
-                        food_data.get(k) is not None
-                        for k in ["calories", "protein_g", "carbs_g", "fat_g"]
+            result = {
+                'food_name': food_name,
+                'calories': food_data.get('calories'),
+                'protein': food_data.get('protein_g'),
+                'carbs': food_data.get('carbs_g'),
+                'fat': food_data.get('fat_g'),
+                'restaurant': restaurant,
+                'portion_multiplier': float(food_data.get('portion_multiplier', 1.0)) if food_data.get('portion_multiplier') is not None else 1.0,
+            }
+            user_provided = any(
+                food_data.get(k) is not None
+                for k in ["calories", "protein_g", "carbs_g", "fat_g"]
+            )
+            if not user_provided and self.nutrition_resolver is not None:
+                try:
+                    nut = self.nutrition_resolver.resolve(
+                        query=food_name,
+                        restaurant=restaurant,
                     )
-                    if not user_provided and self.nutrition_resolver is not None:
-                        try:
-                            nut = self.nutrition_resolver.resolve(
-                                query=result.get("food_name") or food_name,
-                                restaurant=restaurant or None,
-                            )
-                            if nut:
-                                # Fill macros if available; do not overwrite if somehow present
-                                result.update({k: v for k, v in nut.to_parser_fields().items() if v is not None})
-                        except Exception as e:
-                            print(f"Nutrition resolver failed: {e}")
-                
-                return result
-            return None
+                    if nut:
+                        result.update({k: v for k, v in nut.to_parser_fields().items() if v is not None})
+                except Exception as e:
+                    print(f"Nutrition resolver failed: {e}")
+
+            result.setdefault('calories', 0)
+            result.setdefault('protein', 0)
+            result.setdefault('carbs', 0)
+            result.setdefault('fat', 0)
+            return result
         except Exception as e:
             print(f"Error parsing food: {e}")
             return None

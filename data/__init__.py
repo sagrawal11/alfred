@@ -22,6 +22,7 @@ from .user_memory_state_repository import UserMemoryStateRepository
 from .user_memory_items_repository import UserMemoryItemsRepository
 from .user_memory_embeddings_repository import UserMemoryEmbeddingsRepository
 from .user_usage_repository import UserUsageRepository
+from .usda_repository import USDARepository
 
 __all__ = [
     'BaseRepository',
@@ -43,4 +44,5 @@ __all__ = [
     'UserMemoryItemsRepository',
     'UserMemoryEmbeddingsRepository',
     'UserUsageRepository',
+    'USDARepository',
 ]

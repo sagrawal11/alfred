@@ -42,7 +42,7 @@ class NutritionResolver:
     ):
         self.cache_repo = NutritionCacheRepository(supabase)
         self.ttl_days = int(ttl_days if ttl_days is not None else int(os.getenv("NUTRITION_CACHE_TTL_DAYS", "30")))
-        self.providers = providers or build_default_providers()
+        self.providers = providers or build_default_providers(supabase)
 
     def _provider_order(self, restaurant: Optional[str]) -> list[NutritionProvider]:
         if not restaurant:

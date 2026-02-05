@@ -70,9 +70,12 @@ Thumbs.db
 temp/
 tmp/
 
+# Large one-off data (musclewiki JSON dump; app uses data/exercises.csv)
+musclewiki.md
+
 # Project specific - ALLOW data files for deployment
-# JSON database files are included in repo (wu_foods.json, gym_workouts.json, snacks.json)
-# CSV log files are excluded (generated at runtime)
+# JSON database files are included in repo (gym_workouts.json, etc.)
+# CSV: all CSVs ignored (too large to push; exercises.csv used by app but obtain/generate locally)
 data/logs/*.csv
 data/*.csv
 

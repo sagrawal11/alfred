@@ -1,641 +1,381 @@
-# SMS Assistant - Technical Documentation
+# Alfred (SMS Assistant) – Technical Documentation
 
-## Project Overview
-
-SMS Assistant is a production-grade, multi-user personal productivity chatbot that operates entirely through SMS messaging and a web dashboard. The system combines advanced natural language processing, adaptive machine learning, and seamless third-party integrations to create an intelligent assistant that learns user-specific patterns and preferences over time.
-
-The architecture is built on a modular, scalable foundation using Python, Flask, Supabase (PostgreSQL), and Google's Gemini API, with a clear separation of concerns across NLP processing, business logic, data persistence, and background job orchestration.
+This document describes the technical architecture, data flows, and implementation details of Alfred as of the current state of the codebase. It is intended for developers working on the project or integrating with it.
 
 ---
 
-## Core Architecture
+## 1. Project Overview
 
-### Modular Design Philosophy
+Alfred is a personalized SMS-first assistant that feels like a real person but is grounded in user data. Users interact via SMS and a web dashboard; Alfred logs food, water, workouts, sleep, todos, and reminders; retrieves history from Supabase; and uses natural language processing (classic pipeline or agent mode) to route intents and execute handlers.
 
-The system is organized into distinct, independently testable modules:
+**Core characteristics:**
 
-- **`core/`** - Message processing engine, conversation context management, session handling
-- **`nlp/`** - Natural language processing components (intent classification, entity extraction, domain-specific parsing)
-- **`handlers/`** - Intent-specific business logic handlers (food, water, gym, todos, queries)
-- **`data/`** - Repository pattern for database interactions (9 entity-specific repositories)
-- **`learning/`** - Adaptive learning system (pattern extraction, association learning, context analysis)
-- **`services/`** - Background job services (scheduler, reminders, notifications, syncs)
-- **`web/`** - Web dashboard and authentication system
-- **`integrations/`** - Third-party integration framework (Fitbit, Google Calendar)
-- **`responses/`** - Response formatting and SMS message construction
-
-This modular structure enables independent development, testing, and maintenance of each component while maintaining clear interfaces between modules.
+- **Dual “brains”:** Classic pipeline (intent classification → entity extraction → handler routing) and optional agent mode (OpenAI tool-calling + durable memory).
+- **Backend:** Flask app, Supabase (PostgreSQL + Storage), Twilio for SMS.
+- **NLP:** Configurable engine (default: OpenAI; fallback: Gemini) for intent/entity; agent mode uses OpenAI (gpt-4o, gpt-4o-mini, embeddings).
+- **Nutrition:** Tiered resolver (optional USDA in Supabase, Open Food Facts, Nutritionix) with Supabase caching.
+- **Gym:** Exercise data from `data/exercises.csv` (or fallback `data/gym_workouts.json`) for name enrichment.
+- **Payments:** Stripe subscriptions (Free/Core/Pro) with billing state on `public.users`.
 
 ---
 
-## Natural Language Processing System
+## 2. High-Level Architecture
 
-### Intent Classification
+```
+Twilio SMS  →  Flask (/webhook/twilio)  →  Alfred brain  →  TwiML response
+                                   |
+                                   +→ Supabase (users, logs, memory, billing, cache)
+                                   +→ Background jobs (nudges, digests, sync)
 
-The system uses Google's Gemini API (configurable models: Gemini 3 Flash Preview, Gemini 2.5 Flash, Gemma-3-12b-it) to classify user messages into 20+ distinct intents:
+Web dashboard  →  Flask (/dashboard/...)  →  Supabase (auth, data, storage)
+```
 
-- **Logging Intents**: `water_logging`, `food_logging`, `gym_workout`, `sleep_logging`
-- **Task Management**: `todo_add`, `reminder_set`, `assignment_add`, `task_complete`
-- **Query Intents**: `stats_query`, `what_should_i_do`, `food_suggestion`
-- **Learning Intents**: `fact_storage`, `fact_query`
-- **System Intents**: `undo_edit`, `vague_completion`, `integration_manage`
+**Message flow:**
 
-The `IntentClassifier` uses few-shot prompting with examples to achieve high accuracy across diverse phrasings and user communication styles.
-
-### Entity Extraction
-
-The `EntityExtractor` identifies structured data from unstructured text:
-- **Temporal entities**: Dates, times, relative time expressions ("tomorrow", "in 2 hours")
-- **Quantities**: Water amounts (ml, oz, bottles), weights (lbs, kg), repetitions, sets
-- **Food items**: Restaurant names, menu items, portion sizes
-- **Exercise data**: Exercise names, weights, reps, sets, muscle groups
-- **Task metadata**: Due dates, priorities, assignment classes
-
-### Domain-Specific Parsing
-
-The `Parser` module contains specialized parsing logic for each domain:
-
-**Food Parsing:**
-- Restaurant name extraction from custom JSON database (20+ restaurants)
-- Menu item matching with fuzzy matching and synonym handling
-- Automatic macro calculation (calories, protein, carbs, fat) from restaurant-specific data
-- Portion multiplier detection ("double", "half", "2x")
-
-**Nutrition Resolver (Milestone A):**
-- When the local restaurant JSON database does not match and the user didn’t explicitly provide macros, Alfred falls back to a tiered nutrition resolver.
-- Sources (in order): **USDA FoodData Central** → **Open Food Facts** → **Nutritionix** (if configured). If a restaurant is provided, Nutritionix is tried first.
-- Results are cached in Supabase to reduce repeated external API calls.
-
-Key code:
-- Resolver: `services/nutrition/resolver.py`
-- Providers: `services/nutrition/providers.py`
-- Cache repo: `data/nutrition_cache_repository.py`
-- Food log metadata repo: `data/food_log_metadata_repository.py`
-
-Schema additions:
-- `nutrition_cache` and `food_log_metadata` tables are defined in `supabase_schema_nutrition_pipeline.sql`.
-
-**Dashboard image uploads (Milestone B):**
-- Dashboard can upload images (nutrition labels / receipts / food photos) via `POST /dashboard/api/upload/image` (multipart form-data).
-- Images are stored in **Supabase Storage** (bucket configurable via `FOOD_IMAGE_BUCKET`).
-- Upload metadata is stored in `food_image_uploads` for later processing (Milestone C).
-
-Key code:
-- Route: `web/routes.py`
-- Repo: `data/food_image_upload_repository.py`
-
-Schema additions:
-- `food_image_uploads` table is defined in `supabase_schema_nutrition_pipeline.sql`.
-
-**Guardrails (Milestone D):**
-- Rate limiting via Flask-Limiter is enabled in `app.py` and applied to upload/process/delete endpoints.\n+- Receipt processing skips creating “0 calorie” logs when nutrition can’t be resolved; unresolved items are returned for follow-up.\n+- A deletion endpoint exists for privacy cleanup: `POST /dashboard/api/upload/image/delete`.
-
-**Water Parsing:**
-- Multi-unit support (ml, oz, liters, bottles with configurable bottle size)
-- Implicit quantity inference ("drank a bottle" → 710ml default)
-- Cumulative tracking with daily goal progress
-
-**Gym Parsing:**
-- Exercise name extraction from workout database
-- Set/rep/weight parsing from various formats ("135x5", "3 sets of 5 at 225")
-- Muscle group inference from exercise names
-- Notes and additional context capture
-
-**Temporal Parsing:**
-- Relative time expressions ("in 30 minutes", "tomorrow at 3pm")
-- Absolute datetime parsing
-- Timezone-aware date handling (UTC storage, user timezone display)
-
-### Pattern Matching Integration
-
-Before NLP classification, the system applies learned user-specific patterns via `PatternMatcher`. This allows the system to recognize user-specific terminology (e.g., "dhamaka" = workout) without requiring explicit NLP classification, improving both accuracy and response time.
+1. Incoming SMS hits `/webhook/twilio`; Flask validates Twilio signature and forwards body to the message processor.
+2. Processor resolves user by phone (or creates/onboards), loads session and context.
+3. Either **classic pipeline** (intent → entities → handler) or **agent mode** (tool-calling orchestration) runs.
+4. Handler writes to Supabase (food_logs, water_logs, gym_logs, todos, etc.) and returns a response.
+5. Response is formatted for SMS (length, formatting) and sent via Twilio.
 
 ---
 
-## Adaptive Learning System
+## 3. Module Layout
 
-### Pattern Extraction
-
-The `PatternExtractor` identifies four types of learning opportunities from user messages:
-
-1. **Explicit Teaching**: "X, count it as Y" (e.g., "dhamaka, count it as workout")
-2. **Correction Patterns**: User correcting system mistakes
-3. **Confirmation Patterns**: User confirming system interpretations
-4. **Context-Based Associations**: Inferring relationships from conversation context
-
-Patterns are extracted using regex-based rules combined with NLP entity extraction to identify the significant terms (filtering out stop words, pronouns, and common verbs).
-
-### Association Learning
-
-The `AssociationLearner` manages pattern associations with confidence scores:
-- **Confidence Scoring**: Patterns start at 0.5 confidence, increase with successful usage
-- **Reinforcement**: Each successful pattern application increases confidence
-- **Decay**: Unused patterns gradually decrease in confidence
-- **User-Specific Storage**: All patterns stored per-user in `user_knowledge` table
-
-Patterns are stored with metadata:
-- Pattern term (e.g., "dhamaka")
-- Associated intent (e.g., "gym_workout")
-- Associated entities (e.g., exercise name)
-- Confidence score (0.0 - 1.0)
-- Usage count and last used timestamp
-
-### Context Analysis
-
-The `ContextAnalyzer` detects learning opportunities by:
-- Identifying explicit teaching keywords ("count it as", "log it as", "that's a")
-- Detecting correction patterns ("no, that's actually...")
-- Recognizing confirmation responses ("yes", "correct", "that's right")
-- Analyzing conversation flow for implicit learning opportunities
-
-### Learning Orchestration
-
-The `LearningOrchestrator` coordinates the entire learning pipeline:
-1. **Pre-Processing**: Applies learned patterns before NLP classification
-2. **Post-Processing**: Extracts new patterns from user messages
-3. **Pattern Storage**: Persists patterns to `KnowledgeRepository`
-4. **Confidence Management**: Updates confidence scores based on usage
-
-This creates a feedback loop where the system becomes more accurate and personalized over time without requiring retraining or manual updates.
+| Directory | Purpose |
+|-----------|--------|
+| **`app.py`** | Flask entrypoint, Twilio webhook routes, service initialization, health endpoints |
+| **`core/`** | Message processor, conversation context, session manager, onboarding |
+| **`nlp/`** | Intent classification, entity extraction, domain parsers (food, water, gym, etc.), pattern matcher, database loader |
+| **`handlers/`** | Intent-specific handlers (food, water, gym, todo, query, integration) |
+| **`data/`** | Repository layer for Supabase (users, food, water, gym, todos, knowledge, integrations, nutrition cache, food log metadata, food image uploads, user memory, etc.) |
+| **`services/`** | Nutrition resolver, notification/nudge service, reminder service, scheduler, sync service, agent orchestrator + tool executor, vision pipeline |
+| **`learning/`** | Pattern extraction, association learning, context analysis, learning orchestrator |
+| **`web/`** | Dashboard routes, auth, trends APIs |
+| **`integrations/`** | OAuth and sync framework (Fitbit, Google Calendar) |
+| **`responses/`** | Response formatting for SMS |
 
 ---
 
-## Data Layer Architecture
+## 4. Natural Language Processing
 
-### Repository Pattern
+### 4.1 NLP Engine Selection
 
-All database interactions use a repository pattern with a `BaseRepository` providing common CRUD operations:
+- **Config:** `NLP_ENGINE` in config (from env: `openai` or `gemini`). Default is **OpenAI**.
+- **Usage:** Intent classification and entity extraction use the selected engine (OpenAI or Gemini client in `nlp/`).
+- **Agent mode:** Always uses OpenAI (gpt-4o for voice, gpt-4o-mini for routing/summarization, text-embedding-3-small for memory).
 
-- **Generic Methods**: `create()`, `get_by_id()`, `update()`, `delete()`, `filter()`, `get_all()`
-- **Type Safety**: Type hints throughout for better IDE support and error detection
-- **Error Handling**: Consistent error handling with Supabase API error translation
-- **Query Building**: Fluent query builder interface for complex filters
+### 4.2 Intent Classification
 
-### Entity-Specific Repositories
+The `IntentClassifier` maps user messages to intents such as:
 
-Nine specialized repositories extend `BaseRepository`:
+- **Logging:** `water_logging`, `food_logging`, `gym_workout`, `sleep_logging`
+- **Tasks:** `todo_add`, `reminder_set`, `assignment_add`, `task_complete`
+- **Queries:** `stats_query`, `what_should_i_do`, `food_suggestion`
+- **Learning:** `fact_storage`, `fact_query`
+- **System:** `undo_edit`, `vague_completion`, `integration_manage`, onboarding/system flows
 
-1. **UserRepository**: User account management, phone/email lookup, authentication
-2. **FoodRepository**: Food log CRUD, date-based queries, macro aggregation
-3. **WaterRepository**: Water log management, daily totals, goal tracking
-4. **GymRepository**: Workout logs, exercise-based queries, date filtering
-5. **TodoRepository**: Todos and reminders, due date queries, completion tracking
-6. **SleepRepository**: Sleep log management, duration calculations
-7. **AssignmentRepository**: Academic assignments with class tracking
-8. **KnowledgeRepository**: User-specific learned patterns and associations
-9. **IntegrationRepository**: Third-party connection management, sync history
+Classification is done via the configured LLM with few-shot prompting.
 
-Each repository provides domain-specific methods while inheriting common functionality from `BaseRepository`.
+### 4.3 Entity Extraction
 
-### Database Schema
+The `EntityExtractor` pulls structured data from text: temporal expressions, quantities (water, weight, reps, sets), food items, exercise names, task metadata, etc.
 
-The PostgreSQL schema (Supabase) includes:
+### 4.4 Domain-Specific Parsing (Parser)
 
-- **19 Tables**: Users, food_logs, water_logs, gym_logs, todos, reminders, sleep_logs, assignments, user_knowledge, integration_connections, sync_history, and more
-- **Row-Level Security (RLS)**: All tables have RLS policies ensuring users can only access their own data
-- **Foreign Keys**: Proper referential integrity with `ON DELETE CASCADE` where appropriate
-- **Indexes**: Optimized indexes on frequently queried columns (user_id, timestamps, phone_number, email)
-- **Composite Keys**: Proper composite primary keys for junction tables
-- **Timezone Handling**: UTC storage with timezone-aware queries
+The `Parser` uses the LLM and optional databases for each domain:
 
-### Data Consistency
+**Food:**
 
-- **Transaction Support**: Critical operations use database transactions
-- **Constraint Validation**: Database-level constraints prevent invalid data
-- **Soft Deletes**: Optional soft delete pattern for audit trails
-- **Timestamp Management**: Automatic `created_at` and `updated_at` tracking
+- User can provide explicit macros; otherwise the **nutrition resolver** is used.
+- **Nutrition resolver** (see Section 6): Tiered lookup (optional USDA Supabase → Open Food Facts → Nutritionix), with results cached in Supabase. No primary “restaurant JSON” database; nutrition is resolved by query.
+- Parsed output: food name, calories, protein, carbs, fat, restaurant, portion multiplier, nutrition source/confidence.
 
----
+**Water:**
 
-## Message Processing Engine
+- Multi-unit support (ml, oz, liters, bottles). Bottle size from config (`WATER_BOTTLE_SIZE_ML`) or database loader.
+- Implicit quantities (e.g. “drank a bottle” → default ml).
 
-### MessageProcessor
+**Gym:**
 
-The `MessageProcessor` is the central orchestration component that:
+- Exercise names, sets, reps, weight parsed from formats like “135x5”, “3 sets of 5 at 225”.
+- **Exercise database:** Enrichment (primary_muscle, secondary_muscles, exercise_type, muscle_group) comes from the **gym database** provided by `DatabaseLoader.get_gym_database()` (see Section 5.2).
+- Database is populated from **`data/exercises.csv`** if present, else **`data/gym_workouts.json`**.
 
-1. **User Resolution**: Maps phone numbers to user IDs (creates users if needed)
-2. **Session Management**: Maintains conversation state and context
-3. **Pattern Application**: Applies learned patterns before NLP
-4. **Intent Classification**: Routes to appropriate handler
-5. **Entity Extraction**: Extracts structured data from messages
-6. **Handler Execution**: Delegates to intent-specific handlers
-7. **Response Formatting**: Formats responses for SMS (character limits, formatting)
-8. **Learning Processing**: Extracts and stores new patterns after handling
+**Temporal:**
 
-### Conversation Context
+- Relative and absolute times; timezone-aware handling (UTC storage, user timezone for display).
 
-The `ConversationContext` class provides rich context for handlers:
+### 4.5 Pattern Matching and Learning
 
-- **Today's Summary**: Aggregated stats for current day (water, food, gym, todos)
-- **Recent Activity**: Last N entries for each log type
-- **Upcoming Items**: Todos, reminders, assignments due soon
-- **Historical Patterns**: User's typical behavior for context-aware suggestions
-
-Context is cached per user to reduce database queries and improve response time.
-
-### Session Management
-
-The `SessionManager` handles conversation state:
-
-- **Pending Confirmations**: Stores pending confirmation requests (e.g., "Did you mean X?")
-- **Multi-Turn Conversations**: Maintains context across multiple messages
-- **Selection Tracking**: Tracks numbered option selections ("what just happened" mode)
-- **Timeout Handling**: Automatically clears stale session data
+- **PatternMatcher:** Applies user-specific learned patterns before NLP (e.g. “dhamaka” → gym_workout).
+- **LearningOrchestrator:** Applies patterns, extracts new ones from messages, persists to `KnowledgeRepository`, updates confidence on usage.
+- Patterns live in `user_knowledge` (per user).
 
 ---
 
-## Intent Handlers
+## 5. Gym / Exercise Data
 
-Each intent has a dedicated handler class extending `BaseHandler`:
+### 5.1 Source of Truth: exercises.csv
 
-### FoodHandler
-- Parses food items from restaurant database
-- Calculates macros from restaurant-specific data
-- Handles portion multipliers
-- Stores food logs with full nutritional information
+- **Primary source:** `data/exercises.csv` (tracked in git; see `.gitignore` for `!data/exercises.csv`).
+- **Origin:** Built from **wger** (public API) and **MuscleWiki** (unofficial export). A one-off script merged and deduplicated by exercise name; that script has been removed. The CSV is the canonical exercise list.
+- **Approximate size:** ~1,379 unique exercises (after merging duplicates from both sources).
 
-### WaterHandler
-- Parses water amounts in multiple units
-- Tracks daily totals against goals
-- Provides progress feedback ("X bottles to reach goal")
-- Handles goal setting and updates
+### 5.2 CSV Schema (High Level)
 
-### GymHandler
-- Extracts exercise, sets, reps, weight
-- Matches exercises to workout database
-- Infers muscle groups
-- Stores workout logs with structured data
+Each row has (among others): `exerciseId`, `name`, `equipments`, `bodyParts`, `exerciseType`, `targetMuscles`, `secondaryMuscles`, `keywords`, `overview`, `instructions`, `exerciseTips`, `variations`, `relatedExerciseIds`, `source`. List fields are stored as JSON strings in cells.
 
-### TodoHandler
-- Creates todos and reminders
-- Parses due dates and times
-- Handles task completion ("called mom" → matches and completes todo)
-- Manages reminder scheduling
+### 5.3 How the App Uses It
 
-### QueryHandler
-- Aggregates stats across multiple data types
-- Provides date-based queries ("what did I eat yesterday")
-- Generates context-aware suggestions ("what should I do now")
-- Handles complex multi-table queries
-
-### IntegrationHandler
-- Manages third-party integration commands via SMS
-- Provides connection links
-- Triggers manual syncs
-- Lists connected integrations
-
-All handlers follow a consistent interface:
-- `handle()` method takes message, entities, and user context
-- Returns formatted response string
-- Handles errors gracefully with user-friendly messages
+- **Config:** `EXERCISES_CSV_PATH` points to `data/exercises.csv`. `GYM_DATABASE_PATH` points to `data/gym_workouts.json` (fallback).
+- **DatabaseLoader** (`nlp/database_loader.py`):
+  - `get_gym_database()`: Prefers CSV. If `EXERCISES_CSV_PATH` exists, calls `_load_and_flatten_csv()`; otherwise loads `gym_workouts.json` and flattens it.
+  - **Flattened shape:** A dict keyed by normalized exercise name (and variations): each value is `{ "primary_muscle", "secondary_muscles", "exercise_type", "muscle_group" }`. Used by the parser to enrich parsed gym exercises.
+- **Parser** (`nlp/parser.py`): In `parse_gym_workout()`, after LLM extraction, matches exercise names to the flattened DB and attaches `primary_muscle`, `secondary_muscles`, `exercise_type`, and optionally sets `muscle_group` on the workout.
 
 ---
 
-## Background Job System
+## 6. Nutrition Pipeline
 
-### Job Scheduler
+### 6.1 Tiered Resolver
 
-The `JobScheduler` uses APScheduler (Advanced Python Scheduler) to manage all background tasks:
+Nutrition for food logging (when user doesn’t supply macros) is resolved by:
 
-- **Thread Pool Executor**: 5 worker threads for concurrent job execution
-- **Job Coalescing**: Multiple pending executions combined into one
-- **Misfire Handling**: 5-minute grace period for missed jobs
-- **Timezone Support**: All jobs run in UTC with proper timezone conversion
-- **Job Management**: Add, remove, and query scheduled jobs programmatically
+1. **Cache:** `NutritionCacheRepository` checks Supabase `nutrition_cache` by normalized query + optional restaurant.
+2. **Providers (in order):**
+   - **USDA Supabase** (optional): If `USE_USDA_SUPABASE` is not `false` and Supabase is configured, `USDASupabaseProvider` queries `usda_food`, `usda_food_nutrient`, `usda_nutrient`, etc. If USDA tables have been dropped, set `USE_USDA_SUPABASE=false` to skip this provider and avoid errors.
+   - **Open Food Facts:** Public API; no key required.
+   - **Nutritionix:** Requires `NUTRITIONIX_APP_ID` and `NUTRITIONIX_API_KEY`.
+3. **Cache write-back:** Successful result is stored in `nutrition_cache` with configurable TTL (`NUTRITION_CACHE_TTL_DAYS`).
 
-### Reminder Service
+**Key code:** `services/nutrition/resolver.py`, `services/nutrition/providers.py`, `data/nutrition_cache_repository.py`.
 
-The `ReminderService` handles:
+### 6.2 USDA in Supabase (Optional)
 
-**Reminder Follow-ups:**
-- Checks reminders sent but not completed
-- Sends follow-up after configurable delay (default: 30 minutes)
-- Suggests rescheduling for overdue reminders
-- Provides quick reschedule options (later today, tomorrow morning)
+- **Purpose:** Local USDA FoodData Central data for fast, offline-capable macro lookup.
+- **When used:** Only if `USE_USDA_SUPABASE` is not set to `false` and the USDA tables exist in Supabase.
+- **Schema:** `supabase_schema_usda.sql` defines tables (e.g. `usda_food`, `usda_food_nutrient`, `usda_nutrient`, `usda_food_portion`, `usda_measure_unit`, `usda_food_category`, `usda_branded_food`). Data is imported from the official USDA CSVs (or from `data/USDA/` if you have them).
+- **Removing USDA:** Run `supabase_drop_usda.sql` in the Supabase SQL editor to drop all USDA tables. Then set `USE_USDA_SUPABASE=false` in `.env` so the app skips the USDA provider. Nutrition continues via Open Food Facts and Nutritionix.
+- **Docs:** `data/FOOD_DATABASE_GUIDE.md` describes the food/nutrition data setup.
 
-**Task Decay:**
-- Identifies stale todos (default: 7+ days old)
-- Sends decay check messages asking if task is still relevant
-- Provides options: keep, reschedule, delete
-- Prevents silent task list clutter
+### 6.3 Food Log Metadata and Image Uploads
 
-### Notification Service
-
-The `NotificationService` provides:
-
-**Gentle Nudges:**
-- **Water Nudges**: Detects if user is behind expected water intake pace
-- **Gym Nudges**: Reminds if no workout in 2+ days
-- Context-aware messaging (references personal patterns, not absolute goals)
-- Non-judgmental, informative tone
-
-**Weekly Digest:**
-- Calculates weekly averages (water, calories, gym frequency)
-- Computes task completion rates
-- Sends concise, skimmable summary
-- Scheduled for Monday at configured hour (default: 8 PM)
-
-### Sync Service
-
-The `SyncService` manages periodic integration synchronization:
-
-- Syncs all active integrations every 4 hours
-- Handles token refresh automatically
-- Deduplicates synced data
-- Logs sync history for debugging
-- Maps external data to internal schema
+- **Food log metadata:** When nutrition is resolved, source and confidence can be stored via `FoodLogMetadataRepository` (e.g. `food_log_metadata` table).
+- **Image uploads:** Dashboard can upload food/label/receipt images. Stored in Supabase Storage (bucket from `FOOD_IMAGE_BUCKET`); metadata in `food_image_uploads`. Vision pipeline can process these to structured logs (see `services/vision/`).
 
 ---
 
-## Web Dashboard & Authentication
+## 7. Data Layer (Repositories)
 
-### Authentication System
+### 7.1 Pattern
 
-The `AuthManager` provides:
+- **Base:** `BaseRepository` in `data/base_repository.py` provides common Supabase CRUD and query building.
+- **Convention:** One repository per entity/table; domain methods (e.g. `get_by_date`, `get_by_date_range`) in addition to base methods.
 
-- **User Registration**: Email/password with optional phone number
-- **Login**: Session-based authentication with bcrypt password hashing
-- **Password Reset**: Token-based reset flow (email delivery)
-- **Phone Verification**: SMS code verification for phone numbers
-- **Session Management**: Secure session handling with Flask sessions
-- **Account Security**: Failed login attempt tracking, account locking
+### 7.2 Repositories (Summary)
 
-### Dashboard Data Layer
+| Repository | Table / concern | Main use |
+|------------|-----------------|----------|
+| UserRepository | users | Auth, phone/email lookup, onboarding state |
+| FoodRepository | food_logs | Create/list food logs, macros |
+| WaterRepository | water_logs | Daily water, goals |
+| GymRepository | gym_logs | Workout logs by date/range/exercise |
+| TodoRepository | todos, reminders | Todos and reminders, completion |
+| SleepRepository | sleep_logs | Sleep duration, etc. |
+| AssignmentRepository | assignments | Academic assignments |
+| KnowledgeRepository | user_knowledge | Learned patterns (learning system) |
+| IntegrationRepository | integration_connections, sync_history | OAuth connections, sync state |
+| NutritionCacheRepository | nutrition_cache | Cache for nutrition resolver |
+| FoodLogMetadataRepository | food_log_metadata | Nutrition source/confidence per log |
+| FoodImageUploadRepository | food_image_uploads | Dashboard image upload metadata |
+| UserPreferencesRepository | user_preferences | Quiet hours, digest, goals, etc. |
+| UserMemoryEmbeddingsRepository / UserMemoryItemsRepository / UserMemoryStateRepository | Agent memory tables | Agent mode durable memory |
+| UserUsageRepository | user_usage | Usage/analytics if present |
+| USDARepository | usda_* tables | Used only by USDASupabaseProvider when USDA is enabled |
 
-The `DashboardData` class provides:
+### 7.3 Schema and Migrations
 
-- **Date Stats**: Aggregated statistics for any date (food, water, gym, todos, reminders, assignments)
-- **Trends**: Multi-day trend analysis (7, 30, 90 days)
-- **Calendar Data**: Month-view data with activity indicators
-- **Frontend Formatting**: Data formatted specifically for JavaScript frontend consumption
-
-### Web Routes
-
-The dashboard includes:
-
-- **Main Dashboard**: Calendar view with date-based stats
-- **Chat Interface**: Web-based chat for testing (uses same MessageProcessor as SMS)
-- **Settings Page**: Account management, password changes, phone verification
-- **Integrations Page**: Connect/disconnect third-party services
-- **Test Jobs Page**: Manual background job triggering for testing
-
-All routes are protected with `@require_login` decorator ensuring authenticated access.
-
----
-
-## Third-Party Integrations
-
-### Integration Framework
-
-The system uses a plugin-based architecture for integrations:
-
-**BaseIntegration Interface:**
-- `get_authorization_url()` - OAuth initiation
-- `exchange_code_for_tokens()` - Token exchange
-- `refresh_access_token()` - Token refresh
-- `sync_data()` - Data synchronization
-- `map_external_to_internal()` - Data transformation
-- `revoke_token()` - Disconnection
-
-### Integration Auth Manager
-
-The `IntegrationAuthManager` handles:
-
-- **OAuth Flows**: Complete OAuth 2.0 flows for all providers
-- **Token Encryption**: Fernet encryption for stored tokens
-- **CSRF Protection**: State token generation and validation
-- **Token Refresh**: Automatic refresh before expiration
-- **Error Handling**: Graceful handling of expired/invalid tokens
-
-### Sync Manager
-
-The `SyncManager` orchestrates:
-
-- **Data Fetching**: Retrieves data from external APIs
-- **Deduplication**: Prevents duplicate log entries
-- **Data Mapping**: Transforms external schema to internal format
-- **Sync Logging**: Tracks all sync operations with timestamps and results
-- **Error Recovery**: Handles API failures gracefully
-
-### Implemented Integrations
-
-**Fitbit Integration:**
-- OAuth 2.0 authentication
-- Workout data sync (activities, exercises, duration)
-- Sleep data sync (duration, quality metrics)
-- Webhook support for real-time updates
-- Last 30 days of data synced on connection
-
-**Google Calendar Integration:**
-- OAuth 2.0 authentication
-- Event fetching for context (upcoming events)
-- Calendar events used for "what should I do now" suggestions
-- Timezone-aware event handling
-
-**Google Fit Integration:**
-- Structure created, implementation deferred
-- Ready for future expansion
-
-### Webhook Handlers
-
-The `WebhookHandler` processes real-time updates:
-
-- **Fitbit Webhooks**: Verifies webhook signatures, processes activity/sleep updates
-- **Google Webhooks**: Placeholder for Pub/Sub webhook processing
-- **Automatic Sync**: Triggers sync on webhook receipt
+- **Baseline:** `supabase_schema_complete.sql` (or equivalent) for core tables.
+- **Feature-specific:** e.g. `supabase_schema_onboarding_prefs.sql`, `supabase_schema_nutrition_pipeline.sql`, `supabase_schema_usda.sql`, `supabase_schema_agent_memory.sql`, `supabase_schema_stripe_billing.sql`, etc.
+- **USDA teardown:** `supabase_drop_usda.sql` drops all USDA tables when you no longer want them.
 
 ---
 
-## Response Formatting
+## 8. Message Processing Engine
 
-The `ResponseFormatter` ensures SMS-friendly output:
+### 8.1 Classic Pipeline (MessageProcessor)
 
-- **Character Limits**: Truncates long responses (1500 character limit)
-- **Line Breaks**: Preserves formatting for readability
-- **Emoji Support**: Optional emoji for visual clarity
-- **List Formatting**: Numbered lists for options
-- **Progress Indicators**: Visual progress bars for goals (in dashboard)
+1. **User resolution:** Phone → user_id (create user if needed; respect onboarding flow).
+2. **Session:** Load or create session (pending confirmations, multi-turn state).
+3. **Patterns:** Apply learned patterns (e.g. custom words → intents).
+4. **Intent:** Classify with configured NLP engine.
+5. **Entities:** Extract entities (dates, amounts, food, exercises, etc.).
+6. **Routing:** Select handler by intent (food_logging → FoodHandler, gym_workout → GymHandler, etc.).
+7. **Parsing:** Handler uses Parser for domain parsing (e.g. parse_food, parse_gym_workout) which may call nutrition resolver and gym DB.
+8. **Execution:** Handler writes to Supabase and returns a response.
+9. **Learning:** Optionally extract and store new patterns, update usage.
+10. **Format:** Response formatted for SMS (length, line breaks) and returned.
 
----
+### 8.2 Agent Mode
 
-## Security Features
+- **Entry:** When agent mode is enabled, the same incoming message can be routed to the agent orchestrator instead of (or in addition to) the classic pipeline.
+- **Implementation:** `services/agent/orchestrator.py`, `services/agent/tool_executor.py`.
+- **Models:** OpenAI gpt-4o (user-facing), gpt-4o-mini (routing/summarization), text-embedding-3-small (memory embeddings).
+- **Tools:** Validated tools for querying logs, creating todos, etc.; tool results are fed back to the model.
+- **Memory:** User memory repositories store and retrieve embeddings/items for durable context.
 
-### Authentication Security
+### 8.3 Context and Session
 
-- **Password Hashing**: bcrypt with configurable rounds
-- **Session Security**: Flask secret key for session encryption
-- **CSRF Protection**: State tokens for OAuth flows
-- **Account Locking**: Automatic lockout after 5 failed login attempts
-- **Token Encryption**: Fernet encryption for OAuth tokens
-
-### Data Security
-
-- **Row-Level Security**: Database-level access control (RLS policies)
-- **Input Validation**: Server-side validation for all inputs
-- **SQL Injection Prevention**: Parameterized queries via Supabase client
-- **XSS Prevention**: Template escaping in Jinja2 templates
-
-### API Security
-
-- **Webhook Verification**: Signature verification for Fitbit webhooks
-- **Rate Limiting**: Ready for rate limiting implementation
-- **Error Message Sanitization**: No sensitive data in error messages
+- **ConversationContext:** Today’s summary (food, water, gym, todos), recent activity, upcoming items. Used by handlers and agent.
+- **SessionManager:** Pending confirmations, multi-turn state, timeouts. Stored per user.
 
 ---
 
-## Configuration Management
+## 9. Intent Handlers (Classic)
 
-The `Config` class centralizes all configuration:
+- **FoodHandler:** Uses Parser (nutrition resolver + optional image metadata). Writes to `food_logs` and optionally food log metadata.
+- **WaterHandler:** Parser for water amounts; writes to `water_logs`; can use daily goals.
+- **GymHandler:** Parser for gym (using gym DB from CSV/JSON); writes to `gym_logs` with exercise, sets, reps, weight.
+- **TodoHandler:** Todos and reminders; due dates; completion.
+- **QueryHandler:** Stats, “what did I do”, suggestions; reads from multiple repos.
+- **IntegrationHandler:** OAuth links, disconnect, manual sync for Fitbit/Google Calendar.
 
-- **Environment Variables**: All sensitive data via `.env` file
-- **Feature Flags**: Enable/disable features (weekly digest, gentle nudges, task decay)
-- **Timing Configuration**: Configurable intervals for all scheduled jobs
-- **Model Selection**: Configurable Gemini model per environment
-- **Database Configuration**: Supabase connection details
-- **Integration Credentials**: OAuth client IDs and secrets
-
-Configuration is validated on startup to ensure required values are present.
+All handlers use the shared Parser, Formatter, and Supabase repos.
 
 ---
 
-## Error Handling & Logging
+## 10. Background Jobs
 
-### Error Handling Strategy
-
-- **Graceful Degradation**: System continues operating even if non-critical components fail
-- **User-Friendly Messages**: Errors translated to user-friendly language
-- **Error Logging**: All errors logged with full context
-- **Fallback Responses**: Default responses when NLP fails
-
-### Logging
-
-- **Structured Logging**: JSON-formatted logs for parsing
-- **Log Levels**: DEBUG, INFO, WARNING, ERROR
-- **Context Preservation**: User ID, phone number, message included in logs
-- **Performance Logging**: Timing information for optimization
+- **Scheduler:** APScheduler; runs reminders, nudges, digests, syncs.
+- **ReminderService:** Follow-ups for sent reminders; task decay (stale todo checks).
+- **NotificationService:** Gentle nudges (water, gym); weekly digest (averages, completion).
+- **SyncService:** Periodic sync of Fitbit/Google data; token refresh; deduplication.
 
 ---
 
-## Testing Infrastructure
+## 11. Web Dashboard and Auth
 
-### Test Coverage
-
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: End-to-end message processing tests
-- **Repository Tests**: Database interaction verification
-- **NLP Tests**: Intent classification and entity extraction accuracy
-
-### Testing Tools
-
-- **Chat Interface**: Web-based testing without SMS
-- **Manual Job Triggers**: Test background jobs on-demand
-- **Health Endpoints**: `/health`, `/health/ready`, `/health/live` for monitoring
+- **Auth:** Registration, login (bcrypt), password reset, phone verification; Flask sessions; optional JWT for API.
+- **Dashboard:** Trends, calendar-style views, chat test (same processor as SMS), settings, integrations, pricing (Stripe). Data via Supabase; some routes use `DashboardData` for aggregated stats.
+- **Storage:** Food/label/receipt images in Supabase Storage; metadata in `food_image_uploads`.
 
 ---
 
-## Performance Optimizations
+## 12. Integrations
 
-### Caching Strategy
-
-- **Context Caching**: Conversation context cached per user
-- **Database Query Optimization**: Indexed queries, efficient filters
-- **Session Caching**: In-memory session storage
-- **Pattern Caching**: Learned patterns loaded once per user session
-
-### Database Optimization
-
-- **Indexes**: Strategic indexes on frequently queried columns
-- **Query Optimization**: Efficient date range queries
-- **Connection Pooling**: Supabase client connection management
-- **Batch Operations**: Bulk inserts where possible
-
-### Response Time
-
-- **Async Processing**: Background jobs don't block message processing
-- **Parallel Queries**: Multiple repository queries can run concurrently
-- **Lazy Loading**: Data loaded only when needed
+- **Fitbit:** OAuth; sync activities/sleep; webhooks for real-time updates.
+- **Google Calendar:** OAuth; fetch events for context/suggestions.
+- **Google Fit:** Structure present; implementation can be extended.
+- **IntegrationAuthManager:** OAuth flows, token encryption (Fernet), refresh. **SyncManager:** Fetch, map, dedupe, log sync history.
 
 ---
 
-## Scalability Considerations
+## 13. Configuration
 
-### Multi-User Architecture
+Centralized in `config.py` (env via `.env`):
 
-- **User Isolation**: Complete data separation via RLS policies
-- **Scalable Repositories**: Repository pattern supports horizontal scaling
-- **Stateless Processing**: Message processing is stateless (except sessions)
-- **Background Jobs**: Jobs scale with user count automatically
+- **Twilio:** Account SID, auth token, phone number.
+- **NLP:** `NLP_ENGINE` (openai/gemini), OpenAI/Gemini keys and models; agent uses OpenAI.
+- **Supabase:** URL, key.
+- **Nutrition:** `USE_USDA_SUPABASE`, Open Food Facts URL, Nutritionix IDs, cache TTL; USDA FDC API key if using API path.
+- **Gym:** `EXERCISES_CSV_PATH`, `GYM_DATABASE_PATH`.
+- **Water:** Bottle size, default daily goal.
+- **Reminders / digest / nudges:** Delays, days, hours, on/off flags.
+- **Stripe:** Secret key, webhook secret, price IDs (Core/Pro, monthly/annual).
+- **Integrations:** Fitbit/Google client IDs and secrets; base URL for OAuth.
+- **App:** Base URL, dashboard password, Flask secret, encryption key; environment and log level.
 
-### Database Scalability
-
-- **Supabase**: Managed PostgreSQL with automatic scaling
-- **Efficient Queries**: Optimized for large datasets
-- **Partitioning Ready**: Schema supports future partitioning if needed
-
-### API Scalability
-
-- **Rate Limiting Ready**: Infrastructure for rate limiting
-- **Caching Layer**: Ready for Redis integration
-- **Load Balancing**: Stateless design supports load balancing
+Validation on startup ensures required Twilio (and any other required) vars are set.
 
 ---
 
-## Deployment Architecture
+## 14. Security
 
-### Application Structure
-
-- **Single Entry Point**: `app.py` as main Flask application
-- **Modular Imports**: Clean import structure for deployment
-- **Environment Configuration**: All config via environment variables
-- **Health Checks**: Kubernetes-ready health endpoints
-
-### Background Jobs
-
-- **Persistent Scheduler**: APScheduler persists job state
-- **Graceful Shutdown**: Jobs complete before shutdown
-- **Job Recovery**: Missed jobs handled with grace period
+- **Auth:** bcrypt for passwords; secure sessions; CSRF for OAuth; optional account lockout.
+- **Data:** RLS on Supabase so users only access their own rows.
+- **API:** Twilio webhook signature verification; rate limiting on sensitive routes; no sensitive data in error messages.
+- **Secrets:** All in env; no credentials in repo.
 
 ---
 
-## Key Technical Achievements
+## 15. Error Handling and Logging
 
-1. **Adaptive Learning**: System learns user-specific patterns without retraining
-2. **Multi-Modal Input**: Handles both SMS and web chat with same processing engine
-3. **Rich Context Awareness**: Synthesizes multiple data sources for intelligent suggestions
-4. **Production-Ready**: Error handling, logging, security, scalability considerations
-5. **Extensible Architecture**: Easy to add new intents, handlers, integrations
-6. **Type Safety**: Comprehensive type hints for better maintainability
-7. **Clean Architecture**: Clear separation of concerns, testable components
-8. **User Experience**: Natural language interface that adapts to user communication style
+- **Handlers:** Try/except; user-friendly messages; errors logged with context.
+- **Nutrition/Gym:** Resolver and DB loader handle missing data (e.g. skip USDA if tables missing when `USE_USDA_SUPABASE=false`); parser continues with empty enrichment if gym DB missing.
+- **Logging:** Structured where used; log levels from config.
 
 ---
 
-## Technology Stack
+## 16. Deployment
 
-- **Backend**: Python 3.9+, Flask
-- **Database**: Supabase (PostgreSQL)
-- **NLP**: Google Gemini API (multiple model options)
-- **SMS**: Twilio API
-- **Scheduling**: APScheduler
-- **Authentication**: bcrypt, Flask sessions
-- **Encryption**: Fernet (cryptography library)
-- **Frontend**: HTML, CSS, JavaScript (vanilla)
-- **Deployment**: Ready for containerization (Docker), cloud deployment
+- **Entry:** `app.py` (Flask); health endpoints (e.g. `/health`, `/health/ready`, `/health/live`) for probes.
+- **Env:** All config from environment (e.g. Koyeb, Railway, or Docker env).
+- **Background jobs:** Run in the same process (APScheduler); graceful shutdown so jobs can finish.
+- **Docs:** `DEPLOYMENT.md` for platform-specific steps (e.g. Koyeb).
 
 ---
 
-## Future Enhancements
+## 17. Technology Stack
 
-The architecture supports easy addition of:
-
-- **New Integrations**: Plugin-based integration system
-- **New Intents**: Handler-based intent system
-- **Advanced Learning**: Machine learning model integration
-- **Real-Time Features**: WebSocket support for live updates
-- **Mobile App**: API-ready for mobile application
-- **Analytics**: Built-in data collection for analytics
-- **Multi-Language**: NLP system supports multiple languages
+- **Backend:** Python 3.x, Flask
+- **Database:** Supabase (PostgreSQL, Storage)
+- **SMS:** Twilio
+- **NLP:** OpenAI (default), Gemini (fallback); agent: OpenAI (gpt-4o, gpt-4o-mini, embeddings)
+- **Payments:** Stripe
+- **Auth:** bcrypt, Flask sessions, optional JWT
+- **Scheduling:** APScheduler
+- **Frontend:** HTML/CSS/JS (dashboard)
 
 ---
 
-This technical architecture represents a production-grade system with careful attention to scalability, maintainability, security, and user experience. The modular design enables independent development and testing of components while maintaining a cohesive user experience across all interaction channels.
+## 18. Summary of Recent / Important Behaviors
+
+- **Gym:** App uses **`data/exercises.csv`** for exercise enrichment; fallback is **`data/gym_workouts.json`**. Config: `EXERCISES_CSV_PATH`, `GYM_DATABASE_PATH`.
+- **Nutrition:** **USDA in Supabase is optional.** Set `USE_USDA_SUPABASE=false` if USDA tables are dropped; resolver uses Open Food Facts and Nutritionix. Use **`supabase_drop_usda.sql`** to remove USDA tables.
+- **Food:** No primary “restaurant JSON” DB; nutrition comes from the **tiered resolver** (optional USDA → OFF → Nutritionix) and **cache**.
+- **Agent mode:** OpenAI-based tool-calling and memory; separate from classic intent handlers.
+- **Stripe:** Billing state on `users`; Core/Pro plans; webhook for subscription updates.
+
+---
+
+## 19. Testing and Health
+
+- **Chat interface:** `/dashboard/chat` and `/dashboard/api/chat` use the same MessageProcessor as SMS for testing without Twilio.
+- **Health endpoints:** `/health`, `/health/ready`, `/health/live` for liveness/readiness (e.g. Koyeb).
+- **Manual job triggers:** Dashboard can trigger background jobs for testing.
+- **Tests:** `tests/` and pytest; unit and integration tests for processor, handlers, repos.
+
+---
+
+## 20. Performance and Caching
+
+- **Context:** Conversation context and today’s summary cached per user to reduce DB calls.
+- **Nutrition:** Resolver results cached in `nutrition_cache` (TTL from config).
+- **Gym DB:** Loaded once per process by DatabaseLoader (CSV or JSON flattened in memory).
+- **Patterns:** Learned patterns loaded per user/session where applicable.
+- **Supabase:** Indexed queries on user_id, timestamps; connection via Supabase client.
+
+---
+
+## 21. Key File Reference
+
+| Concern | File(s) |
+|--------|--------|
+| Entrypoint, webhook | `app.py` |
+| Message processing | `core/processor.py` |
+| Onboarding | `core/onboarding.py` |
+| Context, session | `core/context.py`, `core/session.py` |
+| Intent, entities, parser | `nlp/intent_classifier.py`, `nlp/entity_extractor.py`, `nlp/parser.py` |
+| Gym DB loading | `nlp/database_loader.py` |
+| Nutrition resolver | `services/nutrition/resolver.py`, `services/nutrition/providers.py` |
+| Handlers | `handlers/food_handler.py`, `handlers/gym_handler.py`, etc. |
+| Repositories | `data/*.py` (food_repository, gym_repository, nutrition_cache_repository, etc.) |
+| Agent | `services/agent/orchestrator.py`, `services/agent/tool_executor.py` |
+| Config | `config.py` |
+| USDA schema / drop | `supabase_schema_usda.sql`, `supabase_drop_usda.sql` |
+| Food/nutrition setup | `data/FOOD_DATABASE_GUIDE.md` |
+
+---
+
+This technical documentation reflects the architecture and behavior of Alfred as implemented up to the current date.

@@ -125,22 +125,22 @@ FITBIT_CLIENT_ID=your_fitbit_client_id_here
 FITBIT_CLIENT_SECRET=your_fitbit_client_secret_here
 
 # =============================================================================
-# NUTRITION APIs (Milestone A)
+# NUTRITION (Milestone A)
 # =============================================================================
-# USDA FoodData Central API key (recommended for generic foods + many branded foods)
-# Get a key from: https://fdc.nal.usda.gov/api-guide.html
-USDA_FDC_API_KEY=your_usda_fdc_api_key_here
+# USDA in Supabase: run supabase_schema_usda.sql, then import the 7 CSVs.
+# If you dropped USDA tables to save storage, set USE_USDA_SUPABASE=false;
+# nutrition will use Open Food Facts + Nutritionix only.
+USE_USDA_SUPABASE=true
 
-# Open Food Facts base URL (public API; packaged foods, best with barcode)
-# Default: https://world.openfoodfacts.org
+# Open Food Facts base URL (fallback; public API)
 OPENFOODFACTS_BASE_URL=https://world.openfoodfacts.org
 
-# Nutritionix (optional; great for restaurant/chain/menu-style items)
+# Nutritionix (optional fallback; restaurant/chain/menu-style items)
 # Get keys from: https://developer.nutritionix.com/
 NUTRITIONIX_APP_ID=your_nutritionix_app_id_here
 NUTRITIONIX_API_KEY=your_nutritionix_api_key_here
 
-# Cache TTL for external nutrition lookups (days)
+# Cache TTL for resolved nutrition lookups (days)
 NUTRITION_CACHE_TTL_DAYS=30
 
 # =============================================================================
@@ -200,3 +200,5 @@ FLASK_SECRET_KEY=your_random_secret_key_here
 # - 100 messages = $0.75
 # - Total: ~$2.75-3.75/month
 # - Trial account: $15.50 free credit (~2,000 SMS messages)
+
+DATABASE_PASSWORD

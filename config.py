@@ -128,29 +128,19 @@ class Config:
         'logs'
     )
     
-    # Food Database (legacy - now loads all restaurant JSON files automatically)
-    # Individual restaurant files are in data/ directory (e.g., sazon.json, ginger_and_soy.json)
-    # The system automatically loads all *.json files from data/ excluding snacks.json, gym_workouts.json
-    FOOD_DATABASE_PATH = os.path.join(
+    # Gym Workout Database (optional; used for exercise name enrichment in gym logging)
+    # Prefer exercises CSV if present; fall back to gym_workouts.json
+    EXERCISES_CSV_PATH = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         'data',
-        'wu_foods.json'  # Kept for backward compatibility/fallback
+        'exercises.csv'
     )
-    
-    # Gym Workout Database
     GYM_DATABASE_PATH = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         'data',
         'gym_workouts.json'
     )
-    
-    # Snacks Database
-    SNACKS_DATABASE_PATH = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        'data',
-        'snacks.json'
-    )
-    
+
     @classmethod
     def validate(cls):
         """Validate required configuration"""
