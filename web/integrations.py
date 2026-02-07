@@ -8,6 +8,7 @@ from typing import Callable
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 
+from core import can_use_feature, normalize_plan
 from data import IntegrationRepository
 from integrations import IntegrationAuthManager, SyncManager
 from integrations.calendar.google_calendar import GoogleCalendarIntegration
@@ -70,10 +71,13 @@ def register_integration_routes(app: Flask, supabase, auth_manager: AuthManager,
     @app.route('/dashboard/integrations/<provider>/connect')
     @require_login
     def dashboard_integration_connect(provider: str):
-        """Initiate OAuth flow for an integration"""
+        """Initiate OAuth flow for an integration (Core/Pro)."""
         user = auth_manager.get_current_user()
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "integrations"):
+            flash("Integrations are available on Core and Pro plans. Upgrade to connect.", "info")
+            return redirect(url_for("dashboard_pricing"))
         
-        # Get integration instance based on provider
         integration = _get_integration_instance(provider)
         if not integration:
             flash(f'Integration {provider} not available', 'error')
@@ -98,8 +102,12 @@ def register_integration_routes(app: Flask, supabase, auth_manager: AuthManager,
     @app.route('/dashboard/integrations/<provider>/callback')
     @require_login
     def dashboard_integration_callback(provider: str):
-        """Handle OAuth callback"""
+        """Handle OAuth callback (Core/Pro)."""
         user = auth_manager.get_current_user()
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "integrations"):
+            flash("Integrations are available on Core and Pro plans. Upgrade to connect.", "info")
+            return redirect(url_for("dashboard_pricing"))
         code = request.args.get('code')
         state = request.args.get('state')
         error = request.args.get('error')
@@ -179,10 +187,13 @@ def register_integration_routes(app: Flask, supabase, auth_manager: AuthManager,
     @app.route('/dashboard/integrations/<int:connection_id>/disconnect', methods=['POST'])
     @require_login
     def dashboard_integration_disconnect(connection_id: int):
-        """Disconnect an integration"""
+        """Disconnect an integration (Core/Pro)."""
         user = auth_manager.get_current_user()
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "integrations"):
+            flash("Integrations are available on Core and Pro plans.", "info")
+            return redirect(url_for("dashboard_pricing"))
         
-        # Verify connection belongs to user
         connection = integration_repo.get_by_id(connection_id)
         if not connection or connection['user_id'] != user['id']:
             flash('Connection not found', 'error')
@@ -197,10 +208,12 @@ def register_integration_routes(app: Flask, supabase, auth_manager: AuthManager,
     @app.route('/dashboard/integrations/<int:connection_id>/sync', methods=['POST'])
     @require_login
     def dashboard_integration_sync(connection_id: int):
-        """Manually trigger sync for an integration"""
+        """Manually trigger sync for an integration (Core/Pro)."""
         user = auth_manager.get_current_user()
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "integrations"):
+            return jsonify({"success": False, "error": "Integrations require Core or Pro."}), 403
         
-        # Verify connection belongs to user
         connection = integration_repo.get_by_id(connection_id)
         if not connection or connection['user_id'] != user['id']:
             return jsonify({'error': 'Connection not found'}), 404

@@ -684,6 +684,22 @@ body {
     margin-bottom: 0;
 }
 
+.message-content a.chat-pricing-link {
+    display: inline-block;
+    margin-top: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--bw-fg);
+    color: var(--bw-bg);
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.message-content a.chat-pricing-link:hover {
+    opacity: 0.9;
+}
+
 .message-content ul.help-list {
     margin: 0.5rem 0 0 1.25rem;
     padding: 0;

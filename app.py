@@ -15,8 +15,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from config import Config
 from communication_service import CommunicationService
+from core import normalize_plan, get_turn_quota
 from core.processor import MessageProcessor
-from data import IntegrationRepository, UserRepository
+from data import IntegrationRepository, UserRepository, UserUsageRepository
 from integrations import IntegrationAuthManager, SyncManager, WebhookHandler
 from services import JobScheduler, ReminderService, SyncService, NotificationService
 from web import AuthManager, DashboardData, register_web_routes
@@ -162,25 +163,25 @@ def twilio_webhook():
                     user = UserRepository(supabase).get_by_phone(from_number)
                     if user and user.get("onboarding_complete", False):
                         quota_blocked = False
-                        # Monthly quota enforcement (turns)
-                        try:
-                            from data import UserUsageRepository
-                            plan = (user.get("plan") or "free").strip().lower()
-                            month_key = UserUsageRepository.month_key_for()
-                            # Conservative defaults; can be tuned in pricing tier work.
-                            quota = 50 if plan == "free" else 1000 if plan == "core" else None
-                            if quota is not None:
-                                cur = supabase.table("user_usage_monthly").select("turns_used").eq("user_id", int(user["id"])).eq("month_key", month_key).limit(1).execute()
-                                used = int((cur.data[0].get("turns_used") if cur.data else 0) or 0)
+                        plan = normalize_plan(user.get("plan"))
+                        quota = get_turn_quota(plan)
+                        if quota is not None:
+                            try:
+                                month_key = UserUsageRepository.month_key_for()
+                                row = UserUsageRepository(supabase).get_month(
+                                    int(user["id"]), month_key
+                                )
+                                used = int((row.get("turns_used") if row else 0) or 0)
                                 if used >= quota:
+                                    base_url = (Config.BASE_URL or "").rstrip("/")
+                                    pricing_url = f"{base_url}/dashboard/pricing" if base_url else "/dashboard/pricing"
                                     response_text = [
-                                        "You’ve hit your monthly message limit for this plan.",
+                                        "You've hit your monthly message limit for this plan.",
                                         "Upgrade to Pro for unlimited messaging (with fair-use safeguards).",
+                                        pricing_url,
                                     ]
                                     quota_blocked = True
-                        except Exception as _quota_err:
-                            # If quota exceeded we already set response_text; otherwise ignore quota errors.
-                            if response_text:
+                            except Exception:
                                 pass
                         if not quota_blocked:
                             response_text = get_agent_orchestrator().handle_message(
@@ -189,10 +190,12 @@ def twilio_webhook():
                                 text=message_body,
                                 source="sms",
                             )
-                            # Count the turn after a successful agent call.
                             try:
-                                from data import UserUsageRepository
-                                UserUsageRepository(supabase).increment_month(int(user["id"]), UserUsageRepository.month_key_for(), delta=1)
+                                UserUsageRepository(supabase).increment_month(
+                                    int(user["id"]),
+                                    UserUsageRepository.month_key_for(),
+                                    delta=1,
+                                )
                             except Exception:
                                 pass
         except Exception:

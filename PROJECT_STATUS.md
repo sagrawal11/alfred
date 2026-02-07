@@ -152,7 +152,7 @@ You should think of Alfred today as:
 - **Migration**: `supabase_schema_stripe_billing.sql`
 
 ### What’s still pending (billing-related)
-- **Feature gating** by plan (Core/Pro entitlements) is not enforced yet across the product; plan is stored and visible, but not used to restrict features.
+- **Feature gating** by plan is enforced: `core/entitlements.py` defines turn quotas (Free: 50/mo, Core: 1000/mo, Pro: unlimited) and feature flags (trends, integrations, image_upload). Trends page and APIs, integration connect/callback/sync/disconnect, and image upload/delete require Core or Pro; quota checks use the same module in dashboard chat and Twilio webhook.
 - Optional: expose Billing Portal link in UI (Settings or Pricing).
 
 ---

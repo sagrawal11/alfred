@@ -8,6 +8,9 @@ from typing import Callable
 
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 
+from core import can_use_feature, get_turn_quota, normalize_plan
+from data import UserUsageRepository
+
 from .auth import AuthManager
 from .dashboard import DashboardData
 
@@ -262,9 +265,13 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     @app.route('/dashboard/trends')
     @require_login
     def dashboard_trends():
-        """Trends page (UI to be refined later)."""
+        """Trends page (Core/Pro)."""
         user = auth_manager.get_current_user()
-        return render_template('dashboard/trends.html', user=user, active_page='trends')
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "trends"):
+            flash("Trends are available on Core and Pro plans. Upgrade to view.", "info")
+            return redirect(url_for("dashboard_pricing"))
+        return render_template("dashboard/trends.html", user=user, active_page="trends")
 
     @app.route('/dashboard/pricing')
     @require_login
@@ -657,69 +664,87 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             return jsonify({'success': False, 'error': 'Message must be 300 characters or less'}), 400
 
         try:
+            from config import Config
             phone_number = user.get('phone_number') or f"web-user-{user['id']}"
-
-            # Photo-in-chat: vision → log_food → agent reply in same thread
-            pre_run_tool_results = None
-            effective_message = message or "I just sent a photo of my food."
-            if (image_upload_id or image_base64) and user.get("onboarding_complete", False):
-                image_url = None
-                if image_upload_id:
-                    try:
-                        from data import FoodImageUploadRepository
-                        upload_repo = FoodImageUploadRepository(supabase)
-                        row = upload_repo.get_by_id(int(image_upload_id))
-                        if row and int(row.get("user_id") or -1) == int(user["id"]):
-                            bucket, path = row.get("bucket"), row.get("path")
-                            if bucket and path:
-                                signed = supabase.storage.from_(bucket).create_signed_url(path, 600)
-                                image_url = (signed.get("signedUrl") or signed.get("signed_url") if isinstance(signed, dict) else getattr(signed, "signedUrl", None) or getattr(signed, "signed_url", None))
-                    except Exception:
-                        pass
-                elif image_base64:
-                    raw = (image_base64 or "").strip()
-                    image_url = raw if raw.startswith("data:") else (f"data:image/jpeg;base64,{raw}" if raw else None)
-                if image_url:
-                    try:
-                        from services.vision import OpenAIVisionClient
-                        vision = OpenAIVisionClient()
-                        extracted = vision.analyze_food_image(image_url=image_url, kind_hint="unknown")
-                        log_items = _vision_extract_to_log_food_items(extracted)
-                        if log_items:
-                            agent = get_agent_orchestrator()
-                            tr = agent.tools.execute(
-                                user_id=int(user["id"]),
-                                tool_name="log_food",
-                                arguments={"items": log_items, "source": "photo", "metadata": {"from_chat_image": True}},
-                            )
-                            if tr.ok:
-                                pre_run_tool_results = {"log_food": {"ok": True, "result": tr.result, "error": tr.error}}
-                                effective_message = "I just sent a photo of my food; please confirm it's logged."
-                    except Exception:
-                        pass
-
-            # If agent mode is enabled and onboarding is complete, use the new orchestrator.
             response_text = None
+            quota_exceeded = False
+
+            # Check quota first; when over limit we do not process message or image—only send limit message + pricing link.
+            if user.get("onboarding_complete", False):
+                try:
+                    plan = normalize_plan(user.get("plan"))
+                    quota = get_turn_quota(plan)
+                    if quota is not None:
+                        month_key = UserUsageRepository.month_key_for()
+                        row = UserUsageRepository(supabase).get_month(
+                            int(user["id"]), month_key
+                        )
+                        used = int((row.get("turns_used") if row else 0) or 0)
+                        if used >= quota:
+                            base_url = (Config.BASE_URL or request.host_url or "").rstrip("/")
+                            pricing_url = f"{base_url}/dashboard/pricing" if base_url else "/dashboard/pricing"
+                            response_text = [
+                                "You've hit your monthly message limit for this plan.",
+                                "Upgrade to Pro for unlimited messaging (with fair-use safeguards).",
+                                pricing_url,
+                            ]
+                            quota_exceeded = True
+                except Exception:
+                    pass
+
+            if not quota_exceeded:
+                pre_run_tool_results = None
+                effective_message = message or "I just sent a photo of my food."
+                if (image_upload_id or image_base64) and user.get("onboarding_complete", False):
+                    image_url = None
+                    if image_upload_id:
+                        try:
+                            from data import FoodImageUploadRepository
+                            upload_repo = FoodImageUploadRepository(supabase)
+                            row = upload_repo.get_by_id(int(image_upload_id))
+                            if row and int(row.get("user_id") or -1) == int(user["id"]):
+                                bucket, path = row.get("bucket"), row.get("path")
+                                if bucket and path:
+                                    signed = supabase.storage.from_(bucket).create_signed_url(path, 600)
+                                    image_url = (signed.get("signedUrl") or signed.get("signed_url") if isinstance(signed, dict) else getattr(signed, "signedUrl", None) or getattr(signed, "signed_url", None))
+                        except Exception:
+                            pass
+                    elif image_base64:
+                        raw = (image_base64 or "").strip()
+                        image_url = raw if raw.startswith("data:") else (f"data:image/jpeg;base64,{raw}" if raw else None)
+                    if image_url:
+                        try:
+                            from services.vision import OpenAIVisionClient
+                            vision = OpenAIVisionClient()
+                            extracted = vision.analyze_food_image(image_url=image_url, kind_hint="unknown")
+                            log_items = _vision_extract_to_log_food_items(extracted)
+                            if log_items:
+                                agent = get_agent_orchestrator()
+                                tr = agent.tools.execute(
+                                    user_id=int(user["id"]),
+                                    tool_name="log_food",
+                                    arguments={"items": log_items, "source": "photo", "metadata": {"from_chat_image": True}},
+                                )
+                                if tr.ok:
+                                    pre_run_tool_results = {"log_food": {"ok": True, "result": tr.result, "error": tr.error}}
+                                    effective_message = "I just sent a photo of my food; please confirm it's logged."
+                        except Exception:
+                            pass
+
+            if not quota_exceeded:
+                response_text = None
             try:
-                if user.get("onboarding_complete", False):
+                if not quota_exceeded and user.get("onboarding_complete", False):
                     quota_blocked = False
                     try:
-                        from data import UserUsageRepository
-
-                        plan = (user.get("plan") or "free").strip().lower()
-                        month_key = UserUsageRepository.month_key_for()
-                        quota = 50 if plan == "free" else 1000 if plan == "core" else None
-
+                        plan = normalize_plan(user.get("plan"))
+                        quota = get_turn_quota(plan)
                         if quota is not None:
-                            cur = (
-                                supabase.table("user_usage_monthly")
-                                .select("turns_used")
-                                .eq("user_id", int(user["id"]))
-                                .eq("month_key", month_key)
-                                .limit(1)
-                                .execute()
+                            month_key = UserUsageRepository.month_key_for()
+                            row = UserUsageRepository(supabase).get_month(
+                                int(user["id"]), month_key
                             )
-                            used = int((cur.data[0].get("turns_used") if cur.data else 0) or 0)
+                            used = int((row.get("turns_used") if row else 0) or 0)
                             if used >= quota:
                                 response_text = [
                                     "You’ve hit your monthly message limit for this plan.",
@@ -727,7 +752,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                                 ]
                                 quota_blocked = True
                     except Exception:
-                        quota_blocked = False
+                        pass
 
                     if not quota_blocked:
                         agent = get_agent_orchestrator()
@@ -739,8 +764,6 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                             pre_run_tool_results=pre_run_tool_results,
                         )
                         try:
-                            from data import UserUsageRepository
-
                             UserUsageRepository(supabase).increment_month(
                                 int(user["id"]),
                                 UserUsageRepository.month_key_for(),
@@ -749,15 +772,17 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                         except Exception:
                             pass
             except Exception:
-                response_text = None
+                if not quota_exceeded:
+                    response_text = None
 
             if response_text is None:
+                effective_message = message or "I just sent a photo of my food."
                 processor = get_message_processor()
                 response_text = processor.process_message(effective_message, phone_number=phone_number)
 
             # Optional in-thread nudge (e.g. "Want to log water?")
             include_nudge = data.get("include_nudge") is True
-            if include_nudge and response_text and user.get("onboarding_complete", False):
+            if include_nudge and response_text and user.get("onboarding_complete", False) and not quota_exceeded:
                 nudge = "Want to log water or track a workout?"
                 if isinstance(response_text, (list, tuple)):
                     response_text = list(response_text) + [nudge]
@@ -773,11 +798,16 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                     if len(part) > 1500:
                         part = part[:1500] + "..."
                     parts.append(part)
-                return jsonify({
-                    'success': True,
-                    'responses': parts,
-                    'response': ("\n\n".join(parts) if parts else "I didn't understand that. Try sending 'help' for available commands.")
-                })
+                payload = {
+                    "success": True,
+                    "responses": parts,
+                    "response": ("\n\n".join(parts) if parts else "I didn't understand that. Try sending 'help' for available commands."),
+                }
+                if quota_exceeded:
+                    base_url = (Config.BASE_URL or request.host_url or "").rstrip("/")
+                    payload["quota_exceeded"] = True
+                    payload["pricing_url"] = f"{base_url}/dashboard/pricing" if base_url else "/dashboard/pricing"
+                return jsonify(payload)
 
             if response_text and len(response_text) > 1500:
                 response_text = response_text[:1500] + "..."
@@ -814,6 +844,9 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         user = auth_manager.get_current_user()
         if not user:
             return jsonify({'success': False, 'error': 'Not logged in'}), 401
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "image_upload"):
+            return jsonify({"success": False, "error": "Image upload requires Core or Pro."}), 403
 
         file = request.files.get('image')
         if not file:
@@ -1093,13 +1126,16 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     @require_login
     def dashboard_api_delete_uploaded_image():
         """
-        Delete an uploaded image and its metadata (privacy cleanup).
+        Delete an uploaded image and its metadata (privacy cleanup). Core/Pro.
         JSON body:
         - upload_id: integer
         """
         user = auth_manager.get_current_user()
         if not user:
             return jsonify({'success': False, 'error': 'Not logged in'}), 401
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "image_upload"):
+            return jsonify({"success": False, "error": "Image upload requires Core or Pro."}), 403
 
         payload = request.get_json(silent=True) or {}
         upload_id = payload.get("upload_id")
@@ -1152,8 +1188,11 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     @app.route('/api/dashboard/trends')
     @require_login
     def api_dashboard_trends():
-        """Get trends for a date range"""
+        """Get trends for a date range (Core/Pro)."""
         user = auth_manager.get_current_user()
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "trends"):
+            return jsonify({"success": False, "error": "Trends require Core or Pro."}), 403
         end_date = request.args.get('end_date', '')
         days = request.args.get('days', '7', type=int)
         
@@ -1191,8 +1230,11 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     @app.route('/dashboard/api/trends/<int:days>')
     @require_login
     def dashboard_api_trends(days):
-        """Get trends in frontend format"""
+        """Get trends in frontend format (Core/Pro)."""
         user = auth_manager.get_current_user()
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "trends"):
+            return jsonify({"success": False, "error": "Trends require Core or Pro."}), 403
         end_date = request.args.get('end_date', '')
         if not end_date:
             from datetime import date
@@ -1206,7 +1248,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     @require_login
     def dashboard_api_trends_activity():
         """
-        Activity log for Trends page.
+        Activity log for Trends page (Core/Pro).
         Query params:
         - timeframe: '7d' | '14d' | '1m' | '1y' (preferred)
         - days: int (fallback)
@@ -1214,6 +1256,9 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         from datetime import date, timedelta, datetime
 
         user = auth_manager.get_current_user()
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "trends"):
+            return jsonify({"success": False, "error": "Trends require Core or Pro."}), 403
         uid = int(user['id'])
         tf = (request.args.get('timeframe') or '').strip()
         metric = (request.args.get('metric') or '').strip()
@@ -1394,7 +1439,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     @require_login
     def dashboard_api_trends_series():
         """
-        Time-series data for Trends chart.
+        Time-series data for Trends chart (Core/Pro).
         Query params:
         - timeframe: '7d' | '14d' | '1m' | '1y'
         - metric: 'sleep' | 'water' | 'calories' | 'protein' | 'carbs' | 'fat' | 'todos' | 'workouts' | 'messages'
@@ -1403,6 +1448,9 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         from calendar import month_abbr, monthrange
 
         user = auth_manager.get_current_user()
+        plan = normalize_plan(user.get("plan"))
+        if not can_use_feature(plan, "trends"):
+            return jsonify({"success": False, "error": "Trends require Core or Pro."}), 403
         tf = (request.args.get('timeframe') or '7d').strip()
         metric = (request.args.get('metric') or 'calories').strip()
 

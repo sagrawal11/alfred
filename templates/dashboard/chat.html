@@ -115,6 +115,28 @@
             });
         }
         
+        // Add a bot message that is a single clickable link (e.g. upgrade/pricing)
+        function addMessageWithLink(url, isBot = true) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${isBot ? 'bot-message' : 'user-message'}`;
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = 'Upgrade plan';
+            link.className = 'chat-pricing-link';
+            contentDiv.appendChild(link);
+            const timestampDiv = document.createElement('div');
+            timestampDiv.className = 'message-timestamp';
+            timestampDiv.textContent = formatTimestamp();
+            messageDiv.appendChild(contentDiv);
+            messageDiv.appendChild(timestampDiv);
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
         // Add message to chat
         function addMessage(text, isBot = false) {
             const messageDiv = document.createElement('div');
@@ -188,7 +210,15 @@
                 
                 // Backend returns SMS-like responses; onboarding may return multiple messages.
                 if (data && Array.isArray(data.responses) && data.responses.length) {
-                    data.responses.forEach((part) => addMessage(String(part || ''), true));
+                    data.responses.forEach((part) => {
+                        const s = String(part || '');
+                        // When over quota, show pricing URL as a link instead of raw text
+                        if (data.quota_exceeded && data.pricing_url && s === data.pricing_url) {
+                            addMessageWithLink(data.pricing_url, true);
+                        } else if (s) {
+                            addMessage(s, true);
+                        }
+                    });
                 } else {
                     addMessage((data && data.response) ? data.response : "Sorry — something went wrong. Please try again.", true);
                 }
