@@ -141,13 +141,23 @@ def twilio_webhook():
             response.message("I didn't receive a message. Please try again.")
             return str(response), 200
 
+        if len((message_body or "").strip()) > 300:
+            response = MessagingResponse()
+            response.message("Message must be 300 characters or less.")
+            return str(response), 200
+
         # Prefer agent for onboarded users when enabled; fall back to classic processor otherwise.
         response_text = None
         try:
-            if os.getenv("AGENT_MODE_ENABLED", "false").lower() == "true":
-                # Keep STOP/HELP/START behavior aligned with classic processor.
+            if os.getenv("AGENT_MODE_ENABLED", "true").lower() == "true":
+                # Keep STOP/HELP/re-subscribe behavior aligned with classic processor.
                 low = (message_body or "").strip().lower()
-                if low not in ("help", "info", "stop", "start"):
+                _resubscribe = (
+                    low in ("start", "hi alfred", "hey alfred", "hello alfred")
+                    or (low.startswith("hi ") and "alfred" in low and len(low) < 30)
+                    or (low.startswith("hey ") and "alfred" in low and len(low) < 30)
+                )
+                if low not in ("help", "info", "stop") and not _resubscribe:
                     user = UserRepository(supabase).get_by_phone(from_number)
                     if user and user.get("onboarding_complete", False):
                         quota_blocked = False
@@ -230,7 +240,10 @@ def sms_webhook():
     """Legacy SMS webhook (kept for compatibility)"""
     message_body = request.form.get('Body', '')
     from_number = request.form.get('From', '')
-    
+
+    if len((message_body or "").strip()) > 300:
+        return jsonify({"response": "Message must be 300 characters or less.", "timestamp": datetime.now().isoformat()})
+
     processor = get_message_processor()
     response_text = processor.process_message(message_body, phone_number=from_number)
 

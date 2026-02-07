@@ -10,12 +10,13 @@ This module is intentionally conservative:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional
 
 from supabase import Client
 
 from data import (
+    AssignmentRepository,
     FoodRepository,
     GymRepository,
     SleepRepository,
@@ -79,6 +80,7 @@ class ToolExecutor:
         self.gym_repo = GymRepository(supabase)
         self.sleep_repo = SleepRepository(supabase)
         self.todo_repo = TodoRepository(supabase)
+        self.assignment_repo = AssignmentRepository(supabase)
         self.memory_state_repo = UserMemoryStateRepository(supabase)
         self.memory_items_repo = UserMemoryItemsRepository(supabase)
 
@@ -258,6 +260,60 @@ class ToolExecutor:
         items.sort(key=lambda x: _dt_key(x.get("timestamp") or ""), reverse=True)
         return {"start_date": start_date, "end_date": end_date, "items": items[:lim]}
 
+    def _tool_get_assignments_due(self, *, user_id: int, days: Any = 14) -> Dict[str, Any]:
+        d = _clamp(_as_int(days, name="days"), 1, 90)
+        overdue = self.assignment_repo.get_overdue(int(user_id))
+        due_soon = self.assignment_repo.get_due_soon(int(user_id), days=d)
+        items = []
+        for a in (overdue or []):
+            items.append({
+                "assignment_name": a.get("assignment_name"),
+                "class_name": a.get("class_name"),
+                "due_date": a.get("due_date"),
+                "overdue": True,
+            })
+        for a in (due_soon or []):
+            items.append({
+                "assignment_name": a.get("assignment_name"),
+                "class_name": a.get("class_name"),
+                "due_date": a.get("due_date"),
+                "overdue": False,
+            })
+        items.sort(key=lambda x: (x.get("due_date") or ""))
+        return {"assignments": items, "days_ahead": d}
+
+    def _tool_get_week_summary(self, *, user_id: int) -> Dict[str, Any]:
+        prefs = self.prefs_repo.get(int(user_id)) or {}
+        goals = {
+            "water_ml": prefs.get("default_water_goal_ml"),
+            "calories": prefs.get("default_calories_goal"),
+            "protein_g": prefs.get("default_protein_goal"),
+        }
+        stats = {}
+        for m in ["water", "calories", "protein", "workouts", "sleep"]:
+            try:
+                r = self._tool_get_stats(user_id=user_id, metric=m, timeframe_days=7)
+                stats[m] = r.get("total")
+            except Exception:
+                stats[m] = None
+        return {"stats_7_days": stats, "goals": goals}
+
+    def _tool_get_today_summary(self, *, user_id: int) -> Dict[str, Any]:
+        prefs = self.prefs_repo.get(int(user_id)) or {}
+        goals = {
+            "water_ml": prefs.get("default_water_goal_ml"),
+            "calories": prefs.get("default_calories_goal"),
+            "protein_g": prefs.get("default_protein_goal"),
+        }
+        stats = {}
+        for m in ["water", "calories", "protein", "workouts", "sleep"]:
+            try:
+                r = self._tool_get_stats(user_id=user_id, metric=m, timeframe_days=1)
+                stats[m] = r.get("total")
+            except Exception:
+                stats[m] = None
+        return {"stats_today": stats, "goals": goals}
+
     def _tool_get_stats(self, *, user_id: int, metric: str, timeframe_days: Any = 7) -> Dict[str, Any]:
         m = (metric or "").strip().lower()
         days = _clamp(_as_int(timeframe_days, name="timeframe_days"), 1, 365)
@@ -367,10 +423,91 @@ class ToolExecutor:
         row = self.todo_repo.create_todo(int(user_id), content=content, due_date=due, type="todo")
         return {"created": row}
 
+    def _tool_add_reminder(self, *, user_id: int, content: str, due_at: Optional[str] = None) -> Dict[str, Any]:
+        text = _as_str(content, name="content")
+        due = None
+        if due_at:
+            s = str(due_at).strip().replace("Z", "+00:00")
+            try:
+                due = datetime.fromisoformat(s)
+            except Exception:
+                raise ToolValidationError("due_at must be ISO8601 datetime if provided")
+        row = self.todo_repo.create_todo(int(user_id), content=text, due_date=due, type="reminder")
+        return {"created": row}
+
+    def _tool_log_sleep(
+        self,
+        *,
+        user_id: int,
+        date_str: Optional[str] = None,
+        duration_hours: Any = None,
+        sleep_time_str: Optional[str] = None,
+        wake_time_str: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        d = date_str
+        if not d or not str(d).strip():
+            d = date.today().isoformat()
+        else:
+            try:
+                datetime.strptime(str(d).strip()[:10], "%Y-%m-%d")
+            except Exception:
+                raise ToolValidationError("date_str must be YYYY-MM-DD")
+            d = str(d).strip()[:10]
+        dur = _as_float(duration_hours, name="duration_hours")
+        if dur <= 0 or dur > 24:
+            raise ToolValidationError("duration_hours must be between 0 and 24")
+        st_str = (sleep_time_str or "").strip() or "00:00"
+        wt_str = (wake_time_str or "").strip()
+        if not wt_str:
+            # Derive wake from duration: 00:00 + duration_hours
+            h = int(dur)
+            m = int(round((dur - h) * 60))
+            wt_str = f"{h:02d}:{m:02d}:00"
+        for s, name in [(st_str, "sleep_time"), (wt_str, "wake_time")]:
+            if len(s) == 5 and ":" in s:
+                s = s + ":00"
+            if len(s) < 8:
+                raise ToolValidationError(f"{name} must be HH:MM or HH:MM:SS")
+            try:
+                time.fromisoformat(s)
+            except Exception:
+                raise ToolValidationError(f"{name} must be valid time HH:MM or HH:MM:SS")
+        if len(st_str) == 5:
+            st_str = st_str + ":00"
+        if len(wt_str) == 5:
+            wt_str = wt_str + ":00"
+        st = time.fromisoformat(st_str)
+        wt = time.fromisoformat(wt_str)
+        row = self.sleep_repo.create_sleep_log(int(user_id), d, st, wt, dur)
+        return {"created": row}
+
+    def _tool_log_workout(
+        self,
+        *,
+        user_id: int,
+        exercise: str,
+        sets: Optional[Any] = None,
+        reps: Optional[Any] = None,
+        weight: Optional[Any] = None,
+        notes: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        ex = _as_str(exercise, name="exercise")
+        s = int(sets) if sets is not None else None
+        r = int(reps) if reps is not None else None
+        w = float(weight) if weight is not None else None
+        if s is not None and (s < 0 or s > 999):
+            raise ToolValidationError("sets must be 0-999")
+        if r is not None and (r < 0 or r > 9999):
+            raise ToolValidationError("reps must be 0-9999")
+        row = self.gym_repo.create_gym_log(int(user_id), exercise=ex, sets=s, reps=r, weight=w, notes=notes)
+        return {"created": row}
+
     def _tool_set_preference(self, *, user_id: int, key: str, value: Any) -> Dict[str, Any]:
         k = _as_str(key, name="key")
         allowed = {
             "units",
+            "response_style",
+            "freeform_goal",
             "quiet_hours_start",
             "quiet_hours_end",
             "do_not_disturb",
@@ -398,6 +535,10 @@ class ToolExecutor:
             v = bool(v)
         if k == "units" and v not in ("metric", "imperial"):
             raise ToolValidationError("units must be metric or imperial")
+        if k == "response_style" and v not in ("concise", "friendly", "detailed"):
+            raise ToolValidationError("response_style must be concise, friendly, or detailed")
+        if k == "freeform_goal":
+            v = str(v).strip() if v is not None else None
 
         self.prefs_repo.ensure(int(user_id))
         row = self.prefs_repo.update(int(user_id), {k: v})

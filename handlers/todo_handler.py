@@ -43,7 +43,7 @@ class TodoHandler(BaseHandler):
                 todo_text = todo_text[len(prefix):].strip()
         
         if not todo_text:
-            return self.formatter.format_error("What do you need to do?")
+            return self.formatter.format_error("What should I add? Just tell me the task.")
         
         try:
             created = self.todo_repo.create_todo(
@@ -54,11 +54,11 @@ class TodoHandler(BaseHandler):
             
             context.invalidate_cache()
             
-            return f"✓ Added todo: {todo_text}"
+            return f"Done — added todo: {todo_text}"
             
         except Exception as e:
             print(f"Error creating todo: {e}")
-            return self.formatter.format_error("Error saving todo")
+            return self.formatter.format_error("Couldn't save that todo")
     
     def _handle_reminder(self, message: str, user_id: int, context: ConversationContext) -> Optional[str]:
         """Handle reminder creation"""
@@ -66,13 +66,13 @@ class TodoHandler(BaseHandler):
         reminder_data = self.parser.parse_reminder(message)
         
         if not reminder_data:
-            return self.formatter.format_error("Couldn't parse reminder. Try: 'remind me to call mom at 5pm'")
+            return self.formatter.format_error("I couldn't parse that. Try 'remind me to call mom at 5pm'")
         
         content = reminder_data.get('content', '')
         due_date = reminder_data.get('due_date')
         
         if not content:
-            return self.formatter.format_error("What should I remind you about?")
+            return self.formatter.format_error("What do you want to be reminded about?")
         
         try:
             created = self.todo_repo.create_todo(
@@ -83,7 +83,7 @@ class TodoHandler(BaseHandler):
             
             context.invalidate_cache()
             
-            response = f"✓ Reminder set: {content}"
+            response = f"Got it — reminder set: {content}"
             if due_date:
                 due_str = datetime.fromisoformat(due_date) if isinstance(due_date, str) else due_date
                 response += f" at {due_str.strftime('%I:%M %p')}"
@@ -92,7 +92,7 @@ class TodoHandler(BaseHandler):
             
         except Exception as e:
             print(f"Error creating reminder: {e}")
-            return self.formatter.format_error("Error saving reminder")
+            return self.formatter.format_error("Couldn't save that reminder")
     
     def _handle_assignment(self, message: str, user_id: int, context: ConversationContext) -> Optional[str]:
         """Handle assignment creation"""
@@ -100,14 +100,14 @@ class TodoHandler(BaseHandler):
         assignment_data = self.parser.parse_assignment(message)
         
         if not assignment_data:
-            return self.formatter.format_error("Couldn't parse assignment. Try: 'CS101 homework due Friday'")
+            return self.formatter.format_error("I couldn't parse that. Try 'CS101 homework due Friday'")
         
         class_name = assignment_data.get('class_name', '')
         assignment_name = assignment_data.get('assignment_name', '')
         due_date = assignment_data.get('due_date')
         
         if not class_name or not assignment_name:
-            return self.formatter.format_error("Need class name and assignment name")
+            return self.formatter.format_error("I need the class name and assignment name")
         
         try:
             created = self.assignment_repo.create_assignment(
@@ -119,7 +119,7 @@ class TodoHandler(BaseHandler):
             
             context.invalidate_cache()
             
-            response = f"✓ Added assignment: {class_name} - {assignment_name}"
+            response = f"Done — added assignment: {class_name} - {assignment_name}"
             if due_date:
                 due_str = datetime.fromisoformat(due_date) if isinstance(due_date, str) else due_date
                 response += f" (due {due_str.strftime('%b %d')})"
@@ -128,4 +128,4 @@ class TodoHandler(BaseHandler):
             
         except Exception as e:
             print(f"Error creating assignment: {e}")
-            return self.formatter.format_error("Error saving assignment")
+            return self.formatter.format_error("Couldn't save that assignment")

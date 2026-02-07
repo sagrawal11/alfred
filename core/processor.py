@@ -83,6 +83,8 @@ class MessageProcessor:
             'reminder_set': TodoHandler(supabase, self.parser, self.formatter),  # Same handler
             'assignment_add': TodoHandler(supabase, self.parser, self.formatter),  # Same handler
             'stats_query': QueryHandler(supabase, self.parser, self.formatter),
+            'what_should_i_do': QueryHandler(supabase, self.parser, self.formatter),
+            'food_suggestion': QueryHandler(supabase, self.parser, self.formatter),
             'fact_storage': QueryHandler(supabase, self.parser, self.formatter),  # Same handler
             'fact_query': QueryHandler(supabase, self.parser, self.formatter),  # Same handler
             'integration_manage': IntegrationHandler(supabase, self.integration_repo, 
@@ -132,10 +134,16 @@ class MessageProcessor:
                     self.user_repo.deactivate_user(user["id"])
                 return (
                     "You have been unsubscribed from messages from Sarthak Agrawal. "
-                    "You will no longer receive SMS messages. Reply START to re-subscribe."
+                    "You will no longer receive SMS messages. Reply 'hi alfred' to re-subscribe."
                 )
 
-            if message_lower == "start":
+            # Re-subscribe trigger: "hi alfred" (or "start" for backward compatibility)
+            _resubscribe_trigger = (
+                message_lower.strip() in ("start", "hi alfred", "hey alfred", "hello alfred")
+                or (message_lower.strip().startswith("hi ") and "alfred" in message_lower and len(message_lower) < 30)
+                or (message_lower.strip().startswith("hey ") and "alfred" in message_lower and len(message_lower) < 30)
+            )
+            if _resubscribe_trigger:
                 if user and not user.get("is_active", True):
                     self.user_repo.activate_user(user["id"])
                     return "You're re-subscribed. Text me anything to get started."
@@ -152,7 +160,7 @@ class MessageProcessor:
 
             # Respect opt-out / deactivated accounts
             if not user.get("is_active", True):
-                return "You're unsubscribed. Reply START to re-subscribe, or HELP for more info."
+                return "You're unsubscribed. Reply 'hi alfred' to re-subscribe, or HELP for more info."
             
             user_id = user['id']
 
@@ -168,11 +176,14 @@ class MessageProcessor:
 
             # Onboarding (account-first): run before confirmations/NLP
             if not user.get("onboarding_complete", False):
+                # Classify intent so we can redirect off-topic messages (e.g. "ate a quesadilla") without advancing step
+                classified_intent = self.intent_classifier.classify(message_clean)
                 result, user_updates, prefs_updates = handle_onboarding(
                     message=message_clean,
                     user=user,
                     session=session,
                     config_default_bottle_ml=int(self.db_loader.water_bottle_size_ml),
+                    classified_intent=classified_intent,
                 )
                 if user_updates:
                     try:
@@ -199,13 +210,18 @@ class MessageProcessor:
                 if response:
                     return response
             
-            # Step 1: Apply learned patterns BEFORE NLP (to enhance classification)
+            # Step 1: Apply learned patterns (used for non-social intents below)
             suggested_intent, suggested_entities = self.learning_orchestrator.apply_learned_patterns(
                 user_id, message
             )
             
-            # Step 2: Classify intent (use learned pattern if high confidence, otherwise use NLP)
-            intent = suggested_intent if suggested_intent else self.intent_classifier.classify(message)
+            # Step 2: Classify intent via NLP; greeting from NLP always wins over learned intent
+            classified = self.intent_classifier.classify(message)
+            if classified == 'greeting':
+                return self.formatter.format_greeting()
+            intent = suggested_intent if suggested_intent else classified
+            if intent == 'chitchat':
+                return self.formatter.format_chitchat()
             
             # Step 3: Extract entities
             entities = self.entity_extractor.extract(message)
@@ -235,7 +251,7 @@ class MessageProcessor:
                 assignment_repo=AssignmentRepository(self.supabase)
             )
             
-            # Step 5: Route to appropriate handler
+            # Step 5: Route to appropriate handler (greeting/chitchat already returned above)
             handler = self.handlers.get(intent)
             processing_result = None
             response = None
@@ -311,11 +327,11 @@ class MessageProcessor:
             
             # Clear pending confirmation
             session['pending_confirmations'] = {}
-            return "Got it! Action completed."
+            return "Done — that's taken care of."
         elif message_lower in ['no', 'nope', 'n', 'cancel']:
             # Clear pending confirmation
             session['pending_confirmations'] = {}
-            return "Okay, cancelled."
+            return "No problem — cancelled."
         
         return None
 
@@ -400,16 +416,16 @@ class MessageProcessor:
                 except Exception as e:
                     print(f"Error enabling DND: {e}")
                     return self.formatter.format_error("Couldn't enable do-not-disturb yet")
-                return "Okay — do-not-disturb is on. Reply 'dnd off' to re-enable messages."
+                return "Got it — do-not-disturb is on. Reply 'dnd off' when you want messages again."
             if "off" in message_lower and ("dnd" in message_lower or "do not disturb" in message_lower):
                 try:
                     self.user_prefs_repo.update(user_id, {"do_not_disturb": False})
                 except Exception as e:
                     print(f"Error disabling DND: {e}")
                     return self.formatter.format_error("Couldn't disable do-not-disturb yet")
-                return "Okay — do-not-disturb is off."
+                return "Got it — do-not-disturb is off. You'll get messages again."
 
-            return "What quiet hours should I use? Example: 'quiet hours 10pm-7am'."
+            return "What quiet hours work for you? Example: 'quiet hours 10pm-7am'."
 
         # Weekly digest schedule (e.g. "weekly digest monday 8pm")
         if "weekly digest" in message_lower:
@@ -443,7 +459,7 @@ class MessageProcessor:
                     print(f"Error updating weekly digest schedule: {e}")
                     return self.formatter.format_error("Couldn't update weekly digest settings yet")
                 return f"Perfect — weekly digest set for day {wd} at {int(wh):02d}:00 (local time)."
-            return "When do you want it? Example: 'weekly digest Monday 8pm'."
+            return "When do you want your weekly digest? Example: 'weekly digest Monday 8pm'."
 
         # Default daily goals (water + macros)
         if "goal" in message_lower and any(k in message_lower for k in ["water", "calorie", "calories", "protein", "carb", "fat", "macros"]):
@@ -488,6 +504,6 @@ class MessageProcessor:
                     print(f"Error updating goals: {e}")
                     return self.formatter.format_error("Couldn't update goals yet")
 
-                return "Locked in — updated your daily goals. You can tweak them anytime."
+                return "Got it — updated your daily goals. You can change them anytime."
 
         return None

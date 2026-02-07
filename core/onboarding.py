@@ -7,9 +7,16 @@ exist in the database (signed up on web) but haven't completed onboarding.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+
+def _preferences_link() -> str:
+    """Base URL + /dashboard/preferences for post-onboarding message."""
+    base = (os.getenv("BASE_URL") or os.getenv("PUBLIC_BASE_URL") or "http://localhost:5001").strip().rstrip("/")
+    return f"{base}/dashboard/preferences"
 
 
 @dataclass(frozen=True)
@@ -21,6 +28,64 @@ class OnboardingResult:
 
 def _normalize(text: str) -> str:
     return (text or "").strip()
+
+
+def _reflect_back(raw: str, max_len: int = 100) -> str:
+    """Short summary of user's answer (e.g. for water bottle size display). Not used for reminder/voice—we use bucket synthesis instead."""
+    s = (raw or "").strip()
+    if not s:
+        return "that"
+    for end in (". ", "! ", "?\n", ".\n"):
+        i = s.find(end)
+        if i != -1:
+            s = s[: i + 1].strip()
+            break
+    if len(s) > max_len:
+        s = s[: max_len - 3].rstrip() + "..."
+    return s
+
+
+# Short synthesis of what each reminder-style bucket means (we say this back, we don't quote the user)
+REMINDER_BUCKET_SYNTHESIS: Dict[str, str] = {
+    "very_persistent": "you want me in your ear a lot—constant check-ins and follow-ups",
+    "persistent": "you want regular check-ins and follow-ups to stay on track",
+    "only_critical": "you only want a nudge when something's really important",
+    "minimal": "you want me to stay out of your way and only chime in when you need me",
+    "relaxed": "you want it light—gentle nudges, no pressure",
+    "moderate": "you want a moderate level—not too many reminders, but you do want me to bug you when it really matters",
+}
+
+# How Alfred will behave based on reminder-style bucket
+REMINDER_BUCKET_BEHAVIOR: Dict[str, str] = {
+    "very_persistent": "I'll check in often and follow up so you stay on track.",
+    "persistent": "I'll keep you on track with regular check-ins and follow-ups.",
+    "only_critical": "I'll only bug you when something's really important.",
+    "minimal": "I'll stay out of your way and only chime in when you need me.",
+    "relaxed": "I'll keep it light—gentle nudges, no pressure.",
+    "moderate": "I'll nudge you when it matters but won't overdo it.",
+}
+
+# Short synthesis of what each voice-style bucket means (we say this back, we don't quote the user)
+VOICE_BUCKET_SYNTHESIS: Dict[str, str] = {
+    "very_formal": "you want me to sound very formal and professional",
+    "formal": "you want a professional, proper tone",
+    "polished": "you want me clean and preppy",
+    "neutral": "you want a natural, balanced tone",
+    "friendly_casual": "you want me warm and friendly",
+    "casual": "you want me chill and casual",
+    "other": "you've got a particular vibe in mind",
+}
+
+# How Alfred will sound based on voice-style bucket
+VOICE_BUCKET_BEHAVIOR: Dict[str, str] = {
+    "very_formal": "I'll keep things formal and professional.",
+    "formal": "I'll sound professional and polished.",
+    "polished": "I'll keep it clean and preppy.",
+    "neutral": "I'll keep it natural and balanced.",
+    "friendly_casual": "I'll be warm and friendly.",
+    "casual": "I'll keep it chill and casual.",
+    "other": "I'll match the vibe you described.",
+}
 
 
 def map_reminder_style_bucket(raw: str) -> str:
@@ -118,12 +183,46 @@ def parse_hour_0_23(raw: str) -> Optional[int]:
     return None
 
 
+# Intents that mean the user is not answering the current onboarding question (log food, say hi, ask for suggestion, etc.)
+OFF_TOPIC_ONBOARDING_INTENTS = frozenset({
+    "greeting", "chitchat", "food_logging", "water_logging", "gym_workout", "sleep_logging",
+    "reminder_set", "todo_add", "assignment_add", "stats_query", "fact_storage", "fact_query",
+    "what_should_i_do", "food_suggestion", "task_complete", "vague_completion", "undo_edit",
+    "confirmation", "integration_manage",
+})
+
+ONBOARDING_REDIRECT = (
+    "Finishing these quick questions will make your experience much smoother. "
+    "Let's get through them first—then you can log food, ask for suggestions, or do anything else.\n\n"
+)
+
+# Phrases that mean the user wants to skip the current step (we advance with a sensible default)
+SKIP_PHRASES = frozenset({
+    "skip", "later", "not sure", "idk", "i don't know", "dunno", "not now", "pass",
+    "maybe later", "next", "nope", "no idea", "whatever", "default", "you choose",
+})
+
+
+def _is_skip(message: str) -> bool:
+    """True if the message looks like the user wants to skip (e.g. 'skip', 'later', 'not sure')."""
+    t = _normalize(message).lower()
+    if not t:
+        return False
+    if t in SKIP_PHRASES:
+        return True
+    # "I'll do it later", "not sure yet", etc.
+    if len(t) <= 25 and any(p in t for p in SKIP_PHRASES):
+        return True
+    return False
+
+
 def handle_onboarding(
     *,
     message: str,
     user: Dict[str, Any],
     session: Dict[str, Any],
     config_default_bottle_ml: int,
+    classified_intent: Optional[str] = None,
 ) -> Tuple[OnboardingResult, Dict[str, Any], Dict[str, Any]]:
     """
     Returns:
@@ -153,13 +252,43 @@ def handle_onboarding(
     user_updates: Dict[str, Any] = {}
     prefs_updates: Dict[str, Any] = {}
 
+    # If the message is clearly off-topic (e.g. "ate a quesadilla", "hi"), redirect and re-ask current question
+    if classified_intent and classified_intent in OFF_TOPIC_ONBOARDING_INTENTS:
+        if step == 1:
+            return (
+                OnboardingResult(reply=ONBOARDING_REDIRECT + reminder_style_question),
+                user_updates,
+                prefs_updates,
+            )
+        voice_style_question = "How should I sound when I text you? Chill and casual, polished and preppy, or something else entirely? Whatever you prefer, we'll run with it."
+        if step == 2:
+            return (
+                OnboardingResult(reply=ONBOARDING_REDIRECT + voice_style_question),
+                user_updates,
+                prefs_updates,
+            )
+        if step == 3:
+            water_question = "How big is your usual water bottle? (e.g. 500ml, 16oz, 1L, or 'standard' if you're not sure)"
+            return (
+                OnboardingResult(reply=ONBOARDING_REDIRECT + water_question),
+                user_updates,
+                prefs_updates,
+            )
+        if step == 4:
+            morning_question = "What time do you want your daily morning text? It'll include your reminders and todos for the day, the weather, and a motivational quote. You can mix and match what you want in it later—just tell me."
+            return (
+                OnboardingResult(reply=ONBOARDING_REDIRECT + morning_question),
+                user_updates,
+                prefs_updates,
+            )
+
     if step == 0:
         session["onboarding_step"] = 1
         return (
             OnboardingResult(
                 reply=[
                     f"Hey {first_name}! Good to hear from you.",
-                    "Let me ask you a couple things so I can be useful right away.\n\n" + reminder_style_question,
+                    "Finishing this will make your experience much smoother. Let me ask you a couple things so I can be useful right away.\n\n" + reminder_style_question,
                 ]
             ),
             user_updates,
@@ -176,40 +305,65 @@ def handle_onboarding(
                 user_updates,
                 prefs_updates,
             )
+        if _is_skip(message):
+            user_updates["reminder_style_raw"] = "(skipped)"
+            user_updates["reminder_style_bucket"] = "moderate"
+            session["onboarding_step"] = 2
+            next_question = "How should I sound when I text you? Chill and casual, polished and preppy, or something else entirely? Whatever you prefer, we'll run with it."
+            reply = "No problem — I'll go with a moderate level. You can change it later in settings.\n\n" + next_question
+            return (OnboardingResult(reply=reply), user_updates, prefs_updates)
+        bucket = map_reminder_style_bucket(raw)
         user_updates["reminder_style_raw"] = raw
-        user_updates["reminder_style_bucket"] = map_reminder_style_bucket(raw)
+        user_updates["reminder_style_bucket"] = bucket
         session["onboarding_step"] = 2
+        synthesis = REMINDER_BUCKET_SYNTHESIS.get(bucket, REMINDER_BUCKET_SYNTHESIS["moderate"])
+        behavior = REMINDER_BUCKET_BEHAVIOR.get(bucket, REMINDER_BUCKET_BEHAVIOR["moderate"])
+        next_question = "How should I sound when I text you? Chill and casual, polished and preppy, or something else entirely? Whatever you prefer, we'll run with it."
+        reply = f"Got it — so {synthesis}. {behavior}\n\n{next_question}"
         return (
-            OnboardingResult(
-                reply="How should I sound when I text you? Chill and casual, polished and preppy, or something else entirely? Whatever you prefer, we'll run with it."
-            ),
+            OnboardingResult(reply=reply),
             user_updates,
             prefs_updates,
         )
 
+    voice_style_question = "How should I sound when I text you? Chill and casual, polished and preppy, or something else entirely? Whatever you prefer, we'll run with it."
     if step == 2:
         raw = _normalize(message)
         if not raw:
             return (
-                OnboardingResult(
-                    reply="How should I sound when I text you? Chill and casual, polished and preppy, or something else entirely? Whatever you prefer, we'll run with it."
-                ),
+                OnboardingResult(reply=voice_style_question),
                 user_updates,
                 prefs_updates,
             )
+        if _is_skip(message):
+            user_updates["voice_style_raw"] = "(skipped)"
+            user_updates["voice_style_bucket"] = "neutral"
+            session["onboarding_step"] = 3
+            next_question = "How big is your usual water bottle? (e.g. 500ml, 16oz, 1L, or 'standard' if you're not sure)"
+            reply = "No problem — I'll keep it natural. You can change it later in settings.\n\n" + next_question
+            return (OnboardingResult(reply=reply), user_updates, prefs_updates)
+        bucket = map_voice_style_bucket(raw)
         user_updates["voice_style_raw"] = raw
-        user_updates["voice_style_bucket"] = map_voice_style_bucket(raw)
+        user_updates["voice_style_bucket"] = bucket
         session["onboarding_step"] = 3
+        synthesis = VOICE_BUCKET_SYNTHESIS.get(bucket, VOICE_BUCKET_SYNTHESIS["other"])
+        behavior = VOICE_BUCKET_BEHAVIOR.get(bucket, VOICE_BUCKET_BEHAVIOR["other"])
+        next_question = "How big is your usual water bottle? (e.g. 500ml, 16oz, 1L, or 'standard' if you're not sure)"
+        reply = f"Got it — so {synthesis}. {behavior}\n\n{next_question}"
         return (
-            OnboardingResult(
-                reply="How big is your usual water bottle? (e.g. 500ml, 16oz, 1L, or 'standard' if you're not sure)"
-            ),
+            OnboardingResult(reply=reply),
             user_updates,
             prefs_updates,
         )
 
     if step == 3:
         raw = _normalize(message)
+        if _is_skip(message):
+            user_updates["water_bottle_ml"] = int(config_default_bottle_ml)
+            session["onboarding_step"] = 4
+            next_question = "What time do you want your daily morning text? It'll include your reminders and todos for the day, the weather, and a motivational quote. You can mix and match what you want in it later—just tell me."
+            reply = "No problem — I'll use a standard bottle size. You can change it later in settings.\n\n" + next_question
+            return (OnboardingResult(reply=reply), user_updates, prefs_updates)
         ml = parse_volume_to_ml(raw)
         if ml is None:
             # If user typed "standard", accept and use default
@@ -225,16 +379,31 @@ def handle_onboarding(
                 )
         user_updates["water_bottle_ml"] = int(ml)
         session["onboarding_step"] = 4
+        # Confirm: reflect back (e.g. "500ml" or "one standard bottle") and how we'll use it
+        if raw and ("standard" in raw.lower() or "default" in raw.lower()):
+            summary = "one standard bottle"
+        else:
+            summary = raw if len(raw) <= 30 else _reflect_back(raw, max_len=30)
+        next_question = "What time do you want your daily morning text? It'll include your reminders and todos for the day, the weather, and a motivational quote. You can mix and match what you want in it later—just tell me."
+        reply = f"Got it — so that's {summary}. I'll use that when you say things like \"drank a bottle\" or \"had two bottles.\"\n\n{next_question}"
         return (
-            OnboardingResult(
-                reply="What time do you want your daily morning text? It'll include your reminders and todos for the day, the weather, and a motivational quote. You can mix and match what you want in it later—just tell me."
-            ),
+            OnboardingResult(reply=reply),
             user_updates,
             prefs_updates,
         )
 
     if step == 4:
         raw = _normalize(message)
+        if _is_skip(message):
+            user_updates["morning_checkin_hour"] = 8  # 8am default
+            user_updates["onboarding_complete"] = True
+            session.pop("onboarding_step", None)
+            prefs_url = _preferences_link()
+            reply = (
+                "No problem — I'll send it at 8am. You can change it later in settings. All set. Text me anything—try \"remind me to call Mom at 5\" or \"drank a bottle.\" Say \"help\" whenever you need it.\n\n"
+                f"There are more preferences you can set to make your experience smoother—you can find them here! {prefs_url}"
+            )
+            return (OnboardingResult(reply=reply, completed=True), user_updates, prefs_updates)
         hour = parse_hour_0_23(raw)
         if hour is None:
             return (
@@ -247,11 +416,22 @@ def handle_onboarding(
         user_updates["morning_checkin_hour"] = int(hour)
         user_updates["onboarding_complete"] = True
         session.pop("onboarding_step", None)
+        # Confirm morning time in human form (e.g. 8am, 8pm)
+        if hour == 0:
+            time_str = "midnight"
+        elif hour == 12:
+            time_str = "noon"
+        elif hour < 12:
+            time_str = f"{hour}am"
+        else:
+            time_str = f"{hour - 12}pm"
+        prefs_url = _preferences_link()
+        reply = (
+            f"Got it — I'll send your daily morning text at {time_str}. All set. Text me anything—try \"remind me to call Mom at 5\" or \"drank a bottle.\" Say \"help\" whenever you need it.\n\n"
+            f"There are more preferences you can set to make your experience smoother—you can find them here! {prefs_url}"
+        )
         return (
-            OnboardingResult(
-                reply="All set. I'll keep that in mind. Text me anything—try 'remind me to call Mom at 5' or 'drank a bottle.' Say 'help' whenever you need it.",
-                completed=True,
-            ),
+            OnboardingResult(reply=reply, completed=True),
             user_updates,
             prefs_updates,
         )

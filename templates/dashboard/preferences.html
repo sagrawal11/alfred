@@ -198,6 +198,7 @@
                 document.getElementById('save-preferences')?.addEventListener('click', async () => {
                     const status = document.getElementById('prefs-status');
                     status.textContent = 'Saving...';
+                    status.classList.remove('success', 'error');
                     try {
                         const payload = {
                             units: document.getElementById('pref-units').value,
@@ -222,9 +223,18 @@
                             await postJSON('{{ url_for("dashboard_api_settings_profile") }}', { morning_checkin_hour: Number(mh) });
                         }
 
-                        status.textContent = 'Saved.';
+                        status.textContent = 'Preferences saved successfully!';
+                        status.classList.add('success');
+                        // Clear message after 4 seconds so it doesn't stay forever
+                        setTimeout(() => {
+                            if (status.classList.contains('success')) {
+                                status.textContent = '';
+                                status.classList.remove('success');
+                            }
+                        }, 4000);
                     } catch (e) {
                         status.textContent = 'Error: ' + e.message;
+                        status.classList.add('error');
                     }
                 });
 
@@ -241,6 +251,7 @@
                     });
                 })();
             </script>
+            {% include 'includes/site_footer.html' %}
         </main>
     </div>
 </body>

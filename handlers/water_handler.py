@@ -40,7 +40,7 @@ class WaterHandler(BaseHandler):
         amount_ml = self.parser.parse_water_amount(message, entities, water_bottle_size_ml=bottle_ml_override)
         
         if not amount_ml or amount_ml <= 0:
-            return self.formatter.format_error("Couldn't parse water amount. Try: 'drank a bottle' or 'drank 500ml'")
+            return self.formatter.format_error("I couldn't tell how much. Try 'drank a bottle' or 'drank 500ml'")
         
         # Create water log
         try:
@@ -51,7 +51,7 @@ class WaterHandler(BaseHandler):
             
             if not created:
                 print(f"Warning: create_water_log returned None/empty for user {user_id}")
-                return self.formatter.format_error("Failed to save water log")
+                return self.formatter.format_error("Couldn't save that log")
             
             # Invalidate context cache
             context.invalidate_cache()
@@ -78,16 +78,16 @@ class WaterHandler(BaseHandler):
             if units == 'imperial':
                 oz = amount_ml / 29.5735
                 total_oz = today_summary['water']['ml'] / 29.5735
-                response = f"✓ Logged {oz:.0f}oz"
+                response = f"Got it — logged {oz:.0f}oz"
                 response += f"\nToday: {total_oz:.0f}oz total"
             else:
                 liters = amount_ml / 1000
                 total_liters = today_summary['water']['liters']
-                response = f"✓ Logged {liters:.1f}L"
+                response = f"Got it — logged {liters:.1f}L"
                 response += f"\nToday: {total_liters:.1f}L total"
             
             return response
             
         except Exception as e:
             print(f"Error logging water: {e}")
-            return self.formatter.format_error("Error saving water log")
+            return self.formatter.format_error("Couldn't save that water log")

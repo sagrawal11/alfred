@@ -27,7 +27,7 @@ class FoodHandler(BaseHandler):
         food_data = self.parser.parse_food(message)
         
         if not food_data:
-            return self.formatter.format_error("Couldn't parse food information. Try: 'ate a quesadilla'")
+            return self.formatter.format_error("I couldn't make out the food. Try something like 'ate a quesadilla'")
         
         # Create food log (handle None values)
         def safe_float(value, default=0.0):
@@ -66,7 +66,7 @@ class FoodHandler(BaseHandler):
             
             if not created:
                 print(f"Warning: create_food_log returned None/empty for user {user_id}")
-                return self.formatter.format_error("Failed to save food log")
+                return self.formatter.format_error("Couldn't save that log")
 
             # Persist nutrition metadata when available (non-blocking)
             try:
@@ -98,7 +98,7 @@ class FoodHandler(BaseHandler):
             
             calories = food_log['calories'] * food_log['portion_multiplier']
             
-            response = f"✓ Logged {food_name}"
+            response = f"Got it — logged {food_name}"
             if calories > 0:
                 response += f" ({int(calories)} cal)"
             
@@ -111,4 +111,4 @@ class FoodHandler(BaseHandler):
             
         except Exception as e:
             print(f"Error logging food: {e}")
-            return self.formatter.format_error("Error saving food log")
+            return self.formatter.format_error("Couldn't save that food log")

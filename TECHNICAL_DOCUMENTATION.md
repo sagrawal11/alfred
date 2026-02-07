@@ -69,6 +69,7 @@ Web dashboard  →  Flask (/dashboard/...)  →  Supabase (auth, data, storage)
 
 The `IntentClassifier` maps user messages to intents such as:
 
+- **Social / edge cases:** `greeting`, `chitchat` — recognized by NLP (no hardcoded phrase lists). `greeting` = short social opener (hi, thanks, bye, etc.); `chitchat` = off-topic, unclear, gibberish, or non-actionable. The processor always runs the classifier; if the result is `greeting`, that reply is used immediately (learned intent does not override it). `chitchat` and any unhandled intent (including `unknown`) get a single friendly fallback from `ResponseFormatter` (no cold command list).
 - **Logging:** `water_logging`, `food_logging`, `gym_workout`, `sleep_logging`
 - **Tasks:** `todo_add`, `reminder_set`, `assignment_add`, `task_complete`
 - **Queries:** `stats_query`, `what_should_i_do`, `food_suggestion`
@@ -110,7 +111,13 @@ The `Parser` uses the LLM and optional databases for each domain:
 
 - **PatternMatcher:** Applies user-specific learned patterns before NLP (e.g. “dhamaka” → gym_workout).
 - **LearningOrchestrator:** Applies patterns, extracts new ones from messages, persists to `KnowledgeRepository`, updates confidence on usage.
-- Patterns live in `user_knowledge` (per user).
+- Patterns live in `user_knowledge` (per user). **Greeting override:** The processor always runs the intent classifier. If the classifier returns `greeting`, that response is used and learned intent is not applied for that turn, so “hi” / “hey alfred” stay friendly even if a learned pattern exists.
+
+### 4.6 Friendly behavior and edge cases
+
+- **Classic path:** Greeting and chitchat intents are handled with short, friendly replies (`format_greeting()`, `format_chitchat()` in `responses/formatter.py`). Any other unrecognized or unhandled intent gets a single warm fallback (`format_fallback()`)—no robotic command list. All recognition is via NLP; no hardcoded phrase matching.
+- **Onboarding:** After each onboarding answer (reminder style, voice style, water bottle, morning time), Alfred confirms by **synthesizing** the choice (bucket-based copy in `core/onboarding.py`: `REMINDER_BUCKET_SYNTHESIS`, `VOICE_BUCKET_SYNTHESIS`) and stating how he will behave, then asks the next question. User input is not quoted back verbatim.
+- **Agent path:** The voice model system prompt in `services/agent/orchestrator.py` instructs Alfred to respond briefly and kindly when the user is off-topic, confused, hostile, or just chatting; when it fits, mention what Alfred can help with (food, water, workouts, reminders) and leave the door open.
 
 ---
 

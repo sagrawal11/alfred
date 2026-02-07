@@ -44,6 +44,9 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             return _noop
         return limiter.limit(rule)
 
+    TRENDS_ALLOWED_METRICS = frozenset(['sleep', 'water', 'calories', 'protein', 'carbs', 'fat', 'todos', 'workouts', 'messages'])
+    TRENDS_TF_DAYS = {'7d': 7, '14d': 14, '1m': 30, '1y': 365}
+
     # Stripe (optional - only needed if billing enabled)
     try:
         import stripe  # type: ignore
@@ -593,31 +596,111 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         """Chat test page"""
         user = auth_manager.get_current_user()
         return render_template('dashboard/chat.html', user=user, active_page='chat')
-    
+
+    def _vision_extract_to_log_food_items(extracted: dict) -> list:
+        """Convert vision analyze_food_image output to log_food items list."""
+        etype = (extracted.get("type") or "unknown").lower()
+        items = []
+        if etype == "label":
+            per = extracted.get("per_serving") or {}
+            servings = extracted.get("servings_consumed")
+            try:
+                servings = float(servings) if servings is not None else 1.0
+            except Exception:
+                servings = 1.0
+            items.append({
+                "food_name": (extracted.get("product_name") or "food from label").strip(),
+                "calories": float(per.get("calories") or 0),
+                "protein": float(per.get("protein_g") or 0),
+                "carbs": float(per.get("carbs_g") or 0),
+                "fat": float(per.get("fat_g") or 0),
+                "restaurant": None,
+                "portion_multiplier": float(servings or 1.0),
+            })
+        elif etype == "receipt":
+            for it in (extracted.get("items") or []):
+                name = (it.get("name") or "item").strip()
+                qty = 1
+                try:
+                    q = it.get("quantity")
+                    if q is not None:
+                        qty = max(1, int(float(q)))
+                except Exception:
+                    pass
+                items.append({
+                    "food_name": name,
+                    "calories": 0,
+                    "protein": 0,
+                    "carbs": 0,
+                    "fat": 0,
+                    "restaurant": extracted.get("merchant"),
+                    "portion_multiplier": float(qty),
+                })
+        return items
+
     @app.route('/dashboard/api/chat', methods=['POST'])
     @limit("30 per minute")
     @require_login
     def dashboard_api_chat():
-        """Process chat messages (same as SMS processing)"""
+        """Process chat messages (same as SMS). Optional image: image_upload_id or image_base64."""
         user = auth_manager.get_current_user()
-        data = request.get_json()
-        message = data.get('message', '').strip()
-        
-        if not message:
-            return jsonify({'success': False, 'error': 'Message required'}), 400
-        
+        data = request.get_json(silent=True) or {}
+        message = (data.get('message') or '').strip()
+        image_upload_id = data.get('image_upload_id')
+        image_base64 = data.get('image_base64')
+
+        if not message and not image_upload_id and not image_base64:
+            return jsonify({'success': False, 'error': 'Message or image required'}), 400
+
+        if message and len(message) > 300:
+            return jsonify({'success': False, 'error': 'Message must be 300 characters or less'}), 400
+
         try:
-            # Match SMS semantics as closely as possible:
-            # - identify the sender by phone number (E.164)
-            # - if the account doesn't have a phone, use a stable placeholder that the processor understands
             phone_number = user.get('phone_number') or f"web-user-{user['id']}"
 
+            # Photo-in-chat: vision → log_food → agent reply in same thread
+            pre_run_tool_results = None
+            effective_message = message or "I just sent a photo of my food."
+            if (image_upload_id or image_base64) and user.get("onboarding_complete", False):
+                image_url = None
+                if image_upload_id:
+                    try:
+                        from data import FoodImageUploadRepository
+                        upload_repo = FoodImageUploadRepository(supabase)
+                        row = upload_repo.get_by_id(int(image_upload_id))
+                        if row and int(row.get("user_id") or -1) == int(user["id"]):
+                            bucket, path = row.get("bucket"), row.get("path")
+                            if bucket and path:
+                                signed = supabase.storage.from_(bucket).create_signed_url(path, 600)
+                                image_url = (signed.get("signedUrl") or signed.get("signed_url") if isinstance(signed, dict) else getattr(signed, "signedUrl", None) or getattr(signed, "signed_url", None))
+                    except Exception:
+                        pass
+                elif image_base64:
+                    raw = (image_base64 or "").strip()
+                    image_url = raw if raw.startswith("data:") else (f"data:image/jpeg;base64,{raw}" if raw else None)
+                if image_url:
+                    try:
+                        from services.vision import OpenAIVisionClient
+                        vision = OpenAIVisionClient()
+                        extracted = vision.analyze_food_image(image_url=image_url, kind_hint="unknown")
+                        log_items = _vision_extract_to_log_food_items(extracted)
+                        if log_items:
+                            agent = get_agent_orchestrator()
+                            tr = agent.tools.execute(
+                                user_id=int(user["id"]),
+                                tool_name="log_food",
+                                arguments={"items": log_items, "source": "photo", "metadata": {"from_chat_image": True}},
+                            )
+                            if tr.ok:
+                                pre_run_tool_results = {"log_food": {"ok": True, "result": tr.result, "error": tr.error}}
+                                effective_message = "I just sent a photo of my food; please confirm it's logged."
+                    except Exception:
+                        pass
+
             # If agent mode is enabled and onboarding is complete, use the new orchestrator.
-            # Otherwise fall back to the classic MessageProcessor (keeps onboarding/STOP/HELP behavior).
             response_text = None
             try:
                 if user.get("onboarding_complete", False):
-                    # Monthly quota enforcement (turns) for agent usage
                     quota_blocked = False
                     try:
                         from data import UserUsageRepository
@@ -650,8 +733,9 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                         response_text = agent.handle_message(
                             user_id=int(user["id"]),
                             phone_number=str(phone_number),
-                            text=message,
+                            text=effective_message,
                             source="web",
+                            pre_run_tool_results=pre_run_tool_results,
                         )
                         try:
                             from data import UserUsageRepository
@@ -668,7 +752,16 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
 
             if response_text is None:
                 processor = get_message_processor()
-                response_text = processor.process_message(message, phone_number=phone_number)
+                response_text = processor.process_message(effective_message, phone_number=phone_number)
+
+            # Optional in-thread nudge (e.g. "Want to log water?")
+            include_nudge = data.get("include_nudge") is True
+            if include_nudge and response_text and user.get("onboarding_complete", False):
+                nudge = "Want to log water or track a workout?"
+                if isinstance(response_text, (list, tuple)):
+                    response_text = list(response_text) + [nudge]
+                else:
+                    response_text = [response_text, nudge]
 
             # Mirror Twilio response behavior (truncate for SMS-like output)
             if isinstance(response_text, (list, tuple)):
@@ -1120,24 +1213,19 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         from datetime import date, timedelta, datetime
 
         user = auth_manager.get_current_user()
+        uid = int(user['id'])
         tf = (request.args.get('timeframe') or '').strip()
         metric = (request.args.get('metric') or '').strip()
         days_q = request.args.get('days')
 
-        days = 7
-        if tf == '14d':
-            days = 14
-        elif tf == '1m':
-            days = 30
-        elif tf == '1y':
-            days = 365
-        elif tf == '7d':
-            days = 7
-        elif days_q:
+        days = TRENDS_TF_DAYS.get(tf)
+        if days is None and days_q:
             try:
                 days = max(1, min(365, int(days_q)))
             except Exception:
                 days = 7
+        if days is None:
+            days = 7
 
         end_d = date.today()
         start_d = end_d - timedelta(days=days - 1)
@@ -1162,28 +1250,15 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 return datetime.min
 
         items = []
-        allowed_metrics = {'sleep', 'water', 'calories', 'protein', 'carbs', 'fat', 'todos', 'workouts', 'messages'}
-        metric = metric if metric in allowed_metrics else ''
+        metric = metric if metric in TRENDS_ALLOWED_METRICS else ''
+
+        _metric_types = {'calories': {'food'}, 'protein': {'food'}, 'carbs': {'food'}, 'fat': {'food'}, 'water': {'water'}, 'sleep': {'sleep'}, 'workouts': {'workout'}, 'todos': {'todo', 'reminder'}, 'messages': {'message'}}
 
         def _metric_allows(t: str) -> bool:
-            if not metric:
-                return True
-            if metric in {'calories', 'protein', 'carbs', 'fat'}:
-                return t == 'food'
-            if metric == 'water':
-                return t == 'water'
-            if metric == 'sleep':
-                return t == 'sleep'
-            if metric == 'workouts':
-                return t == 'workout'
-            if metric == 'todos':
-                return t in {'todo', 'reminder'}
-            if metric == 'messages':
-                return t == 'message'
-            return True
+            return not metric or t in _metric_types.get(metric, set())
 
         try:
-            food_logs = dashboard_data.food_repo.get_by_date_range(int(user['id']), start_date, end_date)
+            food_logs = dashboard_data.food_repo.get_by_date_range(uid, start_date, end_date)
             for log in (food_logs or []):
                 ts = _safe_iso(log.get('timestamp'))
                 kcal = log.get('calories')
@@ -1208,7 +1283,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             pass
 
         try:
-            water_logs = dashboard_data.water_repo.get_by_date_range(int(user['id']), start_date, end_date)
+            water_logs = dashboard_data.water_repo.get_by_date_range(uid, start_date, end_date)
             for log in (water_logs or []):
                 ts = _safe_iso(log.get('timestamp'))
                 amt = log.get('amount_ml')
@@ -1223,7 +1298,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             pass
 
         try:
-            gym_logs = dashboard_data.gym_repo.get_by_date_range(int(user['id']), start_date, end_date)
+            gym_logs = dashboard_data.gym_repo.get_by_date_range(uid, start_date, end_date)
             for log in (gym_logs or []):
                 ts = _safe_iso(log.get('timestamp'))
                 ex = (log.get('exercise') or 'Workout').strip()
@@ -1247,7 +1322,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             pass
 
         try:
-            sleep_logs = dashboard_data.sleep_repo.get_by_date_range(int(user['id']), start_date, end_date)
+            sleep_logs = dashboard_data.sleep_repo.get_by_date_range(uid, start_date, end_date)
             for log in (sleep_logs or []):
                 d = log.get('date') or ''
                 wake = log.get('wake_time') or '00:00:00'
@@ -1267,7 +1342,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             # Todos/reminders: show items created in range (timestamp) + completions in range (completed_at)
             start_ts = f"{start_date}T00:00:00"
             end_ts = f"{end_date}T23:59:59.999999"
-            q = supabase.table("reminders_todos").select("*").eq("user_id", int(user["id"]))\
+            q = supabase.table("reminders_todos").select("*").eq("user_id", uid)\
                 .gte("timestamp", start_ts).lte("timestamp", end_ts).order("timestamp", desc=True).limit(200)
             res = q.execute()
             for log in (res.data or []):
@@ -1288,7 +1363,7 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             try:
                 start_ts = f"{start_date}T00:00:00"
                 end_ts = f"{end_date}T23:59:59.999999"
-                res = supabase.table("message_log").select("processed_at,message_body").eq("user_id", int(user["id"]))\
+                res = supabase.table("message_log").select("processed_at,message_body").eq("user_id", uid)\
                     .gte("processed_at", start_ts).lte("processed_at", end_ts).order("processed_at", desc=True).limit(200).execute()
                 for m in (res.data or []):
                     ts = _safe_iso(m.get("processed_at"))
@@ -1324,27 +1399,18 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
         - metric: 'sleep' | 'water' | 'calories' | 'protein' | 'carbs' | 'fat' | 'todos' | 'workouts' | 'messages'
         """
         from datetime import date, timedelta, datetime
-        from calendar import month_abbr
+        from calendar import month_abbr, monthrange
 
         user = auth_manager.get_current_user()
         tf = (request.args.get('timeframe') or '7d').strip()
         metric = (request.args.get('metric') or 'calories').strip()
 
-        allowed_metrics = {'sleep', 'water', 'calories', 'protein', 'carbs', 'fat', 'todos', 'workouts', 'messages'}
-        if metric not in allowed_metrics:
+        if metric not in TRENDS_ALLOWED_METRICS:
             return jsonify({'success': False, 'error': 'Invalid metric'}), 400
 
-        # timeframe -> days (for day-based charts)
-        days = 7
-        if tf == '14d':
-            days = 14
-        elif tf == '1m':
-            days = 30
-        elif tf == '1y':
-            days = 365
-        else:
+        days = TRENDS_TF_DAYS.get(tf, 7)
+        if tf not in TRENDS_TF_DAYS:
             tf = '7d'
-            days = 7
 
         end_d = date.today()
         start_d = end_d - timedelta(days=days - 1)
@@ -1359,6 +1425,29 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 return datetime.fromisoformat(s2)
             except Exception:
                 return None
+
+        def _series_value(s, metric):
+            """Extract series value(s) from a day's stats. Returns float, or (workouts, exercises) for metric 'workouts'."""
+            s = s or {}
+            g = s.get('gym') or {}
+            f = s.get('food') or {}
+            if metric == 'sleep':
+                return float((s.get('sleep') or {}).get('total_hours') or 0)
+            if metric == 'water':
+                return float((s.get('water') or {}).get('total_ml') or 0)
+            if metric == 'calories':
+                return float(f.get('total_calories') or 0)
+            if metric == 'protein':
+                return float(f.get('total_protein') or 0)
+            if metric == 'carbs':
+                return float(f.get('total_carbs') or 0)
+            if metric == 'fat':
+                return float(f.get('total_fat') or 0)
+            if metric == 'todos':
+                return float((s.get('todos') or {}).get('completed') or 0)
+            if metric == 'workouts':
+                return (float(g.get('workout_count') or 0), float(g.get('exercise_count') or 0))
+            return 0.0
 
         # Preload message counts if needed
         msg_counts_by_date = {}
@@ -1380,10 +1469,12 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             except Exception:
                 pass
 
-        # 1y uses 12 monthly buckets for readability
+        # 1y uses 12 monthly buckets; fetch full year in bulk then aggregate by month
         if tf == '1y':
             labels = []
             values = []
+            values_workouts = []
+            values_exercises = []
             # last 12 months inclusive
             y = end_d.year
             m = end_d.month
@@ -1396,47 +1487,50 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                     y -= 1
             months.reverse()
 
+            if metric != 'messages':
+                year_start_d = end_d - timedelta(days=364)
+                by_date_1y = dashboard_data.get_series_bulk(int(user["id"]), year_start_d.isoformat(), end_d.isoformat())
+
             for (yy, mm) in months:
                 labels.append(f"{month_abbr[mm]} {yy}")
                 if metric == 'messages':
                     values.append(int(msg_counts_by_month.get(f"{yy:04d}-{mm:02d}", 0)))
                     continue
 
-                # For other metrics, sum daily values across the month using get_date_stats
+                total = 0.0
+                total_workouts = 0.0
+                total_exercises = 0.0
                 try:
-                    from calendar import monthrange
                     last_day = monthrange(yy, mm)[1]
-                    total = 0.0
                     for day in range(1, last_day + 1):
-                        d = date(yy, mm, day)
-                        s = dashboard_data.get_date_stats(int(user["id"]), d.isoformat())
-                        if s.get("error"):
-                            continue
-                        if metric == 'sleep':
-                            total += float(((s.get('sleep') or {}).get('total_hours') or 0))
-                        elif metric == 'water':
-                            total += float(((s.get('water') or {}).get('total_ml') or 0))
-                        elif metric == 'calories':
-                            total += float(((s.get('food') or {}).get('total_calories') or 0))
-                        elif metric == 'protein':
-                            total += float(((s.get('food') or {}).get('total_protein') or 0))
-                        elif metric == 'carbs':
-                            total += float(((s.get('food') or {}).get('total_carbs') or 0))
-                        elif metric == 'fat':
-                            total += float(((s.get('food') or {}).get('total_fat') or 0))
-                        elif metric == 'todos':
-                            total += float(((s.get('todos') or {}).get('completed') or 0))
-                        elif metric == 'workouts':
-                            total += float(((s.get('gym') or {}).get('workout_count') or 0))
-                    values.append(total)
+                        v = _series_value(by_date_1y.get(date(yy, mm, day).isoformat()), metric)
+                        if metric == 'workouts':
+                            total_workouts += v[0]
+                            total_exercises += v[1]
+                        else:
+                            total += v
+                    if metric == 'workouts':
+                        values_workouts.append(total_workouts)
+                        values_exercises.append(total_exercises)
+                    else:
+                        values.append(total)
                 except Exception:
-                    values.append(0)
+                    if metric == 'workouts':
+                        values_workouts.append(0)
+                        values_exercises.append(0)
+                    else:
+                        values.append(0)
 
+            if metric == 'workouts':
+                return jsonify({"success": True, "timeframe": tf, "metric": metric, "labels": labels, "values_workouts": values_workouts, "values_exercises": values_exercises})
             return jsonify({"success": True, "timeframe": tf, "metric": metric, "labels": labels, "values": values})
 
-        # day-based series
+        # day-based series (bulk: one range query per data type instead of N×get_date_stats)
+        by_date = dashboard_data.get_series_bulk(int(user["id"]), start_d.isoformat(), end_d.isoformat())
         labels = []
         values = []
+        values_workouts = []
+        values_exercises = []
         for i in range(days):
             d = start_d + timedelta(days=i)
             d_iso = d.isoformat()
@@ -1444,27 +1538,15 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
             if metric == 'messages':
                 values.append(int(msg_counts_by_date.get(d_iso, 0)))
                 continue
-            s = dashboard_data.get_date_stats(int(user["id"]), d_iso)
-            if s.get('error'):
-                values.append(0)
-                continue
-            if metric == 'sleep':
-                values.append(float(((s.get('sleep') or {}).get('total_hours') or 0)))
-            elif metric == 'water':
-                values.append(float(((s.get('water') or {}).get('total_ml') or 0)))
-            elif metric == 'calories':
-                values.append(float(((s.get('food') or {}).get('total_calories') or 0)))
-            elif metric == 'protein':
-                values.append(float(((s.get('food') or {}).get('total_protein') or 0)))
-            elif metric == 'carbs':
-                values.append(float(((s.get('food') or {}).get('total_carbs') or 0)))
-            elif metric == 'fat':
-                values.append(float(((s.get('food') or {}).get('total_fat') or 0)))
-            elif metric == 'todos':
-                values.append(float(((s.get('todos') or {}).get('completed') or 0)))
-            elif metric == 'workouts':
-                values.append(float(((s.get('gym') or {}).get('workout_count') or 0)))
+            v = _series_value(by_date.get(d_iso), metric)
+            if metric == 'workouts':
+                values_workouts.append(v[0])
+                values_exercises.append(v[1])
+            else:
+                values.append(v)
 
+        if metric == 'workouts':
+            return jsonify({"success": True, "timeframe": tf, "metric": metric, "labels": labels, "values_workouts": values_workouts, "values_exercises": values_exercises})
         return jsonify({"success": True, "timeframe": tf, "metric": metric, "labels": labels, "values": values})
     
     # ============================================================================

@@ -168,6 +168,29 @@ class TodoRepository(BaseRepository):
             .order("due_date", desc=False)\
             .execute()
         return result.data if result.data else []
+
+    def get_by_due_date_range(self, user_id: int, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        """
+        Get todos/reminders with due_date in the given range.
+
+        Args:
+            user_id: User ID
+            start_date: Start date YYYY-MM-DD
+            end_date: End date YYYY-MM-DD
+
+        Returns:
+            List of todos/reminders in the range
+        """
+        start = f"{start_date}T00:00:00"
+        end = f"{end_date}T23:59:59.999999"
+        result = self.client.table(self.table_name)\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .gte("due_date", start)\
+            .lte("due_date", end)\
+            .order("due_date", desc=False)\
+            .execute()
+        return result.data if result.data else []
     
     def get_stale_todos(self, user_id: int, days: int = 7) -> List[Dict[str, Any]]:
         """

@@ -34,5 +34,6 @@ ADD COLUMN IF NOT EXISTS morning_include_reminders BOOLEAN DEFAULT TRUE,
 ADD COLUMN IF NOT EXISTS morning_include_weather BOOLEAN DEFAULT TRUE,
 ADD COLUMN IF NOT EXISTS morning_include_quote BOOLEAN DEFAULT TRUE,
 ADD COLUMN IF NOT EXISTS last_morning_checkin_sent_at TIMESTAMP,
-ADD COLUMN IF NOT EXISTS last_weekly_digest_sent_at TIMESTAMP;
+ADD COLUMN IF NOT EXISTS last_weekly_digest_sent_at TIMESTAMP,
+ADD COLUMN IF NOT EXISTS freeform_goal TEXT;
 

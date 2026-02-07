@@ -14,13 +14,20 @@ import json
 import os
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from openai import OpenAI
 from supabase import Client
 
-from data import UserMemoryEmbeddingsRepository, UserMemoryItemsRepository, UserMemoryStateRepository, UserRepository
+from data import (
+    SleepRepository,
+    UserMemoryEmbeddingsRepository,
+    UserMemoryItemsRepository,
+    UserMemoryStateRepository,
+    UserPreferencesRepository,
+    UserRepository,
+)
 from .tool_executor import ToolExecutor
 
 
@@ -89,6 +96,8 @@ class AgentOrchestrator:
         self.supabase = supabase
         self.log = logging.getLogger("alfred.agent")
         self.user_repo = UserRepository(supabase)
+        self.prefs_repo = UserPreferencesRepository(supabase)
+        self.sleep_repo = SleepRepository(supabase)
         self.tools = ToolExecutor(supabase)
         self.memory_state_repo = UserMemoryStateRepository(supabase)
         self.memory_items_repo = UserMemoryItemsRepository(supabase)
@@ -100,7 +109,7 @@ class AgentOrchestrator:
         self.oa = OpenAI(api_key=api_key)
 
         self.cfg = AgentConfig(
-            enabled=os.getenv("AGENT_MODE_ENABLED", "false").lower() == "true",
+            enabled=os.getenv("AGENT_MODE_ENABLED", "true").lower() == "true",
             model_voice=os.getenv("OPENAI_MODEL_VOICE", "gpt-4o"),
             model_router=os.getenv("OPENAI_MODEL_ROUTER", "gpt-4o-mini"),
             model_summarizer=os.getenv("OPENAI_MODEL_SUMMARIZER", os.getenv("OPENAI_MODEL_ROUTER", "gpt-4o-mini")),
@@ -186,6 +195,34 @@ class AgentOrchestrator:
             },
             {
                 "type": "function",
+                "name": "get_assignments_due",
+                "description": "Get assignments due soon and overdue (school/work).",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "days": {"type": ["integer", "null"]},
+                    },
+                    "required": [],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "type": "function",
+                "name": "get_week_summary",
+                "description": "Get 7-day stats (water, calories, protein, workouts, sleep) and user goals.",
+                "strict": True,
+                "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+            },
+            {
+                "type": "function",
+                "name": "get_today_summary",
+                "description": "Get today's stats vs goals (water, calories, protein, workouts, sleep).",
+                "strict": True,
+                "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+            },
+            {
+                "type": "function",
                 "name": "log_water",
                 "description": "Log a water intake event.",
                 "strict": True,
@@ -248,6 +285,56 @@ class AgentOrchestrator:
             },
             {
                 "type": "function",
+                "name": "add_reminder",
+                "description": "Add a reminder. due_at is optional ISO8601.",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string"},
+                        "due_at": {"type": ["string", "null"]},
+                    },
+                    "required": ["content"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "type": "function",
+                "name": "log_sleep",
+                "description": "Log a sleep entry. date_str defaults to today (YYYY-MM-DD). duration_hours required; sleep_time_str and wake_time_str optional (HH:MM).",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "date_str": {"type": ["string", "null"]},
+                        "duration_hours": {"type": "number"},
+                        "sleep_time_str": {"type": ["string", "null"]},
+                        "wake_time_str": {"type": ["string", "null"]},
+                    },
+                    "required": ["duration_hours"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "type": "function",
+                "name": "log_workout",
+                "description": "Log a gym/workout entry. exercise required; sets, reps, weight, notes optional.",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "exercise": {"type": "string"},
+                        "sets": {"type": ["integer", "null"]},
+                        "reps": {"type": ["integer", "null"]},
+                        "weight": {"type": ["number", "null"]},
+                        "notes": {"type": ["string", "null"]},
+                    },
+                    "required": ["exercise"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "type": "function",
                 "name": "set_preference",
                 "description": "Update a user preference (units, quiet hours, goals, etc.).",
                 "strict": True,
@@ -283,29 +370,50 @@ class AgentOrchestrator:
     # ------------------------------------------------------------------
     # Main entrypoint
     # ------------------------------------------------------------------
-    def handle_message(self, *, user_id: int, phone_number: str, text: str, source: str = "sms") -> List[str]:
+    def handle_message(
+        self,
+        *,
+        user_id: int,
+        phone_number: str,
+        text: str,
+        source: str = "sms",
+        pre_run_tool_results: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
         """
         Returns 1–3 SMS message parts.
+        If pre_run_tool_results is provided (e.g. from photo→vision→log_food), skip tool loop and use it.
         """
         if not self.cfg.enabled:
-            raise RuntimeError("Agent mode disabled (set AGENT_MODE_ENABLED=true)")
+            raise RuntimeError("Agent mode disabled (set AGENT_MODE_ENABLED=true in env to enable)")
 
         user = self.user_repo.get_by_id(int(user_id)) or {}
         name = _first_name(user.get("name") or "")
+        prefs = self.prefs_repo.ensure(int(user_id))
+        response_style = (prefs.get("response_style") or "friendly").strip() or "friendly"
+        voice_style_bucket = (user.get("voice_style_bucket") or "neutral").strip() or "neutral"
         self.log.info("agent_turn start user_id=%s source=%s", user_id, source)
 
         # Ensure memory state exists
         mem_state = self.memory_state_repo.ensure(int(user_id))
         mem_summary = (mem_state.get("summary") or "").strip()
 
-        # Update in-memory recency
+        # Update in-memory recency (use provided text)
         recent = self._recent_turns.setdefault(int(user_id), [])
         recent.append({"role": "user", "content": text})
         recent[:] = recent[-20:]
 
-        # 1) Router mini: decide tools + call them
-        tool_results = self._run_tool_loop(user_id=int(user_id), name=name, message=text, memory_summary=mem_summary)
-        self.log.info("agent_turn tool_results user_id=%s tools=%s", user_id, list(tool_results.keys()))
+        # 1) Router mini: decide tools + call them (or use pre_run_tool_results from e.g. photo flow)
+        if pre_run_tool_results is not None:
+            tool_results = {}
+            for k, v in pre_run_tool_results.items():
+                if isinstance(v, dict) and "ok" in v:
+                    tool_results[k] = v
+                else:
+                    tool_results[k] = {"ok": True, "result": v, "error": None}
+            self.log.info("agent_turn pre_run_tool_results user_id=%s keys=%s", user_id, list(tool_results.keys()))
+        else:
+            tool_results = self._run_tool_loop(user_id=int(user_id), name=name, message=text, memory_summary=mem_summary)
+            self.log.info("agent_turn tool_results user_id=%s tools=%s", user_id, list(tool_results.keys()))
 
         # 2) Voice 4o: produce final user-visible reply
         final_text = self._run_voice(
@@ -315,6 +423,13 @@ class AgentOrchestrator:
             memory_summary=mem_summary,
             tool_results=tool_results,
             recent_turns=recent,
+            response_style=response_style,
+            voice_style_bucket=voice_style_bucket,
+            voice_context_extra=dict(
+                last_night_sleep=self._get_last_night_sleep(int(user_id)),
+                water_bottle_ml=user.get("water_bottle_ml"),
+                freeform_goal=prefs.get("freeform_goal"),
+            ),
         )
 
         parts = _split_sms_messages(final_text, max_parts=3, max_chars=1500)
@@ -341,6 +456,13 @@ class AgentOrchestrator:
             "- Call functions only when needed.\n"
             "- Prefer minimal retrieval.\n"
             "- Do not write user-facing prose.\n"
+            "- When the user says they slept or want to log sleep: call log_sleep (duration_hours required; date_str optional, default today).\n"
+            "- When the user says they worked out or went to the gym: call log_workout (exercise required; sets, reps, weight, notes optional).\n"
+            "- When the user asks to be reminded or to add a reminder: call add_reminder (content required; due_at optional).\n"
+            "- When the user asks about assignments, homework, or what's due: call get_assignments_due (days optional, default 14).\n"
+            "- When the user asks how their week is going or for a week summary: call get_week_summary.\n"
+            "- When the user asks how today is going or today vs goals: call get_today_summary.\n"
+            "- When the user asks for a suggestion (what should I do, suggest a workout, I'm bored, what should I eat, planning to workout, etc.): call get_recent_activity (e.g. types: [\"food\", \"workout\"], days: 7, limit: 50) and get_user_preferences so the reply can be personalized from their data.\n"
         )
         input_list: List[Dict[str, Any]] = [
             {
@@ -349,7 +471,7 @@ class AgentOrchestrator:
                     f"User: {name}\n"
                     f"MemorySummary: {memory_summary or '(empty)'}\n"
                     f"Message: {message}\n"
-                    "If the user asks about past logs, fetch only what you need."
+                    "If the user asks about past logs or for suggestions (what to do, workout, food, I'm bored), fetch get_recent_activity and get_user_preferences so the reply can use their data."
                 ),
             }
         ]
@@ -409,6 +531,21 @@ class AgentOrchestrator:
         return results
 
     # ------------------------------------------------------------------
+    # Voice context helpers
+    # ------------------------------------------------------------------
+    def _get_last_night_sleep(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Return sleep log for last night (yesterday's date) if any."""
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        log = self.sleep_repo.get_by_date(user_id, yesterday)
+        if not log:
+            return None
+        return {
+            "date": log.get("date"),
+            "duration_hours": log.get("duration_hours"),
+            "wake_time": log.get("wake_time"),
+        }
+
+    # ------------------------------------------------------------------
     # Voice model
     # ------------------------------------------------------------------
     def _run_voice(
@@ -420,29 +557,42 @@ class AgentOrchestrator:
         memory_summary: str,
         tool_results: Dict[str, Any],
         recent_turns: List[Dict[str, str]],
+        response_style: str = "friendly",
+        voice_style_bucket: str = "neutral",
+        voice_context_extra: Optional[Dict[str, Any]] = None,
     ) -> str:
+        tone_instruction = (
+            f"Response style/tone: {response_style}. Voice personality: {voice_style_bucket}. "
+            "Match this style while staying helpful and concise."
+        )
         system = (
-            "You are Alfred, a personal SMS assistant.\n"
-            "- Sound like a normal person: warm, concise, not robotic.\n"
-            "- Output 1–3 SMS-sized messages max.\n"
-            "- Be grounded: use only the provided context and tool results.\n"
-            "- If you need info you don't have, ask 1 clarifying question.\n"
-            "- Do not mention internal tools.\n"
+            "You are Alfred, a personal SMS assistant. You're helpful and reliable, like a friend who remembers things and keeps you on track.\n"
+            f"- {tone_instruction}\n"
+            "- Keep replies short: 1–3 SMS-sized messages max. No long paragraphs.\n"
+            "- Use only the context and tool results provided. If something isn't there, say so briefly or ask one clarifying question.\n"
+            "- Never mention internal tools, APIs, or technical details.\n"
+            "- When confirming logs (food, water, gym, sleep, etc.), acknowledge it in a friendly way—e.g. 'Got it, logged.' or 'Done.'—then add any useful summary if relevant.\n"
+            "- When the user asks for a suggestion (what should I do, suggest a workout, I'm bored, what should I eat, planning to workout, etc.): use the tool results (get_recent_activity, get_user_preferences) to give a short, personalized suggestion. Think about what they've done recently and their goals; suggest specific workouts or meals when helpful. Be conversational, not listy.\n"
+            "- If a tool failed (e.g. ok: false in tool_results): don't mention technical details or errors. Say briefly that something didn't load and suggest trying again or rephrasing.\n"
+            "- If the user is off-topic, confused, hostile, or just chatting: respond briefly and kindly. Don't lecture. When it fits, mention what you can help with (food, water, workouts, sleep, reminders) and leave the door open.\n"
         )
 
-        # Provide compact context to keep costs sane
+        extra = voice_context_extra or {}
         context_obj = {
             "user_first_name": name,
             "memory_summary": memory_summary,
             "tool_results": tool_results,
             "recent_turns": recent_turns[-10:],
+            "last_night_sleep": extra.get("last_night_sleep"),
+            "water_bottle_ml": extra.get("water_bottle_ml"),
+            "freeform_goal": extra.get("freeform_goal"),
         }
 
         prompt = (
             "Context (JSON):\n"
             f"{json.dumps(context_obj, ensure_ascii=False)}\n\n"
             f"User message: {message}\n\n"
-            "Write your reply now."
+            "Reply in a warm, conversational way. Use the context above; do not invent data."
         )
 
         resp = self.oa.responses.create(

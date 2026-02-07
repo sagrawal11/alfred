@@ -37,7 +37,7 @@ There are currently two “brains”:
 
 - **Classic pipeline** (always available): intent classification → entity extraction → handler routing
   - Implemented in `core/processor.py`
-  - Used for onboarding, STOP/HELP/START behaviors, and as a fallback
+  - Used for onboarding, STOP/HELP/re-subscribe ("hi alfred") behaviors, and as a fallback
 
 - **Agent mode** (new, optional): tool-calling orchestration + durable memory
   - Implemented in `services/agent/orchestrator.py`
@@ -185,7 +185,7 @@ stripe listen --forward-to localhost:5001/stripe/webhook
 When `AGENT_MODE_ENABLED=true`:
 - Web chat (`/dashboard/api/chat`) uses the agent **only if onboarding is complete**
 - Twilio SMS (`/webhook/twilio`) uses the agent **only if onboarding is complete**
-- STOP/HELP/START still use the classic behavior for safety/consistency
+- STOP/HELP/re-subscribe ("hi alfred") still use the classic behavior for safety/consistency
 
 Durable memory:
 - `user_memory_state` stores a short running summary used each turn

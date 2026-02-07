@@ -12,6 +12,7 @@ class IntentClassifier:
     
     # Valid intent types
     VALID_INTENTS = [
+        'greeting', 'chitchat',
         'water_logging', 'food_logging', 'gym_workout', 'sleep_logging',
         'reminder_set', 'todo_add', 'assignment_add', 'water_goal_set',
         'stats_query', 'fact_storage', 'fact_query', 'task_complete',
@@ -39,6 +40,8 @@ class IntentClassifier:
             Intent name (one of VALID_INTENTS)
         """
         prompt = f"""Classify this SMS message into one of these intents:
+- greeting: User is saying hi, hello, thanks, or other social opener with no task or logging. Examples: "hi", "hey", "hey alfred", "hello!", "good morning", "thanks", "bye", "ok", "cool". If the message is ONLY a short social opener, use greeting.
+- chitchat: User is off-topic, unclear, or chatting about something Alfred can't act on. Examples: "what's the weather", "tell me a joke", "???", "asdfasdf", long rants, questions outside food/water/workouts/reminders, gibberish, or anything that doesn't fit another intent. Use chitchat when the message is not greeting but also not a clear logging/task/query action.
 - water_logging: User is logging water intake
 - food_logging: User is logging food consumption. This includes ANY message that mentions eating food, such as: "ate", "just ate", "eating", "had", "consumed", "finished eating", "just finished eating", "just had", or any mention of food items, meals, snacks, restaurants, or dishes. Examples: "just ate a quesadilla", "ate sprout falafel wrap", "had a burger", "just finished eating pizza"
 - gym_workout: User is logging a gym workout/exercise
@@ -52,7 +55,7 @@ class IntentClassifier:
 - fact_query: User is asking for stored information (e.g., "what's the WiFi password", "where did I park", "what's my locker code", "who is my dentist")
 - task_complete: User is marking a task/reminder as complete (e.g., "called mom", "did groceries", "finished homework", "done with that", "completed the task")
 - vague_completion: User is indicating completion but message is vague/ambiguous (e.g., "just finished", "done", "finished", "all done", "complete" without specific details)
-- what_should_i_do: User is asking what they should do now (e.g., "what should I do now", "what's next", "what do I do", "suggest something", "I'm bored, what should I do?")
+- what_should_i_do: User is asking what they should do now—workout, food, or general. Examples: "what should I do now", "what's next", "planning to hit a workout today what should I do", "what workout should I do", "suggest a workout", "what should I do", "suggest something", "I'm bored, what should I do?"
 - food_suggestion: User is asking for food suggestions (e.g., "what should I eat", "something high in protein", "high protein and low calories", "suggest food")
 - undo_edit: User wants to undo or edit a previous action (e.g., "undo last", "delete last food", "edit last water", "remove last reminder", "undo that")
 - integration_manage: User wants to manage integrations (e.g., "connect fitbit", "sync my calendar", "disconnect fitbit", "what integrations do I have", "list integrations")
@@ -60,6 +63,9 @@ class IntentClassifier:
 - unknown: Doesn't match any category
 
 IMPORTANT: 
+- If the message is purely a short social opener (hi, hey, thanks, bye, etc.) with no logging or task content, classify as "greeting".
+- If the message asks for a workout or food suggestion, or "what should I do" (including "planning to workout today, what should I do"), classify as "what_should_i_do" or "food_suggestion" as appropriate—not chitchat.
+- If the message is off-topic, unclear, gibberish, or not a clear action (logging/task/query), classify as "chitchat".
 - If a message mentions a class name/number AND a due date, classify as "assignment_add" (e.g., "CS101 homework due Friday")
 - If a message has BOTH a task/todo AND a time/date (e.g., "I need to call mama at 5pm tomorrow"), classify it as "reminder_set" because reminders are more specific than todos.
 

@@ -32,7 +32,43 @@ class DashboardData:
         self.todo_repo = TodoRepository(supabase)
         self.sleep_repo = SleepRepository(supabase)
         self.assignment_repo = AssignmentRepository(supabase)
-    
+
+    @staticmethod
+    def _gym_workout_exercise_counts(entries: List[Dict[str, Any]]) -> tuple:
+        """
+        Workout = cluster of entries within 2h of each other.
+        Exercise = unique exercise type (same name = 1 exercise).
+        Returns (workout_count, exercise_count).
+        """
+        def _parse_ts(ts):
+            if not ts:
+                return None
+            s = str(ts).replace('Z', '+00:00').replace(' ', 'T')[:19]
+            try:
+                return datetime.fromisoformat(s)
+            except Exception:
+                return None
+
+        sorted_entries = sorted(
+            [e for e in (entries or []) if _parse_ts(e.get('timestamp'))],
+            key=lambda e: _parse_ts(e.get('timestamp'))
+        )
+        if not sorted_entries:
+            return 0, 0
+        clusters = 1
+        last_ts = _parse_ts(sorted_entries[0].get('timestamp'))
+        for e in sorted_entries[1:]:
+            ts = _parse_ts(e.get('timestamp'))
+            if ts and last_ts and (ts - last_ts).total_seconds() > 2 * 3600:
+                clusters += 1
+            if ts:
+                last_ts = ts
+        unique_exercises = len(set(
+            (e.get('exercise') or '').strip() or 'Unknown'
+            for e in sorted_entries
+        ))
+        return clusters, unique_exercises
+
     def get_date_stats(self, user_id: int, date_str: str) -> Dict[str, Any]:
         """
         Get statistics for a specific date
@@ -78,10 +114,10 @@ class DashboardData:
             except Exception:
                 bottle_ml = 500
             
-            # Get gym logs
+            # Get gym logs (workout = 2h cluster, exercise = unique type)
             gym_logs = self.gym_repo.get_by_date(user_id, date_iso)
-            workout_count = len(gym_logs)
-            
+            workout_count, exercise_count = self._gym_workout_exercise_counts(gym_logs)
+
             # Get todos
             todos = self.todo_repo.get_by_date(user_id, date_iso)
             completed_todos = sum(1 for todo in todos if todo.get('completed', False))
@@ -118,6 +154,7 @@ class DashboardData:
                 },
                 'gym': {
                     'workout_count': workout_count,
+                    'exercise_count': exercise_count,
                     'exercises': [log.get('exercise', 'Unknown') for log in gym_logs]
                 },
                 'todos': {
@@ -139,7 +176,94 @@ class DashboardData:
                 'error': str(e),
                 'date': date_str
             }
-    
+
+    def get_series_bulk(self, user_id: int, start_date_str: str, end_date_str: str) -> Dict[str, Dict[str, Any]]:
+        """
+        Get per-day stats for a date range using bulk queries (one per data type).
+        Returns dict[date_iso] = { food: {...}, water: {...}, gym: {...}, sleep: {...}, todos: {...} }
+        for building trends series without N×get_date_stats.
+        """
+        def _num(x, default: float = 0.0) -> float:
+            if x is None or x == '':
+                return default
+            try:
+                return float(x)
+            except Exception:
+                return default
+
+        def _date_key(ts: str) -> str:
+            if not ts:
+                return ''
+            s = str(ts).replace('Z', '+00:00')[:10]
+            return s if len(s) == 10 else ''
+
+        try:
+            start_d = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_d = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            start_iso = start_d.isoformat()
+            end_iso = end_d.isoformat()
+
+            food_logs = self.food_repo.get_by_date_range(user_id, start_iso, end_iso)
+            water_logs = self.water_repo.get_by_date_range(user_id, start_iso, end_iso)
+            gym_logs = self.gym_repo.get_by_date_range(user_id, start_iso, end_iso)
+            sleep_logs = self.sleep_repo.get_by_date_range(user_id, start_iso, end_iso)
+            todos = self.todo_repo.get_by_due_date_range(user_id, start_iso, end_iso)
+
+            by_date: Dict[str, Dict[str, Any]] = {}
+            for i in range((end_d - start_d).days + 1):
+                d = (start_d + timedelta(days=i)).isoformat()
+                by_date[d] = {
+                    'food': {'total_calories': 0.0, 'total_protein': 0.0, 'total_carbs': 0.0, 'total_fat': 0.0},
+                    'water': {'total_ml': 0.0},
+                    'gym': {'workout_count': 0, 'exercise_count': 0, '_entries': []},
+                    'sleep': {'total_hours': 0.0},
+                    'todos': {'completed': 0, 'total': 0},
+                }
+
+            for log in (food_logs or []):
+                d = _date_key(log.get('timestamp'))
+                if d in by_date:
+                    b = by_date[d]['food']
+                    b['total_calories'] += _num(log.get('calories'))
+                    b['total_protein'] += _num(log.get('protein'))
+                    b['total_carbs'] += _num(log.get('carbs'))
+                    b['total_fat'] += _num(log.get('fat'))
+
+            for log in (water_logs or []):
+                d = _date_key(log.get('timestamp'))
+                if d in by_date:
+                    by_date[d]['water']['total_ml'] += _num(log.get('amount_ml'))
+
+            for log in (gym_logs or []):
+                d = _date_key(log.get('timestamp'))
+                if d in by_date:
+                    by_date[d]['gym']['_entries'].append({
+                        'timestamp': log.get('timestamp'),
+                        'exercise': log.get('exercise'),
+                    })
+
+            for d in by_date:
+                wc, ec = self._gym_workout_exercise_counts(by_date[d]['gym']['_entries'])
+                by_date[d]['gym']['workout_count'] = wc
+                by_date[d]['gym']['exercise_count'] = ec
+                del by_date[d]['gym']['_entries']
+
+            for log in (sleep_logs or []):
+                d = str(log.get('date') or '')[:10]
+                if d in by_date:
+                    by_date[d]['sleep']['total_hours'] = _num(log.get('duration_hours'))
+
+            for log in (todos or []):
+                d = str(log.get('due_date') or '')[:10]
+                if d in by_date:
+                    by_date[d]['todos']['total'] += 1
+                    if log.get('completed', False):
+                        by_date[d]['todos']['completed'] += 1
+
+            return by_date
+        except Exception:
+            return {}
+
     def get_trends(self, user_id: int, end_date_str: str, days: int = 7) -> Dict[str, Any]:
         """
         Get trends for a date range
@@ -287,8 +411,7 @@ class DashboardData:
         reminders_unfinished = [t for t in reminders_list if not t.get('completed')]
         
         assignments_all = self.assignment_repo.get_by_date(user_id, date_str)
-        from datetime import date as date_type
-        today_str = date_type.today().isoformat()
+        today_str = date.today().isoformat()
         if date_str < today_str:
             past_due = assignments_all
             due_today = []

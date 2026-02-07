@@ -26,13 +26,13 @@ class GymHandler(BaseHandler):
         workout_data = self.parser.parse_gym_workout(message)
         
         if not workout_data:
-            return self.formatter.format_error("Couldn't parse workout. Try: 'bench press 135x5'")
+            return self.formatter.format_error("I couldn't parse that. Try something like 'bench press 135x5'")
         
         # Create gym log
         try:
             exercises = workout_data.get('exercises', [])
             if not exercises:
-                return self.formatter.format_error("No exercises found in workout")
+                return self.formatter.format_error("No exercises in that — try naming the exercise and sets, e.g. 'bench press 135x5'")
             
             # Log each exercise (repo expects: exercise, sets, reps, weight, notes)
             logged_exercises = []
@@ -70,7 +70,7 @@ class GymHandler(BaseHandler):
             context.invalidate_cache()
             
             # Format response
-            response = f"✓ Logged workout: {', '.join(logged_exercises)}"
+            response = f"Got it — logged workout: {', '.join(logged_exercises)}"
             
             # Get today's summary
             today_summary = context.get_today_summary()
@@ -83,4 +83,4 @@ class GymHandler(BaseHandler):
             print(f"Error logging workout: {e}")
             import traceback
             traceback.print_exc()
-            return self.formatter.format_error("Error saving workout log")
+            return self.formatter.format_error("Couldn't save that workout")

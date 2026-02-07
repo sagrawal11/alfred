@@ -30,7 +30,35 @@ class ReminderService:
         # Store pending reschedules and task decay responses
         self.pending_reschedules: Dict[int, List[Dict[str, Any]]] = {}
         self.pending_task_decay: Dict[str, Dict[int, str]] = {}
-    
+
+    def _reminder_followup_message(self, content: str, style_bucket: str, reschedule_options: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Build reminder follow-up copy based on reminder_style_bucket (chill / moderate / formal)."""
+        if reschedule_options:
+            if style_bucket in ("relaxed", "minimal"):
+                msg = f"Hey — did you get to {content}, or want to move it?\n"
+            elif style_bucket in ("very_persistent", "persistent"):
+                msg = f"Reminder: Did you get a chance to {content}, or should I reschedule it?\n"
+            else:
+                msg = f"Did you get a chance to {content}, or should I reschedule it?\n"
+            msg += "Reply:\n• 'yes' or 'done' if completed\n"
+            for i, opt in enumerate(reschedule_options, 1):
+                msg += f"• '{i}' to reschedule to {opt.get('text', '')}\n"
+            msg += "• 'no' to skip"
+            return msg
+        if style_bucket in ("relaxed", "minimal"):
+            return f"Quick check — did you get to {content}? Reply 'yes' if done, or 'no' to skip."
+        if style_bucket in ("very_persistent", "persistent"):
+            return f"Reminder: Please confirm if you've completed: {content}. Reply 'yes' if done, or 'no' to skip."
+        return f"Did you get a chance to {content}? Reply 'yes' if done, or 'no' to skip."
+
+    def _task_decay_message(self, content: str, style_bucket: str) -> str:
+        """Build task decay copy based on reminder_style_bucket."""
+        if style_bucket in ("relaxed", "minimal"):
+            return f"Still want '{content}' on your list? Reply 'keep', 'reschedule', or 'delete'."
+        if style_bucket in ("very_persistent", "persistent"):
+            return f"Reminder: Still want '{content}' on your list?\nReply:\n• 'keep' to keep it\n• 'reschedule' to move it\n• 'delete' or 'remove' to remove it"
+        return f"Still want '{content}' on your list?\nReply:\n• 'keep' to keep it\n• 'reschedule' to move it\n• 'delete' or 'remove' to remove it"
+
     def check_reminder_followups(self):
         """Check for reminders that need follow-ups"""
         try:
@@ -66,12 +94,13 @@ class ReminderService:
                     if not sent_at_str:
                         continue
                     
-                    # Get user phone number
+                    # Get user phone number and reminder style
                     user = self.user_repo.get_by_id(user_id)
                     if not user or not user.get('phone_number'):
                         continue
                     
                     user_phone = user['phone_number']
+                    reminder_style = (user.get('reminder_style_bucket') or 'moderate').strip().lower()
 
                     # Respect quiet hours / do-not-disturb (best effort)
                     try:
@@ -150,19 +179,13 @@ class ReminderService:
                             except Exception as e:
                                 logger.debug(f"Error parsing due_date for reschedule: {e}")
                         
-                        # Build follow-up message
+                        # Build follow-up message (tone from reminder_style_bucket)
                         if should_reschedule and reschedule_options:
-                            message = f"Did you get a chance to {content}, or should I reschedule it?\n"
-                            message += "Reply:\n"
-                            message += "• 'yes' or 'done' if completed\n"
-                            for i, option in enumerate(reschedule_options[:3], 1):
-                                message += f"• '{i}' to reschedule to {option['text']}\n"
-                            message += "• 'no' to skip"
-                            
+                            message = self._reminder_followup_message(content, reminder_style, reschedule_options=reschedule_options[:3])
                             # Store reschedule options
                             self.pending_reschedules[reminder_id] = reschedule_options
                         else:
-                            message = f"Did you get a chance to {content}? Reply 'yes' if done, or 'no' to skip."
+                            message = self._reminder_followup_message(content, reminder_style)
                         
                         # Send follow-up
                         result = self.communication_service.send_response(message, user_phone)
@@ -214,12 +237,13 @@ class ReminderService:
                     if not timestamp_str:
                         continue
                     
-                    # Get user phone number
+                    # Get user phone number and reminder style
                     user = self.user_repo.get_by_id(user_id)
                     if not user or not user.get('phone_number'):
                         continue
                     
                     user_phone = user['phone_number']
+                    reminder_style = (user.get('reminder_style_bucket') or 'moderate').strip().lower()
                     
                     # Parse created_at timestamp
                     try:
@@ -238,14 +262,9 @@ class ReminderService:
                     
                     age = current_time_aware - created_at
                     
-                    # If task is older than threshold, send decay check
+                    # If task is older than threshold, send decay check (tone from reminder_style_bucket)
                     if age >= decay_threshold:
-                        message = f"Still want '{content}' on your list?\n"
-                        message += "Reply:\n"
-                        message += "• 'keep' to keep it\n"
-                        message += "• 'reschedule' to move it\n"
-                        message += "• 'delete' or 'remove' to remove it"
-                        
+                        message = self._task_decay_message(content, reminder_style)
                         result = self.communication_service.send_response(message, user_phone)
                         
                         if result['success']:

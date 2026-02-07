@@ -54,7 +54,7 @@
                         <div class="settings-card trends-graph-card">
                             <div class="trends-graph-header">
                                 <div class="trends-graph-title">Trend graph</div>
-                                <div class="trends-graph-meta" id="trends-graph-meta">Past 7 days • Calories</div>
+                                <div class="trends-graph-meta" id="trends-graph-meta">Past 7 days • Sleep</div>
                             </div>
                             <div class="trends-graph-canvas-wrap">
                                 <canvas id="trends-chart" height="110"></canvas>
@@ -197,6 +197,18 @@
                         }
                     });
 
+                    const chartOpts = { tension: 0.35, pointRadius: 2, pointHoverRadius: 3, fill: true };
+                    function makeDatasets(metric, values, valuesWorkouts, valuesExercises, len) {
+                        const data = (arr, n) => (arr && arr.length ? arr : new Array(n).fill(0));
+                        if (metric === 'workouts') {
+                            return [
+                                { label: 'Workouts', data: data(valuesWorkouts, len), ...chartOpts, borderColor: '#000', backgroundColor: 'rgba(0,0,0,0.06)' },
+                                { label: 'Exercises', data: data(valuesExercises, len), ...chartOpts, borderColor: '#999', backgroundColor: 'rgba(160,160,160,0.08)' }
+                            ];
+                        }
+                        return [{ label: metricTitle(metric), data: data(values, len), ...chartOpts, borderColor: '#000', backgroundColor: 'rgba(0,0,0,0.06)' }];
+                    }
+
                     async function loadSeries(tf, metric) {
                         meta.textContent = `Loading…`;
                         try {
@@ -205,20 +217,19 @@
                             if (!res.ok || data.success === false) throw new Error(data.error || 'Failed to load series');
 
                             const labels = data.labels || [];
-                            const values = data.values || [];
-
                             chart.data.labels = labels;
-                            chart.data.datasets[0].data = values;
-                            chart.data.datasets[0].label = metricTitle(metric);
+                            chart.data.datasets = makeDatasets(metric, data.values, data.values_workouts, data.values_exercises, labels.length);
+                            chart.options.plugins.legend.display = (metric === 'workouts');
+                            chart.options.scales.y.title.text = metric === 'workouts' ? 'Count' : yAxisLabel(metric);
                             chart.options.scales.x.title.text = xAxisLabel(tf);
-                            chart.options.scales.y.title.text = yAxisLabel(metric);
                             chart.update();
-
                             meta.textContent = `${timeframeLabel(tf)} • ${metricTitle(metric)}`;
                         } catch (e) {
-                            // If the API fails, keep chart but make it obvious it's empty
                             chart.data.labels = buildLabels(tf);
-                            chart.data.datasets[0].data = new Array(chart.data.labels.length).fill(0);
+                            const len = chart.data.labels.length;
+                            chart.data.datasets = makeDatasets(metric, [], [], [], len);
+                            chart.options.plugins.legend.display = (metric === 'workouts');
+                            chart.options.scales.y.title.text = metric === 'workouts' ? 'Count' : yAxisLabel(metric);
                             chart.update();
                             meta.textContent = `No data yet • ${metricTitle(metric)}`;
                         }
@@ -286,8 +297,7 @@
 
                     timeframe.addEventListener('change', () => setTimeframe(timeframe.value));
 
-                    setTimeframe(currentTf);
-                    setActiveMetric('calories');
+                    setActiveMetric('sleep');
                 })();
 
                 // Profile dropdown
@@ -303,6 +313,7 @@
                     });
                 })();
             </script>
+            {% include 'includes/site_footer.html' %}
         </main>
     </div>
 </body>
