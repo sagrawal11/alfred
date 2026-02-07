@@ -5,13 +5,14 @@ Uses Supabase Auth for authentication with hybrid approach (links to custom user
 """
 
 import os
-from typing import Dict, Optional, Tuple
 from datetime import datetime
+from typing import Dict, Optional, Tuple
+
 from flask import session
 from supabase import Client, create_client
 
-from data import UserRepository, UserPreferencesRepository
 from config import Config
+from data import UserPreferencesRepository, UserRepository
 
 
 class AuthManager:

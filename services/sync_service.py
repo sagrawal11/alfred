@@ -4,7 +4,8 @@ Handles periodic synchronization of third-party integrations
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from supabase import Client
 
 from config import Config

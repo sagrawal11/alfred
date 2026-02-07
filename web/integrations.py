@@ -3,14 +3,15 @@ Web Integration Routes
 Routes for managing integrations via web dashboard
 """
 
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from functools import wraps
 from typing import Callable
 
-from integrations import IntegrationAuthManager, SyncManager
-from integrations.health.fitbit import FitbitIntegration
-from integrations.calendar.google_calendar import GoogleCalendarIntegration
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+
 from data import IntegrationRepository
+from integrations import IntegrationAuthManager, SyncManager
+from integrations.calendar.google_calendar import GoogleCalendarIntegration
+from integrations.health.fitbit import FitbitIntegration
 from web.auth import AuthManager
 
 

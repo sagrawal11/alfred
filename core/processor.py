@@ -5,31 +5,38 @@ Main message processing engine that coordinates NLP, handlers, and responses
 
 import os
 import re
-from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
 
-from nlp import (
-    create_llm_client, IntentClassifier, EntityExtractor,
-    Parser, PatternMatcher, DatabaseLoader
-)
 from data import (
-    UserRepository, KnowledgeRepository, UserPreferencesRepository
+    IntegrationRepository,
+    KnowledgeRepository,
+    UserPreferencesRepository,
+    UserRepository,
 )
-from core.context import ConversationContext
-from core.session import SessionManager
-from core.onboarding import handle_onboarding
-from learning import LearningOrchestrator
 from handlers.base_handler import BaseHandler
 from handlers.food_handler import FoodHandler
-from handlers.water_handler import WaterHandler
 from handlers.gym_handler import GymHandler
-from handlers.todo_handler import TodoHandler
-from handlers.query_handler import QueryHandler
 from handlers.integration_handler import IntegrationHandler
-from responses.formatter import ResponseFormatter
+from handlers.query_handler import QueryHandler
+from handlers.todo_handler import TodoHandler
+from handlers.water_handler import WaterHandler
 from integrations import IntegrationAuthManager, SyncManager
-from data import IntegrationRepository
+from learning import LearningOrchestrator
+from nlp import (
+    DatabaseLoader,
+    EntityExtractor,
+    IntentClassifier,
+    Parser,
+    PatternMatcher,
+    create_llm_client,
+)
+from responses.formatter import ResponseFormatter
 from services.nutrition import NutritionResolver
+
+from core.context import ConversationContext
+from core.onboarding import handle_onboarding
+from core.session import SessionManager
 
 
 class MessageProcessor:

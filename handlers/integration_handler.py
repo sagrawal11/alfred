@@ -3,13 +3,14 @@ Integration Handler
 Handles SMS commands related to integrations
 """
 
+import os
 from typing import Dict, Optional
+
 from data import IntegrationRepository
 from integrations import IntegrationAuthManager, SyncManager
-from integrations.health.fitbit import FitbitIntegration
 from integrations.calendar.google_calendar import GoogleCalendarIntegration
+from integrations.health.fitbit import FitbitIntegration
 from responses.formatter import ResponseFormatter
-import os
 
 
 class IntegrationHandler:

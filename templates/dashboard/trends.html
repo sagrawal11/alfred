@@ -151,7 +151,11 @@
                     }
 
                     function buildLabels(tf) {
-                        const n = tf === '14d' ? 14 : tf === '1m' ? 30 : tf === '1y' ? 12 : 7;
+                        let n;
+                        if (tf === '14d') n = 14;
+                        else if (tf === '1m') n = 30;
+                        else if (tf === '1y') n = 12;
+                        else n = 7;
                         if (tf === '1y') return Array.from({ length: 12 }, (_, i) => `M${i + 1}`);
                         return Array.from({ length: n }, (_, i) => `D${i + 1}`);
                     }

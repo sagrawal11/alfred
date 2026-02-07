@@ -2,8 +2,8 @@
 Core message processing components
 """
 
-from .processor import MessageProcessor
 from .context import ConversationContext
+from .processor import MessageProcessor
 from .session import SessionManager
 
 __all__ = ['MessageProcessor', 'ConversationContext', 'SessionManager']

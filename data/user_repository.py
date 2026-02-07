@@ -3,9 +3,11 @@ User Repository
 Handles all user account operations
 """
 
-from typing import Dict, List, Optional, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from supabase import Client
+
 from .base_repository import BaseRepository
 
 

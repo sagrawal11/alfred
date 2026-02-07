@@ -3,9 +3,11 @@ Food Repository
 Handles all food log operations
 """
 
-from typing import Dict, List, Optional, Any
-from datetime import datetime, date
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
+
 from supabase import Client
+
 from .base_repository import BaseRepository
 
 

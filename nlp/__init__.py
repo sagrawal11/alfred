@@ -10,13 +10,13 @@ try:
     from .gemini_client import GeminiClient  # type: ignore
 except Exception:  # pragma: no cover
     GeminiClient = None  # type: ignore
+from .database_loader import DatabaseLoader
+from .entity_extractor import EntityExtractor
+from .intent_classifier import IntentClassifier
 from .llm_client import create_llm_client
 from .llm_types import LLMClient
-from .intent_classifier import IntentClassifier
-from .entity_extractor import EntityExtractor
 from .parser import Parser
 from .pattern_matcher import PatternMatcher
-from .database_loader import DatabaseLoader
 
 __all__ = [
     'LLMClient',

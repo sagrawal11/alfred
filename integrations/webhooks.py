@@ -3,14 +3,15 @@ Webhook Handlers
 Handle real-time updates from integration providers
 """
 
-from typing import Dict, Optional
-from flask import Request
+import os
 from datetime import datetime
+from typing import Dict, Optional
+
+from flask import Request
 
 from data import IntegrationRepository
 from integrations import SyncManager
 from integrations.health.fitbit import FitbitIntegration
-import os
 
 
 class WebhookHandler:

@@ -3,13 +3,14 @@ Food Handler
 Handles food logging intents
 """
 
-from typing import Dict, Optional
 from datetime import datetime
+from typing import Dict, Optional
+
 from supabase import Client
 
-from handlers.base_handler import BaseHandler
 from core.context import ConversationContext
-from data import FoodRepository, FoodLogMetadataRepository
+from data import FoodLogMetadataRepository, FoodRepository
+from handlers.base_handler import BaseHandler
 
 
 class FoodHandler(BaseHandler):

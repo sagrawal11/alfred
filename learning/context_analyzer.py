@@ -3,8 +3,8 @@ Context Analyzer
 Detects learning opportunities from user interactions
 """
 
-from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 
 class ContextAnalyzer:

@@ -1,8 +1,13 @@
+"""
+Application configuration from environment variables.
+"""
+
 import os
+
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
+
 
 class Config:
     # Twilio Configuration (primary SMS)

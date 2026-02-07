@@ -5,13 +5,14 @@ Handles OAuth flows for all integration providers
 
 import os
 import secrets
-from typing import Dict, Optional, Tuple
 from urllib.parse import urlencode
+from typing import Dict, Optional, Tuple
+
 import requests
 from cryptography.fernet import Fernet
 
-from .base import BaseIntegration
 from data import IntegrationRepository
+from .base import BaseIntegration
 
 
 class IntegrationAuthManager:

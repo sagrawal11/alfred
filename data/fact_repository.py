@@ -3,8 +3,10 @@ Fact Repository
 Handles all fact/information recall operations
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 from supabase import Client
+
 from .base_repository import BaseRepository
 
 

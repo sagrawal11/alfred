@@ -6,20 +6,21 @@ Modular architecture: web dashboard, SMS processing, integrations, background jo
 import os
 import sys
 from datetime import datetime
+
 from flask import Flask, request, jsonify
-from twilio.twiml.messaging_response import MessagingResponse
 from supabase import create_client, Client
+from twilio.twiml.messaging_response import MessagingResponse
+
+from apscheduler.triggers.interval import IntervalTrigger
 
 from config import Config
-from core.processor import MessageProcessor
 from communication_service import CommunicationService
+from core.processor import MessageProcessor
+from data import IntegrationRepository, UserRepository
+from integrations import IntegrationAuthManager, SyncManager, WebhookHandler
+from services import JobScheduler, ReminderService, SyncService, NotificationService
 from web import AuthManager, DashboardData, register_web_routes
 from web.integrations import register_integration_routes
-from integrations import IntegrationAuthManager, SyncManager, WebhookHandler
-from data import IntegrationRepository
-from services import JobScheduler, ReminderService, SyncService, NotificationService
-from apscheduler.triggers.interval import IntervalTrigger
-from data import UserRepository
  
 
 # Initialize Flask app

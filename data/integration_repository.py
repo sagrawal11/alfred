@@ -3,9 +3,11 @@ Integration Repository
 Handles storage and retrieval of integration connections and sync history
 """
 
-from typing import Dict, List, Optional, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from supabase import Client
+
 from .base_repository import BaseRepository
 
 

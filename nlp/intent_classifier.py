@@ -4,6 +4,7 @@ Classifies user messages into specific intents
 """
 
 from typing import Dict, Optional
+
 from .llm_types import LLMClient
 
 

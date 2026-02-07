@@ -6,11 +6,12 @@ Parses user messages into structured data for different domains (food, gym, wate
 import json
 import re
 from datetime import datetime, timedelta
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
+
 from dateutil import parser as date_parser
 
-from .llm_types import LLMClient
 from .database_loader import DatabaseLoader
+from .llm_types import LLMClient
 
 
 class Parser:

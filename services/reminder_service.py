@@ -5,13 +5,14 @@ Handles reminder follow-ups and task decay checks
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
+
 from supabase import Client
 
 from config import Config
 from communication_service import CommunicationService
-from data import TodoRepository, UserRepository, UserPreferencesRepository
+from data import TodoRepository, UserPreferencesRepository, UserRepository
 
 logger = logging.getLogger(__name__)
 

@@ -14,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config
 
+
 class CommunicationService:
     """Handles all communication methods for Alfred the Butler"""
     

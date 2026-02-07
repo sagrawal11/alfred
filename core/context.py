@@ -3,12 +3,16 @@ Conversation Context
 Manages conversation state and context for better responses
 """
 
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
+
 from data import (
-    FoodRepository, WaterRepository, GymRepository,
-    TodoRepository, SleepRepository, AssignmentRepository
+    AssignmentRepository,
+    FoodRepository,
+    GymRepository,
+    SleepRepository,
+    TodoRepository,
+    WaterRepository,
 )
 
 
@@ -17,7 +21,7 @@ class ConversationContext:
     
     def __init__(self, user_id: int, food_repo: FoodRepository, water_repo: WaterRepository,
                  gym_repo: GymRepository, todo_repo: TodoRepository,
-                 sleep_repo: Optional[SleepRepository] = None, 
+                 sleep_repo: Optional[SleepRepository] = None,
                  assignment_repo: Optional[AssignmentRepository] = None):
         """
         Initialize conversation context

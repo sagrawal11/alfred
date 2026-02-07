@@ -3,13 +3,14 @@ Sync Manager
 Orchestrates data syncing from all integration providers
 """
 
-from typing import Dict, List, Optional
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+
 from supabase import Client
 
-from .base import BaseIntegration, SyncResult, SyncStatus
+from data import GymRepository, IntegrationRepository, SleepRepository
 from .auth import IntegrationAuthManager
-from data import IntegrationRepository, GymRepository, SleepRepository
+from .base import BaseIntegration, SyncResult, SyncStatus
 
 
 class SyncManager:

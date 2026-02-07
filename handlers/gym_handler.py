@@ -3,13 +3,14 @@ Gym Handler
 Handles gym workout logging intents
 """
 
-from typing import Dict, Optional
 from datetime import datetime
+from typing import Dict, Optional
+
 from supabase import Client
 
-from handlers.base_handler import BaseHandler
 from core.context import ConversationContext
 from data import GymRepository
+from handlers.base_handler import BaseHandler
 
 
 class GymHandler(BaseHandler):

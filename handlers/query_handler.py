@@ -3,15 +3,14 @@ Query Handler
 Handles stats queries, fact storage, and fact queries
 """
 
+from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Dict, Optional
-from datetime import datetime, timedelta
-from datetime import timezone as dt_timezone
+
 from supabase import Client
 
-from handlers.base_handler import BaseHandler
 from core.context import ConversationContext
-from data import FactRepository
-from data import UserPreferencesRepository
+from data import FactRepository, UserPreferencesRepository
+from handlers.base_handler import BaseHandler
 
 
 class QueryHandler(BaseHandler):

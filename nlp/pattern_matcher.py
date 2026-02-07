@@ -3,7 +3,8 @@ Pattern Matcher
 Applies learned patterns to user messages before NLP processing
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 from data import KnowledgeRepository
 
 

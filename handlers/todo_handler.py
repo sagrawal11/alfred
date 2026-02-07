@@ -3,14 +3,14 @@ Todo Handler
 Handles todo, reminder, and assignment intents
 """
 
-from typing import Dict, Optional
 from datetime import datetime
+from typing import Dict, Optional
+
 from supabase import Client
 
-from handlers.base_handler import BaseHandler
 from core.context import ConversationContext
-from data import TodoRepository, AssignmentRepository
-from typing import Optional
+from data import AssignmentRepository, TodoRepository
+from handlers.base_handler import BaseHandler
 
 
 class TodoHandler(BaseHandler):

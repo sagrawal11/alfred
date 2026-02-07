@@ -3,9 +3,10 @@ Web Routes
 Flask routes for dashboard and authentication
 """
 
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from functools import wraps
 from typing import Callable
+
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 
 from .auth import AuthManager
 from .dashboard import DashboardData

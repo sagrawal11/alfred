@@ -4,9 +4,9 @@ Abstract base class for all third-party integrations
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class SyncStatus(Enum):

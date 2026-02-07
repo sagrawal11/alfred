@@ -5,19 +5,20 @@ Handles gentle nudges and weekly digests
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
+
 from supabase import Client
 
 from config import Config
 from communication_service import CommunicationService
 from data import (
-    UserRepository,
-    UserPreferencesRepository,
-    WaterRepository,
-    GymRepository,
     FoodRepository,
+    GymRepository,
     TodoRepository,
+    UserPreferencesRepository,
+    UserRepository,
+    WaterRepository,
 )
 
 logger = logging.getLogger(__name__)

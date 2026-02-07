@@ -3,8 +3,9 @@ Session Management
 Manages user sessions and conversation state
 """
 
-from typing import Dict, Optional
 from datetime import datetime, timedelta
+from typing import Dict, Optional
+
 from supabase import Client
 
 

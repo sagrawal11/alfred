@@ -3,8 +3,9 @@ Association Learner
 Manages pattern associations and confidence scores
 """
 
-from typing import Dict, List, Optional
 from datetime import datetime
+from typing import Dict, List, Optional
+
 from data import KnowledgeRepository
 
 

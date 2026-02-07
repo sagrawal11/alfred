@@ -11,8 +11,8 @@ This is the new \"Alfred brain\". It is intentionally designed to:
 from __future__ import annotations
 
 import json
-import os
 import logging
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union

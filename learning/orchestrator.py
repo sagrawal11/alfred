@@ -3,13 +3,13 @@ Learning Orchestrator
 Coordinates the learning system components
 """
 
-from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
-from .pattern_extractor import PatternExtractor
+from data import KnowledgeRepository
 from .association_learner import AssociationLearner
 from .context_analyzer import ContextAnalyzer
-from data import KnowledgeRepository
+from .pattern_extractor import PatternExtractor
 
 
 class LearningOrchestrator:

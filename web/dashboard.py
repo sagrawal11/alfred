@@ -3,16 +3,21 @@ Dashboard Data
 Provides data for dashboard views
 """
 
-from typing import Dict, List, Any
-from datetime import datetime, timedelta, date
 from calendar import monthrange
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List
+
 from supabase import Client
 
-from data import (
-    FoodRepository, WaterRepository, GymRepository,
-    TodoRepository, SleepRepository, AssignmentRepository
-)
 from config import Config
+from data import (
+    AssignmentRepository,
+    FoodRepository,
+    GymRepository,
+    SleepRepository,
+    TodoRepository,
+    WaterRepository,
+)
 
 
 class DashboardData:
