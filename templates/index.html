@@ -55,6 +55,7 @@
         <div class="modal-content">
             <span class="modal-close" id="login-close">&times;</span>
             <h2>Login</h2>
+            <div id="login-success" class="modal-success" style="display: none;"></div>
             <div id="login-error" class="modal-error" style="display: none;"></div>
             <form id="login-form" method="POST" action="{{ url_for('dashboard_login') }}">
                 <div class="form-group">
@@ -79,6 +80,7 @@
         <div class="modal-content">
             <span class="modal-close" id="signup-close">&times;</span>
             <h2>Create Account</h2>
+            <div id="signup-confirm-message" class="modal-success" style="display: none;"></div>
             <div id="signup-error" class="modal-error" style="display: none;"></div>
             <form id="signup-form" method="POST" action="{{ url_for('dashboard_register') }}">
                 <div class="form-group">
@@ -129,8 +131,24 @@
             document.body.style.overflow = 'hidden';
         });
 
-        // Open signup modal
+        // If redirected after password reset, open login modal and show success message
+        if (window.location.search.indexOf('reset=success') !== -1) {
+            const loginSuccess = document.getElementById('login-success');
+            if (loginSuccess) {
+                loginSuccess.textContent = 'Password reset successfully. Log in with your new password.';
+                loginSuccess.style.display = 'block';
+            }
+            loginModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            history.replaceState(null, '', window.location.pathname);
+        }
+
+        // Open signup modal (reset form and confirm message so form shows again)
         signupBtn.addEventListener('click', () => {
+            const form = document.getElementById('signup-form');
+            const confirmMsg = document.getElementById('signup-confirm-message');
+            if (form) form.style.display = '';
+            if (confirmMsg) confirmMsg.style.display = 'none';
             signupModal.style.display = 'flex';
             document.body.style.overflow = 'hidden';
         });
@@ -296,12 +314,20 @@
                 });
                 
                 const data = await response.json();
-                
+
                 if (data.success) {
-                    // Success - redirect to dashboard
+                    if (data.email_confirmation_required) {
+                        const form = document.getElementById('signup-form');
+                        const successMsg = document.getElementById('signup-confirm-message');
+                        if (form) form.style.display = 'none';
+                        if (successMsg) {
+                            successMsg.textContent = data.message || 'Check your email to confirm your account. Then you can log in.';
+                            successMsg.style.display = 'block';
+                        }
+                        return;
+                    }
                     window.location.href = data.redirect || '/dashboard';
                 } else {
-                    // Error - show error message
                     errorDiv.textContent = data.error || 'Registration failed. Please try again.';
                     errorDiv.style.display = 'block';
                 }

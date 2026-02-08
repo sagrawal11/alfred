@@ -248,11 +248,23 @@
                 if (sendBtn) sendBtn.disabled = true;
 
                 // UI-only for now: we’ll implement Supabase reset flow later.
-                setTimeout(() => {
-                    if (status) status.textContent = 'If that email exists, a reset link has been sent.';
-                    if (sendBtn) sendBtn.disabled = false;
-                    setTimeout(close, 700);
-                }, 600);
+                try {
+                    const res = await fetch('{{ url_for("dashboard_forgot_password") }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: email.value.trim() })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.success !== false) {
+                        if (status) status.textContent = data.message || 'If that email exists, a reset link has been sent.';
+                        setTimeout(close, 700);
+                    } else {
+                        if (status) status.textContent = data.error || 'Something went wrong. Try again.';
+                    }
+                } catch (err) {
+                    if (status) status.textContent = 'Request failed. Try again.';
+                }
+                if (sendBtn) sendBtn.disabled = false;
             });
         })();
 

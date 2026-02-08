@@ -161,16 +161,22 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
                 return jsonify({'error': 'Password must be at least 8 characters'}), 400
             
             # Register user with Supabase Auth
-            success, user, error = auth_manager.register_with_email_password(email, password, name, phone_number, timezone=timezone or None)
-            
+            success, user, error = auth_manager.register_with_email_password(
+                email, password, name, phone_number, timezone=timezone or None
+            )
+
             if success:
-                # Phone verification disabled for now; go straight to dashboard.
+                if user and user.get('email_confirmation_required'):
+                    return jsonify({
+                        'success': True,
+                        'email_confirmation_required': True,
+                        'message': 'Check your email to confirm your account. Then you can log in.',
+                    }), 200
                 return jsonify({
                     'success': True,
-                    'redirect': url_for('dashboard_index')
+                    'redirect': url_for('dashboard_index'),
                 }), 200
-            else:
-                return jsonify({'error': error or 'Registration failed'}), 400
+            return jsonify({'error': error or 'Registration failed'}), 400
         
         # GET request - redirect to landing page (modals are there)
         return redirect(url_for('landing_page'))
@@ -183,52 +189,80 @@ def register_web_routes(app: Flask, supabase, auth_manager: AuthManager, dashboa
     
     @app.route('/dashboard/forgot-password', methods=['GET', 'POST'])
     def dashboard_forgot_password():
-        """Password reset request"""
+        """Password reset request (form POST or JSON for API)."""
         if request.method == 'POST':
-            email = request.form.get('email', '').strip()
-            
+            if request.is_json:
+                data = request.get_json(silent=True) or {}
+                email = (data.get('email') or '').strip()
+            else:
+                email = request.form.get('email', '').strip()
             if not email:
+                if request.is_json:
+                    return jsonify({'success': False, 'error': 'Email required'}), 400
                 return render_template('dashboard/forgot_password.html', error='Email required')
-            
-            success, error = auth_manager.request_password_reset(email)
-            
-            # Always show success message (don't reveal if email exists)
+            auth_manager.request_password_reset(email)
+            if request.is_json:
+                return jsonify({'success': True, 'message': 'If that email exists, a reset link has been sent.'})
             flash('If that email exists, a password reset link has been sent.', 'info')
             return redirect(url_for('dashboard_login'))
-        
         return render_template('dashboard/forgot_password.html')
-    
+
     @app.route('/dashboard/reset-password', methods=['GET', 'POST'])
     def dashboard_reset_password():
-        """Password reset with token"""
+        """
+        Password reset page. Supabase redirects here from the email link with
+        tokens in the URL hash (#access_token=...&type=recovery). The page uses
+        Supabase JS to set session and call updateUser({ password }) on submit.
+        Token in query string is optional (legacy); primary flow is client-side.
+        """
+        from config import Config
         token = request.args.get('token', '')
-        
-        if not token:
-            flash('Invalid reset token', 'error')
-            return redirect(url_for('dashboard_login'))
-        
-        if request.method == 'POST':
+        supabase_url = (Config.SUPABASE_URL or '').rstrip('/')
+        supabase_anon_key = Config.SUPABASE_KEY or ''
+        if request.method == 'POST' and token:
             password = request.form.get('password', '')
             password_confirm = request.form.get('password_confirm', '')
-            
             if not password:
-                return render_template('dashboard/reset_password.html', token=token, error='Password required')
-            
+                return render_template(
+                    'dashboard/reset_password.html',
+                    token=token,
+                    supabase_url=supabase_url,
+                    supabase_anon_key=supabase_anon_key,
+                    error='Password required',
+                )
             if password != password_confirm:
-                return render_template('dashboard/reset_password.html', token=token, error='Passwords do not match')
-            
+                return render_template(
+                    'dashboard/reset_password.html',
+                    token=token,
+                    supabase_url=supabase_url,
+                    supabase_anon_key=supabase_anon_key,
+                    error='Passwords do not match',
+                )
             if len(password) < 8:
-                return render_template('dashboard/reset_password.html', token=token, error='Password must be at least 8 characters')
-            
+                return render_template(
+                    'dashboard/reset_password.html',
+                    token=token,
+                    supabase_url=supabase_url,
+                    supabase_anon_key=supabase_anon_key,
+                    error='Password must be at least 8 characters',
+                )
             success, error = auth_manager.reset_password(token, password)
-            
             if success:
                 flash('Password reset successfully! Please log in.', 'success')
                 return redirect(url_for('dashboard_login'))
-            else:
-                return render_template('dashboard/reset_password.html', token=token, error=error or 'Password reset failed')
-        
-        return render_template('dashboard/reset_password.html', token=token)
+            return render_template(
+                'dashboard/reset_password.html',
+                token=token,
+                supabase_url=supabase_url,
+                supabase_anon_key=supabase_anon_key,
+                error=error or 'Password reset failed',
+            )
+        return render_template(
+            'dashboard/reset_password.html',
+            token=token,
+            supabase_url=supabase_url,
+            supabase_anon_key=supabase_anon_key,
+        )
     
     # ============================================================================
     # Dashboard Routes

@@ -362,6 +362,15 @@ body {
     letter-spacing: -0.5px;
 }
 
+.modal-success {
+    background-color: rgba(0, 100, 0, 0.08);
+    color: #004d00;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
 .modal-error {
     background-color: rgba(0, 0, 0, 0.05);
     color: #000000;

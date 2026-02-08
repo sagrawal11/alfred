@@ -98,9 +98,17 @@ SUPABASE_KEY=your_anon_key  # Anon key works for auth operations
 - Check that `auth_user_id` is properly linked
 - Verify password is correct
 
+## Password reset (implemented)
+
+- **Request:** `request_password_reset(email)` calls Supabase with a redirect URL to `/dashboard/reset-password`.
+- **Reset page:** User lands from the email link with tokens in the URL hash; the page uses Supabase JS to set the session and call `updateUser({ password })`.
+- **Settings modal** and **forgot-password page** both trigger the reset email; the API accepts JSON or form POST.
+
+See **SUPABASE_AUTH_SETUP.md** for what is already in the codebase and what you must configure in the Supabase Dashboard (Redirect URLs, Site URL, Email provider, etc.).
+
 ## Next Steps
 
 1. Test registration and login flows
-2. Test phone OTP verification
-3. Migrate existing users (if any) by creating Supabase Auth accounts
-4. Consider adding password reset flow using Supabase Auth email links
+2. Test password reset (forgot-password → email → reset page → new password → login)
+3. Test phone OTP verification (if enabled)
+4. Migrate existing users (if any) by creating Supabase Auth accounts

@@ -109,17 +109,22 @@ class AuthManager:
 
             # Ensure user preferences row exists
             self.user_prefs_repo.ensure(user['id'])
-            
-            # Store user in session (using custom user_id for compatibility)
-            session['user_id'] = user['id']
-            session['user_email'] = user['email']
-            session['user_name'] = user.get('name')
-            session['auth_user_id'] = auth_user_id
+
+            # When Confirm email is enabled, Supabase returns no session until the user confirms.
+            # Do not set session so they must confirm before logging in.
             if auth_response.session:
+                session['user_id'] = user['id']
+                session['user_email'] = user['email']
+                session['user_name'] = user.get('name')
+                session['auth_user_id'] = auth_user_id
                 session['access_token'] = auth_response.session.access_token
                 session['refresh_token'] = auth_response.session.refresh_token
-            
-            return True, user, None
+                return True, user, None
+
+            # No session: email confirmation required
+            user_with_flag = dict(user)
+            user_with_flag['email_confirmation_required'] = True
+            return True, user_with_flag, None
             
         except Exception as e:
             error_msg = str(e)
@@ -275,42 +280,44 @@ class AuthManager:
     
     def request_password_reset(self, email: str) -> Tuple[bool, Optional[str]]:
         """
-        Request password reset via Supabase Auth
-        
+        Request password reset via Supabase Auth.
+        Sends an email with a link that redirects to our reset-password page.
+
         Args:
             email: User email
-            
+
         Returns:
             Tuple of (success, error_message)
         """
         try:
-            # Use Supabase Auth password reset
-            self.auth_client.auth.reset_password_for_email(email.strip())
-            # Always return success (don't reveal if email exists)
+            base_url = (self.config.BASE_URL or "").rstrip("/")
+            redirect_to = f"{base_url}/dashboard/reset-password" if base_url else None
+            options = {}
+            if redirect_to:
+                options["redirect_to"] = redirect_to
+            self.auth_client.auth.reset_password_for_email(
+                email.strip(), options=options if options else None
+            )
             return True, None
         except Exception as e:
-            # Still return success to avoid revealing if email exists
             return True, None
     
     def reset_password(self, token: str, new_password: str) -> Tuple[bool, Optional[str]]:
         """
-        Reset password using token from Supabase Auth
-        
+        Reset password using recovery token from Supabase Auth.
+        The recovery flow is handled client-side: the email link redirects with
+        tokens in the URL hash, and the reset page uses Supabase JS to set session
+        and call updateUser({ password }). This server method is kept for API
+        compatibility but the primary flow does not use it.
+
         Args:
-            token: Password reset token (from email link)
+            token: Password reset token (unused in client-side flow)
             new_password: New password
-            
+
         Returns:
             Tuple of (success, error_message)
         """
-        try:
-            # Supabase Auth handles password reset via update_user
-            # The token is typically handled via a callback URL
-            # For now, we'll need to handle this via the frontend
-            # This method may need to be updated based on your reset flow
-            return False, "Password reset via token not yet implemented. Please use the email link."
-        except Exception as e:
-            return False, f"Password reset failed: {str(e)}"
+        return False, "Please use the link from your email to reset your password on the reset page."
     
     def logout(self):
         """Log out current user"""
